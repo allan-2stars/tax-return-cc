@@ -9,6 +9,9 @@ class AppError(Exception):
     action: Optional[str] = None
     retryable: bool = False
 
+    def __post_init__(self) -> None:
+        super().__init__(self.message)
+
 
 def error_response(
     error_code: str,

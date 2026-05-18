@@ -1,3 +1,5 @@
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 
@@ -23,3 +25,11 @@ async def test_health_storage_degraded_still_200(client, missing_storage_setting
     assert response.status_code == 200
     body = response.json()
     assert body["data"]["storage"] != "ok"
+
+
+@pytest.mark.asyncio
+async def test_health_db_unreachable_still_200(client):
+    with patch("app.repositories.health.ping", new_callable=AsyncMock, return_value=False):
+        response = await client.get("/api/v1/health")
+    assert response.status_code == 200
+    assert response.json()["data"]["db"] == "error"
