@@ -1,0 +1,44 @@
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3060:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=https://taxcc-api.signpega.com
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8060:8000"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=sqlite:////data/db/tax_return.db
+      - STORAGE_BACKEND=local
+      - STORAGE_PATH=/data/documents
+      - ENVIRONMENT=production
+    volumes:
+      - tax_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  tax_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /home/pi/tax-return-data
