@@ -1,3 +1,12 @@
+# Stage 0: Dev — deps only, no build. Source mounted via docker-compose volume.
+FROM node:20-alpine AS dev
+WORKDIR /app
+ENV NEXT_TELEMETRY_DISABLED=1
+COPY package*.json ./
+RUN npm install
+EXPOSE 3000
+CMD ["npm", "run", "dev"]
+
 # Stage 1: Builder
 FROM node:20-alpine AS builder
 

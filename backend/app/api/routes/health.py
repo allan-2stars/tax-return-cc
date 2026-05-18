@@ -18,10 +18,4 @@ async def health_check(db: AsyncSession = Depends(get_db)):
     except OSError:
         storage_status = "error"
 
-    return {
-        "status": "ok",
-        "data": {
-            "db": db_status,
-            "storage": storage_status,
-        },
-    }
+    return {"status": "ok", "db": db_status, "storage": storage_status}

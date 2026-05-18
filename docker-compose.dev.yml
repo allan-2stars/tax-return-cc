@@ -1,20 +1,17 @@
 services:
   frontend:
-    ports:
-      - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    build:
+      target: dev
     volumes:
       - ./frontend:/app
       - /app/node_modules
       - /app/.next
-    command: npm run dev
 
   backend:
     environment:
       - DATABASE_URL=sqlite+aiosqlite:////data/db/tax_return_dev.db
       - ENVIRONMENT=development
-      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+      - CORS_ORIGINS=http://localhost:3060,http://127.0.0.1:3060
     volumes:
       - ./backend:/app
       - tax_dev_data:/data
