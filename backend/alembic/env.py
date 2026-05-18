@@ -30,7 +30,11 @@ def run_migrations_offline() -> None:
 
 
 def _do_run_migrations(connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        render_as_batch=True,  # required for ALTER TABLE support on SQLite
+    )
     with context.begin_transaction():
         context.run_migrations()
 
