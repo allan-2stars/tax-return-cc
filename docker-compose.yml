@@ -22,7 +22,7 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=sqlite:////data/db/tax_return.db
+      - DATABASE_URL=sqlite+aiosqlite:////data/db/tax_return.db
       - STORAGE_BACKEND=local
       - STORAGE_PATH=/data/documents
       - ENVIRONMENT=production

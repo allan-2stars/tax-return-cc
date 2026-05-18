@@ -207,7 +207,7 @@ env:
 .PHONY: health
 health:
 	@echo "── Backend ──"
-	@curl -sf http://localhost:8060/health | python3 -m json.tool || echo "❌ Backend not responding"
+	@curl -sf http://localhost:8060/api/v1/health | python3 -m json.tool || echo "❌ Backend not responding"
 	@echo ""
 	@echo "── Frontend ──"
 	@curl -sf http://localhost:3060 > /dev/null && echo "✅ Frontend OK" || echo "❌ Frontend not responding"
