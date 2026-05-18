@@ -1,0 +1,43 @@
+# ── Web framework ──────────────────────────────────────────────
+fastapi
+uvicorn[standard]
+python-multipart
+aiofiles
+
+# ── Validation & settings ──────────────────────────────────────
+pydantic[email]
+pydantic-settings
+
+# ── Database ───────────────────────────────────────────────────
+sqlalchemy[asyncio]
+aiosqlite
+alembic
+greenlet
+
+# ── Auth & security ────────────────────────────────────────────
+bcrypt
+cryptography
+pyzipper
+itsdangerous
+
+# ── AI providers ───────────────────────────────────────────────
+anthropic
+openai
+httpx
+
+# ── OCR & document processing ──────────────────────────────────
+pdfplumber
+pytesseract
+pillow
+
+# ── Export ─────────────────────────────────────────────────────
+weasyprint
+jinja2
+
+# ── File validation ────────────────────────────────────────────
+python-magic
+
+# ── Testing ────────────────────────────────────────────────────
+pytest
+pytest-asyncio
+pytest-cov
