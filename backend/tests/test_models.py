@@ -1,8 +1,6 @@
 import pytest
 from sqlalchemy import inspect
 
-import app.db.models as _models  # noqa: F401 — registers all models with Base.metadata
-
 
 @pytest.mark.asyncio
 async def test_all_16_tables_created(test_engine):
