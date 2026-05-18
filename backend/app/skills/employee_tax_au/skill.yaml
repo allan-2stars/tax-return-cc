@@ -1,0 +1,25 @@
+skill_id: employee_tax_au
+version: "1.0.0"
+display_name: "Employee Tax (AU)"
+activation:
+  always: true
+
+owned_categories:
+  - payg_income
+  - allowance
+  - lump_sum
+  - work_expense
+  - vehicle
+  - travel
+  - uniform
+  - self_education
+  - other_deduction
+  - wfh_deduction
+
+evidence_requirements:
+  - id: payg_summary
+    available_after_fy: true
+    available_from: july
+  - id: work_receipt
+    available_after_fy: false
+    available_from: anytime

@@ -1,0 +1,17 @@
+financial_year: "2024-25"
+start_date: "2024-07-01"
+end_date: "2025-06-30"
+
+# Tax thresholds and rates — to be completed in M10
+tax_free_threshold: 18200
+low_income_tax_offset_max: 700
+low_income_tax_offset_cutout: 37500
+medicare_levy_rate: 0.02
+medicare_levy_threshold: 26000
+
+# WFH methods
+wfh_fixed_rate_per_hour: 0.67
+
+# Vehicle cents-per-km rate
+vehicle_cents_per_km: 0.88
+vehicle_km_cap: 5000
