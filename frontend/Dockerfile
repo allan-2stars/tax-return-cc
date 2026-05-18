@@ -3,10 +3,11 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Copy package manifests first for layer caching.
+# NODE_ENV is intentionally NOT set here — npm install must include devDependencies
+# (Tailwind, TypeScript, etc.) which are needed at build time.
 # TODO: switch to `npm ci` once package-lock.json is committed to the repo.
 COPY package*.json ./
 RUN npm install
@@ -14,6 +15,7 @@ RUN npm install
 # Copy all source files and build.
 # next.config.js must have output: 'standalone' (configured in Task 9).
 COPY . .
+ENV NODE_ENV=production
 RUN npm run build
 
 # Stage 2: Runner — lean production image

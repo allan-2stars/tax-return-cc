@@ -1,0 +1,128 @@
+/* Google Fonts — loaded here so all components inherit without additional imports */
+@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Design Tokens ──────────────────────────────────────────────────────── */
+/* All values sourced from DESIGN.md — do not hardcode hex values in components */
+
+:root {
+  /* ── Color tokens — Light Mode ─────────────────────────────────────────── */
+  --color-canvas:         #F7F5F0; /* warm off-white — main background */
+  --color-surface:        #FFFFFF; /* card surfaces */
+  --color-surface-raised: #FAFAF8; /* elevated cards, modals */
+  --color-border:         #E8E4DC; /* subtle dividers */
+  --color-border-strong:  #D4CFC5; /* section separators */
+
+  --color-text-primary:   #1A1916; /* near-black — headings */
+  --color-text-body:      #3D3A35; /* body text */
+  --color-text-muted:     #7A7570; /* captions, labels */
+  --color-text-faint:     #ABA7A0; /* placeholders, disabled */
+
+  --color-accent:         #C17B4A; /* warm terracotta — primary CTA, active nav */
+  --color-accent-hover:   #A8673A; /* darker terracotta on hover */
+  --color-accent-soft:    #F2E8DF; /* terracotta tinted background */
+
+  --color-ready:          #4A7C6F; /* sage green — confirmed, complete */
+  --color-ready-bg:       #EBF3F1; /* sage green tint */
+  --color-review:         #C89B3C; /* muted amber — needs user review */
+  --color-review-bg:      #FBF4E5; /* amber tint */
+  --color-agent:          #7B5EA7; /* muted purple — needs tax agent */
+  --color-agent-bg:       #F3EEFB; /* purple tint */
+  --color-risk-high:      #B05A3C; /* terracotta-red — high risk flag */
+  --color-risk-bg:        #FCEEE9; /* risk tint */
+
+  --color-progress-track: #E8E4DC;
+  --color-progress-fill:  #4A7C6F;
+
+  /* ── Typography tokens ─────────────────────────────────────────────────── */
+  --font-display: 'Lora', Georgia, serif;
+  --font-body:    'Source Serif 4', Georgia, serif;
+  --font-ui:      'DM Sans', system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', monospace;
+
+  /* ── Type scale tokens (size only — line-heights in tailwind.config.js) ── */
+  --text-xs:   0.75rem;  /* 12px */
+  --text-sm:   0.875rem; /* 14px */
+  --text-base: 1rem;     /* 16px */
+  --text-lg:   1.125rem; /* 18px */
+  --text-xl:   1.25rem;  /* 20px */
+  --text-2xl:  1.5rem;   /* 24px */
+  --text-3xl:  2rem;     /* 32px */
+  --text-4xl:  2.5rem;   /* 40px */
+
+  /* ── Font weight tokens ────────────────────────────────────────────────── */
+  --font-weight-regular:  400;
+  --font-weight-medium:   500;
+  --font-weight-semibold: 600;
+  --font-weight-bold:     700;
+
+  /* ── Spacing tokens ────────────────────────────────────────────────────── */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+
+  /* ── Border radius tokens ──────────────────────────────────────────────── */
+  --radius-sm:   6px;
+  --radius-md:   10px;
+  --radius-lg:   16px;
+  --radius-xl:   24px;
+  --radius-full: 9999px;
+
+  /* ── Shadow tokens ─────────────────────────────────────────────────────── */
+  --shadow-sm:    0 1px 3px rgba(26, 25, 22, 0.06);
+  --shadow-md:    0 4px 12px rgba(26, 25, 22, 0.08);
+  --shadow-lg:    0 8px 32px rgba(26, 25, 22, 0.12);
+  --shadow-focus: 0 0 0 3px rgba(193, 123, 74, 0.25);
+}
+
+/* ─── Dark Mode Overrides ────────────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-canvas:         #1A1916;
+    --color-surface:        #242220;
+    --color-surface-raised: #2C2A27;
+    --color-border:         #3A3733;
+    --color-border-strong:  #4A4740;
+
+    --color-text-primary:   #F0EDE8;
+    --color-text-body:      #C8C4BC;
+    --color-text-muted:     #857F78;
+    --color-text-faint:     #55514C;
+
+    --color-accent:         #D4895A;
+    --color-accent-hover:   #E09A6A;
+    --color-accent-soft:    #2E2420;
+
+    --color-ready:          #5A9B8C;
+    --color-ready-bg:       #1A2E2B;
+    --color-review:         #D4A84A;
+    --color-review-bg:      #2A2415;
+    --color-agent:          #9B7EC8;
+    --color-agent-bg:       #221B30;
+    --color-risk-high:      #CC6B4A;
+    --color-risk-bg:        #2A1A15;
+  }
+}
+
+/* ─── Base Layer ─────────────────────────────────────────────────────────── */
+html {
+  background-color: var(--color-canvas);
+  color: var(--color-text-body);
+  font-family: var(--font-body);
+  line-height: 1.6;
+}
+
+body {
+  min-height: 100vh;
+}
