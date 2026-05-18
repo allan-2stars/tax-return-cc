@@ -53,6 +53,9 @@ help:
 	@echo "  make shell-fe       Open bash in frontend container (dev)"
 	@echo "  make python         Open Python shell in backend (dev)"
 	@echo ""
+	@echo "  DEPENDENCIES"
+	@echo "  make freeze         Freeze pip deps to backend/requirements.lock"
+	@echo ""
 	@echo "  SETUP"
 	@echo "  make seed           Seed development database with test data"
 	@echo "  make setup-dirs     Create required host directories (run once on Pi)"
@@ -171,6 +174,13 @@ shell-fe:
 .PHONY: python
 python:
 	$(BACKEND_DEV) python
+
+
+# ── Dependencies ────────────────────────────────────────────
+.PHONY: freeze
+freeze:
+	$(BACKEND_DEV) pip freeze > backend/requirements.lock
+	@echo "✅ requirements.lock updated"
 
 
 # ── Setup ───────────────────────────────────────────────────

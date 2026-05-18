@@ -54,7 +54,8 @@ tax-return-cc/
 │   │   │   ├── base.py               (stub — M4)
 │   │   │   └── providers/
 │   │   │       ├── claude.py         (stub — M4)
-│   │   │       └── openai.py         (stub — future)
+│   │   │       ├── openai.py         (stub — future)
+│   │   │       └── ollama.py         (stub — future local model)
 │   │   ├── skills/
 │   │   │   ├── base.py               (stub — M5)
 │   │   │   └── registry.py           (stub — M5)
@@ -65,7 +66,8 @@ tax-return-cc/
 │   │   │   ├── review.py             (stub — M8)
 │   │   │   ├── export.py             (stub — M9)
 │   │   │   ├── yoy.py                (stub — M9)
-│   │   │   └── estimator.py          (stub — M9)
+│   │   │   └── estimator.py          (stub — M9: tax figure summariser ONLY,
+│   │   │                              NOT a calculator — see ARCHITECTURE.md §21)
 │   │   ├── constants/
 │   │   │   ├── __init__.py           (stub — M5)
 │   │   │   ├── categories.py         (stub — M5)
@@ -127,8 +129,8 @@ tax-return-cc/
 
 ### `backend/requirements.txt`
 
-No version pinning. Run `pip freeze > requirements.lock` after first successful
-build to capture exact versions for reproducibility.
+No version pinning. After first successful build run `make freeze` to capture
+exact versions. The `freeze` Makefile target writes `backend/requirements.lock`.
 
 ```
 # ── Web framework ──────────────────────────────────────────────
