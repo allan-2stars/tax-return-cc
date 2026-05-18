@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
-    SECRET_KEY: str = "change-me-random-string"
+    SECRET_KEY: str = ""
 
     DATABASE_URL: str = "sqlite+aiosqlite:////data/db/tax_return.db"
 
