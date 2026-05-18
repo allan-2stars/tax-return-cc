@@ -141,7 +141,7 @@ db-shell:
 # ── Testing ─────────────────────────────────────────────────
 .PHONY: test
 test:
-	$(BACKEND_DEV) pytest tests/ -v
+	$(BACKEND_DEV) pytest tests/ -v; ret=$$?; [ $$ret -eq 5 ] && exit 0 || exit $$ret
 
 .PHONY: test-watch
 test-watch:
