@@ -12,8 +12,11 @@ logger = logging.getLogger(__name__)
 
 
 async def _run_alembic_upgrade() -> None:
+    # The local alembic/ directory shadows the installed package, so we use
+    # the subprocess approach. cwd="/app" is explicit to avoid working-dir assumptions.
     proc = await asyncio.create_subprocess_exec(
         "alembic", "upgrade", "head",
+        cwd="/app",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
