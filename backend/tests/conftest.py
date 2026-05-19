@@ -45,6 +45,7 @@ async def client(test_engine):
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://test"
         ) as ac:
+            ac.app = app
             yield ac
     finally:
         app.dependency_overrides.pop(get_db, None)
@@ -55,3 +56,38 @@ def missing_storage_settings(monkeypatch):
     from app.config import settings
     monkeypatch.setattr(settings, "STORAGE_PATH", "/nonexistent/path/that/does/not/exist")
     yield
+
+
+import bcrypt
+
+TEST_PASSWORD = "test-password-m2"
+
+
+@pytest.fixture
+def patch_password(monkeypatch):
+    """Patch APP_PASSWORD_HASH and SECRET_KEY for deterministic tests."""
+    from app.config import settings
+    hashed = bcrypt.hashpw(TEST_PASSWORD.encode(), bcrypt.gensalt(rounds=4)).decode()
+    monkeypatch.setattr(settings, "APP_PASSWORD_HASH", hashed)
+    monkeypatch.setattr(settings, "SECRET_KEY", "test-secret-key-for-unit-tests")
+
+
+@pytest_asyncio.fixture
+async def auth_client(client, patch_password):
+    """
+    HTTP client in the post-setup, logged-in state.
+    Carries a valid session cookie. Does NOT carry an unlock_session cookie.
+    """
+    setup_resp = await client.post(
+        "/api/v1/auth/setup",
+        json={"password": TEST_PASSWORD, "financial_year": "2024-25"},
+    )
+    assert setup_resp.status_code == 200, setup_resp.text
+    client.workspace_id = setup_resp.json()["workspace_id"]
+    client.recovery_key = setup_resp.json()["recovery_key"]
+
+    login_resp = await client.post(
+        "/api/v1/auth/login", json={"password": TEST_PASSWORD}
+    )
+    assert login_resp.status_code == 200, login_resp.text
+    yield client
