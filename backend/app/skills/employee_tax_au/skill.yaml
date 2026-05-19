@@ -1,25 +1,132 @@
 skill_id: employee_tax_au
 version: "1.0.0"
 display_name: "Employee Tax (AU)"
+
 activation:
-  always: true
+  employment_types: [employee, both]   # not sole_trader
 
 owned_categories:
   - payg_income
   - allowance
   - lump_sum
+  - bank_interest
+  - investment_income_basic
   - work_expense
+  - work_subscription
+  - work_equipment
   - vehicle
   - travel
   - uniform
   - self_education
   - other_deduction
+  - donation
+  - private_health_rebate
   - wfh_deduction
+
+questions:
+  - id: wfh
+    ask: "Did you work from home during this financial year?"
+    type: single_choice
+    options: [yes_regular, yes_sometimes, no]
+    branches:
+      yes_regular:   [wfh_method, wfh_days]
+      yes_sometimes: [wfh_method]
+
+  - id: wfh_method
+    ask: "Which WFH calculation method are you using?"
+    type: single_choice
+    options: [fixed_rate, actual_cost]
+
+  - id: wfh_days
+    ask: "How many days per week did you regularly work from home?"
+    type: number
+
+  - id: has_private_health
+    ask: "Do you have private health insurance?"
+    type: single_choice
+    options: [yes, no]
+
+  - id: has_novated_lease
+    ask: "Do you have a novated lease through your employer?"
+    type: single_choice
+    options: [yes, no]
+
+  - id: self_education
+    ask: "Did you pay for any work-related courses or training?"
+    type: single_choice
+    options: [yes, no]
 
 evidence_requirements:
   - id: payg_summary
+    display: "PAYG Payment Summary"
+    weight: 30
     available_after_fy: true
     available_from: july
-  - id: work_receipt
+    required: true
+
+  - id: bank_interest_statement
+    display: "Bank Interest Statement"
+    weight: 10
+    available_after_fy: true
+    available_from: august
+    required: false
+
+  - id: wfh_diary
+    display: "Work from home diary or timesheet"
+    weight: 15
     available_after_fy: false
     available_from: anytime
+    condition: has_wfh
+    required: false
+
+  - id: private_health_statement
+    display: "Private Health Insurance Statement"
+    weight: 10
+    available_after_fy: true
+    available_from: july
+    condition: has_private_health
+    required: false
+
+  - id: work_receipts
+    display: "Work-related expense receipts"
+    weight: 15
+    available_after_fy: false
+    available_from: anytime
+    required: false
+
+risk_rules:
+  - id: wfh_no_diary
+    condition: "wfh_claimed AND NOT wfh_diary_uploaded"
+    risk_level: high
+    message: "ATO requires records of hours worked from home"
+
+  - id: self_ed_no_connection
+    condition: "self_education_claimed AND occupation_unclear"
+    risk_level: medium
+    message: "Self-education must connect to your current job"
+
+  - id: rfba_present
+    condition: "has_novated_lease AND payg_summary_uploaded"
+    risk_level: low
+    message: "Check PAYG Summary for Reportable Fringe Benefits Amount"
+
+explanation_templates:
+  payg_income: >
+    This is your gross income as reported by your employer on your PAYG Payment Summary.
+    It is a candidate for inclusion as assessable income in your tax return.
+    This does not constitute tax advice — please discuss with your registered tax agent.
+  work_expense: >
+    This item appears to be a work-related expense candidate.
+    To be possibly deductible, it must be directly connected to earning your income and not private in nature.
+    This does not constitute tax advice — please discuss with your registered tax agent.
+  wfh_deduction: >
+    This is a candidate work-from-home deduction.
+    You may be able to claim running expenses using the fixed rate (67¢/hour) or actual cost method.
+    You will need a diary or timesheet to support this claim.
+    This does not constitute tax advice — please discuss with your registered tax agent.
+  self_education: >
+    Self-education expenses may be a candidate deduction if the course directly relates to your current employment.
+    This does not constitute tax advice — please discuss with your registered tax agent.
+  default: >
+    This item needs review to confirm whether it qualifies as a candidate deduction.
+    This does not constitute tax advice — please discuss with your registered tax agent.

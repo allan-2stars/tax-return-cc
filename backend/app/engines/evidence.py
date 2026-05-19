@@ -25,9 +25,10 @@ _ALLOWED_MIME: dict[str, str] = {
 
 
 class EvidenceEngine:
-    def __init__(self, db: AsyncSession, storage: StorageBackend) -> None:
+    def __init__(self, db: AsyncSession, storage: StorageBackend, ai_adapter=None) -> None:
         self._db = db
         self.storage = storage
+        self._ai_adapter = ai_adapter
 
     async def validate_and_create(
         self,
@@ -91,6 +92,9 @@ class EvidenceEngine:
         return doc
 
     async def extract_and_finalize(self, document_id: str) -> None:
+        from app.db.models import TaxEvent
+        from app.skills.registry import get_registry
+
         doc = await doc_repo.get_by_id(self._db, document_id)
         if not doc:
             return
@@ -100,7 +104,42 @@ class EvidenceEngine:
             await doc_repo.update_extraction(
                 self._db, doc, sanitized, fields, method, confidence
             )
-            await doc_repo.update_status(self._db, document_id, "ready")
+
+            # AI classification + skill extraction (only when adapter is wired in)
+            if self._ai_adapter is not None:
+                classification = await self._ai_adapter.classify(
+                    text=sanitized or "", fields=fields, profile=None
+                )
+                # persist classification results onto the document record
+                doc.document_type = classification.document_type
+                doc.skill_id = classification.skill_id
+                await self._db.commit()
+
+                skill = get_registry().get_owner(classification.skill_id or "")
+                if skill:
+                    candidates = skill.extract_events(doc, classification)
+                    for c in candidates:
+                        self._db.add(TaxEvent(
+                            workspace_id=doc.workspace_id,
+                            document_id=doc.id,
+                            financial_year=doc.financial_year,
+                            event_type=c.event_type,
+                            category=c.category,
+                            description=c.description,
+                            amount=c.amount,
+                            date=c.date,
+                            source="document_extracted",
+                            ai_reasoning=c.ai_reasoning,
+                            confidence=c.confidence,
+                            status="needs_user_review",
+                            skill_id=skill.skill_id,
+                            skill_version=skill.version,
+                        ))
+                    await self._db.commit()
+                await doc_repo.update_status(self._db, document_id, "ready")
+            else:
+                await doc_repo.update_status(self._db, document_id, "ready")
+
         except Exception:
             await doc_repo.update_status(self._db, document_id, "failed")
             raise
