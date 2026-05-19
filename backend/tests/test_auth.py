@@ -263,3 +263,47 @@ async def test_unlock_expired_returns_401(auth_client, patch_password):
     # Draft endpoint should now return 401 despite unlock_session cookie being present
     resp = await auth_client.get("/api/v1/drafts/tax_profile")
     assert resp.status_code == 401
+
+
+# ── drafts ───────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_draft_save_and_retrieve(auth_client, patch_password):
+    unlock = await auth_client.post(
+        "/api/v1/auth/unlock",
+        json={"password": TEST_PASSWORD},
+    )
+    assert unlock.status_code == 200
+    assert "unlock_session" in unlock.cookies
+
+    content = {"name": "Allan", "income": 95000}
+
+    save_resp = await auth_client.post(
+        "/api/v1/drafts/tax_profile",
+        json={"content": content},
+    )
+    assert save_resp.status_code == 200
+
+    get_resp = await auth_client.get("/api/v1/drafts/tax_profile")
+    assert get_resp.status_code == 200
+    assert get_resp.json()["content"] == content
+
+
+@pytest.mark.asyncio
+async def test_draft_requires_unlock(auth_client):
+    # No unlock performed — unlock_session cookie absent
+    resp = await auth_client.get("/api/v1/drafts/tax_profile")
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_draft_invalid_form_type_returns_422(auth_client, patch_password):
+    await auth_client.post(
+        "/api/v1/auth/unlock",
+        json={"password": TEST_PASSWORD},
+    )
+    resp = await auth_client.post(
+        "/api/v1/drafts/invalid_type",
+        json={"content": {}},
+    )
+    assert resp.status_code == 422
