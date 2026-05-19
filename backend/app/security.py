@@ -27,6 +27,7 @@ def _pbkdf2_fernet(passphrase: str, salt: bytes) -> Fernet:
 
 
 def encrypt_dek(dek: bytes, passphrase: str) -> str:
+    """Output: base64url(salt[16] || fernet_token). Self-contained — no separate salt storage."""
     salt = os.urandom(16)
     token = _pbkdf2_fernet(passphrase, salt).encrypt(dek)
     return base64.urlsafe_b64encode(salt + token).decode()
@@ -49,11 +50,14 @@ def normalize_recovery_key(key: str) -> str:
 
 
 def _server_fernet(secret: str) -> Fernet:
+    # Deterministic by design — SECRET_KEY is a server-managed value, not a user password.
+    # Do not use this pattern for user-derived keys (use _pbkdf2_fernet instead).
     key = hashlib.sha256(secret.encode()).digest()
     return Fernet(base64.urlsafe_b64encode(key))
 
 
 def make_unlock_token(dek: bytes, secret: str) -> str:
+    """Encrypt DEK for server-side storage. Token never leaves the server."""
     return _server_fernet(secret).encrypt(dek).decode()
 
 
