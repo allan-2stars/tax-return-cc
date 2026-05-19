@@ -523,3 +523,15 @@ Deploy to Pi:        make pi-deploy
 *This file is mandatory reading at the start of every Claude Code session.*
 *If instructions here conflict with ARCHITECTURE.md, ARCHITECTURE.md wins.*
 *If instructions here conflict with user's direct request, ask the user.*
+
+## 15. Forbidden Commands
+
+NEVER propose these commands to verify standard library or
+well-documented dependency behaviour:
+  docker compose exec ... python3 -c "..."
+  docker compose exec ... python3 -c '...'
+
+If verification is needed → write a pytest test in tests/
+If it is standard library behaviour → trust the docs
+Five violations of this rule have already occurred in M1-M3.
+This rule is non-negotiable.
