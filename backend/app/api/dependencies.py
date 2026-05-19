@@ -28,7 +28,13 @@ def sign_unlock_session(workspace_id: str) -> str:
 
 
 def _decode_session_cookie(token: str, max_age: int) -> str:
-    """Decode a signed cookie, return workspace_id, raise 401 on any failure."""
+    """Decode a signed session cookie, return workspace_id, raise 401 on any failure.
+
+    The payload is signed (HMAC) but not encrypted — workspace_id is readable by
+    the cookie holder. This is accepted for a single-user personal app where
+    workspace_id is not a secret (it also appears in API URLs). The signature
+    prevents forgery.
+    """
     try:
         data = _session_serializer().loads(token, max_age=max_age)
         return data["w"]
@@ -48,6 +54,29 @@ def _decode_session_cookie(token: str, max_age: int) -> str:
                 "invalid_session",
                 "Invalid session. Please log in again.",
                 retryable=False,
+            ),
+        )
+
+
+def _decode_unlock_cookie(token: str, max_age: int) -> str:
+    """Decode a signed unlock_session cookie, return workspace_id, raise 401 on any failure."""
+    try:
+        data = _unlock_serializer().loads(token, max_age=max_age)
+        return data["w"]
+    except SignatureExpired:
+        raise HTTPException(
+            status_code=401,
+            detail=error_response(
+                "unlock_expired",
+                "Unlock session expired. Please unlock again.",
+                retryable=False,
+            ),
+        )
+    except (BadSignature, KeyError):
+        raise HTTPException(
+            status_code=401,
+            detail=error_response(
+                "unlock_invalid", "Invalid unlock session.", retryable=False
             ),
         )
 
@@ -86,26 +115,8 @@ async def require_unlock(
         )
 
     # Verify cookie signature and embedded workspace_id
-    try:
-        max_age = settings.UNLOCK_SESSION_MINUTES * 60
-        data = _unlock_serializer().loads(unlock_session, max_age=max_age)
-        cookie_workspace_id = data["w"]
-    except SignatureExpired:
-        raise HTTPException(
-            status_code=401,
-            detail=error_response(
-                "unlock_expired",
-                "Unlock session expired. Please unlock again.",
-                retryable=False,
-            ),
-        )
-    except (BadSignature, KeyError):
-        raise HTTPException(
-            status_code=401,
-            detail=error_response(
-                "unlock_invalid", "Invalid unlock session.", retryable=False
-            ),
-        )
+    max_age = settings.UNLOCK_SESSION_MINUTES * 60
+    cookie_workspace_id = _decode_unlock_cookie(unlock_session, max_age=max_age)
 
     # Ensure the unlock cookie belongs to the authenticated workspace
     if cookie_workspace_id != workspace_id:
