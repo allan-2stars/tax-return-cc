@@ -212,6 +212,8 @@ class WorkspaceSecurity(Base):
     recovery_encrypted_dek: Mapped[str | None] = mapped_column(Text, nullable=True)
     unlock_session_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
     unlock_session_expires: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    setup_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    recovery_confirm_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 

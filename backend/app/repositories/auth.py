@@ -20,6 +20,7 @@ async def create_security(
     password_encrypted_dek: str,
     recovery_key_hash: str,
     recovery_encrypted_dek: str,
+    recovery_confirm_hash: str,
 ) -> WorkspaceSecurity:
     ws = WorkspaceSecurity(
         workspace_id=workspace_id,
@@ -27,6 +28,7 @@ async def create_security(
         password_encrypted_dek=password_encrypted_dek,
         recovery_key_hash=recovery_key_hash,
         recovery_encrypted_dek=recovery_encrypted_dek,
+        recovery_confirm_hash=recovery_confirm_hash,
     )
     db.add(ws)
     await db.commit()

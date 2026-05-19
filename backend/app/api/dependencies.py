@@ -81,8 +81,8 @@ def _decode_unlock_cookie(token: str, max_age: int) -> str:
         )
 
 
-async def require_auth(session: str | None = Cookie(default=None)) -> str:
-    """Returns workspace_id from session cookie. Raises 401 if not authenticated."""
+async def require_session(session: str | None = Cookie(default=None)) -> str:
+    """Returns workspace_id from session cookie. Does NOT check setup_confirmed."""
     if not session:
         raise HTTPException(
             status_code=401,
@@ -91,6 +91,26 @@ async def require_auth(session: str | None = Cookie(default=None)) -> str:
             ),
         )
     return _decode_session_cookie(session, max_age=settings.SESSION_MAX_AGE_DAYS * 86400)
+
+
+async def require_auth(
+    workspace_id: str = Depends(require_session),
+    db: AsyncSession = Depends(get_db),
+) -> str:
+    """Returns workspace_id. Raises 403 if setup has not been confirmed yet."""
+    if workspace_id:  # empty string = pre-setup bootstrap login (no workspace yet)
+        ws = await auth_repo.get_security(db, workspace_id)
+        if ws and not ws.setup_confirmed:
+            raise HTTPException(
+                status_code=403,
+                detail=error_response(
+                    "setup_not_confirmed",
+                    "Please save your recovery key and confirm before continuing.",
+                    action="confirm_setup",
+                    retryable=False,
+                ),
+            )
+    return workspace_id
 
 
 async def require_unlock(

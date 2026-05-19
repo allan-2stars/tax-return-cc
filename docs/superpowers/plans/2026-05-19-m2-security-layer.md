@@ -4,9 +4,18 @@
 
 **Goal:** Implement the full security layer — bcrypt auth, httpOnly session cookie, DEK + recovery key system, unlock session, and encrypted draft autosave.
 
-**Architecture:** Single-user app with one master password. `APP_PASSWORD_HASH` in `.env` is the bootstrap credential used before first-run setup. `POST /auth/setup` creates a Workspace + WorkspaceSecurity record, generates a random 32-byte DEK encrypted two ways (with the password and with the recovery key), and returns the recovery key once in plaintext. After setup, login verifies against `WorkspaceSecurity.password_hash`. Unlock decrypts the DEK and re-encrypts it with the server `SECRET_KEY`, storing the result in DB; `require_unlock` decrypts it on demand. The DEK is never stored in plaintext, never logged, never returned in any API response.
+**Architecture:** Single-user app with one master password. `APP_PASSWORD_HASH` in `.env` is the bootstrap credential used before first-run setup. `POST /auth/setup` creates a Workspace + WorkspaceSecurity record, generates a random 32-byte DEK encrypted two ways (with the password and with the recovery key), and returns the recovery key once in plaintext. After setup, login verifies against `WorkspaceSecurity.password_hash`. Unlock decrypts the DEK, stores it re-encrypted with the server `SECRET_KEY` in the DB, and sets a second httpOnly cookie (`unlock_session`) containing a signed workspace_id. `require_unlock` reads that cookie, looks up WorkspaceSecurity, checks server-side expiry, and decrypts the stored token. The DEK never appears in plaintext, in logs, or in any URL.
 
-**Tech Stack:** `bcrypt`, `cryptography` (Fernet + PBKDF2HMAC), `itsdangerous` (URLSafeTimedSerializer for session cookie), FastAPI Cookie/Request/Query, SQLAlchemy async, pytest-asyncio + httpx.
+**Cookie strategy — two separate httpOnly cookies:**
+
+| Cookie | Set by | Contains | Expiry |
+|--------|--------|----------|--------|
+| `session` | `POST /auth/login` + `POST /auth/setup` | signed workspace_id (salt="session") | `SESSION_MAX_AGE_DAYS` days |
+| `unlock_session` | `POST /auth/unlock` | signed workspace_id (salt="unlock") | `UNLOCK_SESSION_MINUTES` minutes |
+
+`POST /auth/logout` clears both. `require_unlock` depends on `require_auth` and reads the second cookie. No workspace_id or token ever appears in a URL query parameter.
+
+**Tech Stack:** `bcrypt`, `cryptography` (Fernet + PBKDF2HMAC), `itsdangerous` (URLSafeTimedSerializer for both cookies), FastAPI Cookie/Depends, SQLAlchemy async, pytest-asyncio + httpx.
 
 ---
 
@@ -30,18 +39,18 @@
 
 **Files:**
 - Create: `backend/app/security.py`
-- Test: `backend/tests/test_auth.py` (crypto unit tests, already written in M2 kick-off)
+- Test: `backend/tests/test_auth.py` (crypto unit tests written first)
 
 ### Design notes
 
 - `encrypt_dek` derives a Fernet key from the passphrase using PBKDF2-SHA256 (480 000 iterations) and a fresh random 16-byte salt. Output is `base64url(salt[16] || fernet_token)` — self-contained, no separate salt storage needed.
 - `make_unlock_token` re-encrypts the DEK with a Fernet key derived from `settings.SECRET_KEY` via SHA-256. The token is stored server-side in `WorkspaceSecurity.unlock_session_token`; it never leaves the server.
-- Recovery key format: `XXXX-XXXX-XXXX-XXXX / XXXX-XXXX-XXXX-XXXX` (32 uppercase hex chars, dashes and slash for readability). The normalized form (strip all non-hex chars) is used as the DEK encryption passphrase.
+- Recovery key format: `XXXX-XXXX-XXXX-XXXX / XXXX-XXXX-XXXX-XXXX` (32 uppercase hex chars). The normalized form (strip all non-hex chars) is used as the DEK encryption passphrase.
 - Draft content is encrypted with `Fernet(urlsafe_b64encode(dek))`.
 
 - [ ] **Step 1: Write failing crypto unit tests**
 
-Create `backend/tests/test_auth.py` with the following content (these are pure unit tests that need no DB or HTTP client):
+Create `backend/tests/test_auth.py` with the following (pure unit tests, no DB or HTTP client):
 
 ```python
 import pytest
@@ -234,7 +243,7 @@ make test-file FILE=tests/test_auth.py
 **Files:**
 - Create: `backend/app/repositories/auth.py`
 
-No separate test step — this is exercised fully by the integration tests in Task 4.
+No separate test step — exercised fully by integration tests in Task 4.
 
 - [ ] **Step 1: Create the repository**
 
@@ -322,17 +331,26 @@ async def upsert_draft(
 
 ### Design notes
 
-- `require_auth` reads the `session` cookie, verifies it with `URLSafeTimedSerializer(settings.SECRET_KEY, salt="session")`, and returns the `workspace_id` embedded in the token payload. Raises 401 if missing, expired, or tampered.
-- `require_unlock` reads `workspace_id` from the query string, loads `WorkspaceSecurity`, checks `unlock_session_expires > now`, decrypts `unlock_session_token` with the server secret, and returns the raw DEK bytes. Routes declare `dek: bytes = Depends(require_unlock)`.
-- Session payload: `{"w": workspace_id}` (short key keeps the cookie compact).
-- `sign_session` is exported so auth routes can mint cookies without importing itsdangerous directly.
+**`require_auth`** reads the `session` cookie, verifies it with `URLSafeTimedSerializer(SECRET_KEY, salt="session")`, returns the `workspace_id` embedded in the payload. Raises 401 if missing, expired, or tampered.
+
+**`require_unlock`** reads the `unlock_session` cookie (set by `POST /auth/unlock`). It also depends on `require_auth` to confirm the user is authenticated. It decodes the cookie to get workspace_id, loads WorkspaceSecurity from the DB, checks `unlock_session_expires` server-side, then decrypts `unlock_session_token` to return the raw DEK bytes. Raises 401 for any failure.
+
+**Why two cookies, not one?** The auth session lasts 7 days and proves identity. The unlock session lasts 30 minutes and proves the user has recently entered their password to decrypt sensitive data. They are independent: you can be authenticated but locked (e.g., after 30 minutes of inactivity).
+
+**Why no workspace_id in the URL?** workspace_id appears in the unlock cookie and the session cookie. It is read from those cookies inside dependencies. No sensitive identifier ever appears in a query parameter, path parameter for auth operations, or log line.
+
+**Exports from this module used by routes:**
+- `sign_session(workspace_id: str) -> str` — mint session cookie value
+- `sign_unlock_session(workspace_id: str) -> str` — mint unlock cookie value
+- `require_auth` — dependency, returns workspace_id
+- `require_unlock` — dependency, returns DEK bytes
 
 - [ ] **Step 1: Create `backend/app/api/dependencies.py`**
 
 ```python
 from datetime import datetime, timezone
 
-from fastapi import Cookie, Depends, HTTPException, Query
+from fastapi import Cookie, Depends, HTTPException
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -343,19 +361,26 @@ from app.repositories import auth as auth_repo
 from app.security import extract_dek_from_token
 
 
-def _serializer() -> URLSafeTimedSerializer:
+def _session_serializer() -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(settings.SECRET_KEY, salt="session")
 
 
+def _unlock_serializer() -> URLSafeTimedSerializer:
+    return URLSafeTimedSerializer(settings.SECRET_KEY, salt="unlock")
+
+
 def sign_session(workspace_id: str) -> str:
-    return _serializer().dumps({"w": workspace_id})
+    return _session_serializer().dumps({"w": workspace_id})
 
 
-def verify_session_token(token: str) -> str:
-    """Returns workspace_id or raises HTTPException 401."""
-    max_age = settings.SESSION_MAX_AGE_DAYS * 86400
+def sign_unlock_session(workspace_id: str) -> str:
+    return _unlock_serializer().dumps({"w": workspace_id})
+
+
+def _decode_session_cookie(token: str, max_age: int) -> str:
+    """Decode a signed cookie, return workspace_id, raise 401 on any failure."""
     try:
-        data = _serializer().loads(token, max_age=max_age)
+        data = _session_serializer().loads(token, max_age=max_age)
         return data["w"]
     except SignatureExpired:
         raise HTTPException(
@@ -378,7 +403,7 @@ def verify_session_token(token: str) -> str:
 
 
 async def require_auth(session: str | None = Cookie(default=None)) -> str:
-    """Returns workspace_id. Raises 401 if not authenticated."""
+    """Returns workspace_id from session cookie. Raises 401 if not authenticated."""
     if not session:
         raise HTTPException(
             status_code=401,
@@ -386,17 +411,21 @@ async def require_auth(session: str | None = Cookie(default=None)) -> str:
                 "not_authenticated", "Authentication required.", retryable=False
             ),
         )
-    return verify_session_token(session)
+    return _decode_session_cookie(session, max_age=settings.SESSION_MAX_AGE_DAYS * 86400)
 
 
 async def require_unlock(
-    workspace_id: str = Query(...),
+    unlock_session: str | None = Cookie(default=None),
+    workspace_id: str = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(require_auth),
 ) -> bytes:
-    """Returns raw DEK bytes. Raises 401 if unlock session absent or expired."""
-    ws = await auth_repo.get_security(db, workspace_id)
-    if not ws or not ws.unlock_session_token or not ws.unlock_session_expires:
+    """
+    Returns raw DEK bytes. Raises 401 if:
+    - unlock_session cookie is absent, expired, or tampered
+    - Server-side unlock_session_expires has passed
+    - unlock_session_token cannot be decrypted
+    """
+    if not unlock_session:
         raise HTTPException(
             status_code=401,
             detail=error_response(
@@ -405,6 +434,48 @@ async def require_unlock(
                 retryable=False,
             ),
         )
+
+    # Verify cookie signature and embedded workspace_id
+    try:
+        max_age = settings.UNLOCK_SESSION_MINUTES * 60
+        data = _unlock_serializer().loads(unlock_session, max_age=max_age)
+        cookie_workspace_id = data["w"]
+    except SignatureExpired:
+        raise HTTPException(
+            status_code=401,
+            detail=error_response(
+                "unlock_expired",
+                "Unlock session expired. Please unlock again.",
+                retryable=False,
+            ),
+        )
+    except (BadSignature, KeyError):
+        raise HTTPException(
+            status_code=401,
+            detail=error_response(
+                "unlock_invalid", "Invalid unlock session.", retryable=False
+            ),
+        )
+
+    # Ensure the unlock cookie belongs to the authenticated workspace
+    if cookie_workspace_id != workspace_id:
+        raise HTTPException(
+            status_code=401,
+            detail=error_response(
+                "unlock_mismatch", "Unlock session does not match authenticated workspace.", retryable=False
+            ),
+        )
+
+    # Check server-side expiry and retrieve the encrypted DEK
+    ws = await auth_repo.get_security(db, workspace_id)
+    if not ws or not ws.unlock_session_token or not ws.unlock_session_expires:
+        raise HTTPException(
+            status_code=401,
+            detail=error_response(
+                "not_unlocked", "Workspace is locked.", retryable=False
+            ),
+        )
+
     expires = ws.unlock_session_expires
     if expires.tzinfo is None:
         expires = expires.replace(tzinfo=timezone.utc)
@@ -417,6 +488,7 @@ async def require_unlock(
                 retryable=False,
             ),
         )
+
     try:
         return extract_dek_from_token(ws.unlock_session_token, settings.SECRET_KEY)
     except Exception:
@@ -433,22 +505,26 @@ async def require_unlock(
 ## Task 4: Auth endpoints + integration tests
 
 **Files:**
-- Modify: `backend/app/api/routes/auth.py` (replace existing stub completely)
-- Modify: `backend/tests/conftest.py` (append fixtures — do not remove existing ones)
-- Modify: `backend/tests/test_auth.py` (append integration tests after crypto unit tests)
+- Modify: `backend/app/api/routes/auth.py` (replace entire stub)
+- Modify: `backend/tests/conftest.py` (append fixtures — do not remove existing)
+- Modify: `backend/tests/test_auth.py` (append integration tests after unit tests)
 
 ### Login flow detail
 
 1. Query for any existing `Workspace`. If one exists, load its `WorkspaceSecurity`.
-2. If `WorkspaceSecurity.password_hash` is populated, verify the incoming password against it.
-3. If no `WorkspaceSecurity` exists yet (pre-setup state), fall back to `settings.APP_PASSWORD_HASH`. If that is also empty, return 503 with a message to generate a hash via `make shell-be`.
-4. On success, sign a session cookie containing `{"w": workspace_id}`.
+2. If `WorkspaceSecurity.password_hash` is set, verify the incoming password against it.
+3. If no `WorkspaceSecurity` exists yet, fall back to `settings.APP_PASSWORD_HASH`. If that is also empty, return 503 with a message directing the user to generate a hash via `make shell-be`.
+4. On success, sign a session cookie with the workspace_id and set it httpOnly.
 
-Cookie attributes: `httponly=True`, `secure=True` in production only (so dev browser can read it over HTTP), `samesite="strict"`, `max_age=SESSION_MAX_AGE_DAYS * 86400`.
+Cookie attributes for both `session` and `unlock_session`: `httponly=True`, `secure=True` in production only (so the dev browser works over plain HTTP), `samesite="strict"`.
+
+`POST /auth/unlock` no longer accepts `workspace_id` in the body — it reads workspace_id from the session cookie via `Depends(require_auth)`. This keeps workspace_id out of the request body for authenticated endpoints.
+
+`POST /auth/logout` clears both the `session` cookie and the `unlock_session` cookie.
 
 - [ ] **Step 1: Append auth fixtures to `backend/tests/conftest.py`**
 
-Add the following to the bottom of the existing file. Import `bcrypt` and `pytest_asyncio` are already present.
+Add the following to the bottom of the existing file. Do not remove or modify any existing fixtures.
 
 ```python
 import bcrypt
@@ -467,7 +543,10 @@ def patch_password(monkeypatch):
 
 @pytest_asyncio.fixture
 async def auth_client(client, patch_password):
-    """HTTP client with a valid session cookie (post-setup state)."""
+    """
+    HTTP client in the post-setup, logged-in state.
+    Carries a valid session cookie. Does NOT carry an unlock_session cookie.
+    """
     setup_resp = await client.post(
         "/api/v1/auth/setup",
         json={"password": TEST_PASSWORD, "financial_year": "2024-25"},
@@ -514,10 +593,16 @@ async def test_login_wrong_password_returns_401(client, patch_password):
 
 
 @pytest.mark.asyncio
-async def test_logout_clears_cookie(auth_client):
+async def test_logout_clears_both_cookies(auth_client):
+    # Unlock to get both cookies set
+    await auth_client.post(
+        "/api/v1/auth/unlock",
+        json={"password": TEST_PASSWORD},
+    )
     resp = await auth_client.post("/api/v1/auth/logout")
     assert resp.status_code == 200
     assert resp.cookies.get("session") in (None, "")
+    assert resp.cookies.get("unlock_session") in (None, "")
 
 
 @pytest.mark.asyncio
@@ -617,12 +702,15 @@ async def test_unlock_expired_returns_401(auth_client, patch_password):
 
     workspace_id = auth_client.workspace_id
 
+    # Unlock to get both cookies
     unlock = await auth_client.post(
         "/api/v1/auth/unlock",
-        json={"password": TEST_PASSWORD, "workspace_id": workspace_id},
+        json={"password": TEST_PASSWORD},
     )
     assert unlock.status_code == 200
+    assert "unlock_session" in unlock.cookies
 
+    # Expire the server-side unlock record directly in the DB
     db_override = auth_client.app.dependency_overrides[get_db]
     past = datetime.now(timezone.utc) - timedelta(minutes=1)
     async for db in db_override():
@@ -634,13 +722,12 @@ async def test_unlock_expired_returns_401(auth_client, patch_password):
         await db.commit()
         break
 
-    resp = await auth_client.get(
-        f"/api/v1/drafts/tax_profile?workspace_id={workspace_id}"
-    )
+    # Draft endpoint should now return 401 despite unlock_session cookie being present
+    resp = await auth_client.get("/api/v1/drafts/tax_profile")
     assert resp.status_code == 401
 ```
 
-- [ ] **Step 3: Run tests — confirm integration tests fail (stub routes return wrong shapes)**
+- [ ] **Step 3: Run tests — confirm integration tests fail (stub routes)**
 
 ```bash
 make test-file FILE=tests/test_auth.py
@@ -659,7 +746,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import require_auth, sign_session
+from app.api.dependencies import require_auth, sign_session, sign_unlock_session
 from app.config import settings
 from app.db.base import get_db
 from app.db.models import Workspace
@@ -692,7 +779,6 @@ class SetupRequest(BaseModel):
 
 class UnlockRequest(BaseModel):
     password: str
-    workspace_id: str
 
 
 class RecoverRequest(BaseModel):
@@ -756,6 +842,7 @@ async def login(
 @router.post("/auth/logout")
 async def logout(response: Response):
     response.delete_cookie("session", path="/")
+    response.delete_cookie("unlock_session", path="/")
     return {"status": "ok"}
 
 
@@ -827,10 +914,11 @@ async def setup(
 @router.post("/auth/unlock")
 async def unlock(
     body: UnlockRequest,
+    response: Response,
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(require_auth),
+    workspace_id: str = Depends(require_auth),
 ):
-    ws = await auth_repo.get_security(db, body.workspace_id)
+    ws = await auth_repo.get_security(db, workspace_id)
     if not ws or not ws.password_hash or not ws.password_encrypted_dek:
         raise HTTPException(
             status_code=404,
@@ -854,6 +942,16 @@ async def unlock(
     )
     await auth_repo.update_security(
         db, ws, unlock_session_token=unlock_token, unlock_session_expires=expires
+    )
+
+    response.set_cookie(
+        "unlock_session",
+        sign_unlock_session(workspace_id),
+        max_age=settings.UNLOCK_SESSION_MINUTES * 60,
+        httponly=True,
+        secure=_cookie_secure(),
+        samesite="strict",
+        path="/",
     )
     return {"status": "ok", "expires_at": expires.isoformat()}
 
@@ -898,7 +996,7 @@ async def recover(body: RecoverRequest, db: AsyncSession = Depends(get_db)):
 make test
 ```
 
-Expected: all 5 original tests pass + new auth tests pass. No regressions.
+Expected: all 5 original tests pass + new auth integration tests pass. No regressions.
 
 ---
 
@@ -910,53 +1008,49 @@ Expected: all 5 original tests pass + new auth tests pass. No regressions.
 
 ### Design notes
 
-Both draft endpoints take `workspace_id` as a query parameter. This allows `require_unlock` (which also takes `workspace_id` from the query string) to validate the unlock session without needing to parse the request body. The route handler and the dependency both receive `workspace_id` independently from the query string — FastAPI deduplicates this cleanly.
+Both endpoints use `workspace_id: str = Depends(require_auth)` to get the workspace_id from the session cookie — never from a query parameter. The `dek: bytes = Depends(require_unlock)` dependency enforces both authentication and an active unlock session. No sensitive identifier appears in any URL.
 
 - [ ] **Step 1: Append draft tests to `backend/tests/test_auth.py`**
 
 ```python
 @pytest.mark.asyncio
 async def test_draft_save_and_retrieve(auth_client, patch_password):
-    workspace_id = auth_client.workspace_id
-
-    await auth_client.post(
+    # Unlock first to set the unlock_session cookie
+    unlock = await auth_client.post(
         "/api/v1/auth/unlock",
-        json={"password": TEST_PASSWORD, "workspace_id": workspace_id},
+        json={"password": TEST_PASSWORD},
     )
+    assert unlock.status_code == 200
+    assert "unlock_session" in unlock.cookies
 
     content = {"name": "Allan", "income": 95000}
 
     save_resp = await auth_client.post(
-        f"/api/v1/drafts/tax_profile?workspace_id={workspace_id}",
+        "/api/v1/drafts/tax_profile",
         json={"content": content},
     )
     assert save_resp.status_code == 200
 
-    get_resp = await auth_client.get(
-        f"/api/v1/drafts/tax_profile?workspace_id={workspace_id}"
-    )
+    get_resp = await auth_client.get("/api/v1/drafts/tax_profile")
     assert get_resp.status_code == 200
     assert get_resp.json()["content"] == content
 
 
 @pytest.mark.asyncio
 async def test_draft_requires_unlock(auth_client):
-    workspace_id = auth_client.workspace_id
-    resp = await auth_client.get(
-        f"/api/v1/drafts/tax_profile?workspace_id={workspace_id}"
-    )
+    # No unlock performed — unlock_session cookie absent
+    resp = await auth_client.get("/api/v1/drafts/tax_profile")
     assert resp.status_code == 401
 
 
 @pytest.mark.asyncio
 async def test_draft_invalid_form_type_returns_422(auth_client, patch_password):
-    workspace_id = auth_client.workspace_id
     await auth_client.post(
         "/api/v1/auth/unlock",
-        json={"password": TEST_PASSWORD, "workspace_id": workspace_id},
+        json={"password": TEST_PASSWORD},
     )
     resp = await auth_client.post(
-        f"/api/v1/drafts/invalid_type?workspace_id={workspace_id}",
+        "/api/v1/drafts/invalid_type",
         json={"content": {}},
     )
     assert resp.status_code == 422
@@ -975,11 +1069,11 @@ Expected: draft tests fail with 404.
 ```python
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import require_unlock
+from app.api.dependencies import require_auth, require_unlock
 from app.db.base import get_db
 from app.errors import error_response
 from app.repositories import auth as auth_repo
@@ -998,7 +1092,7 @@ class SaveDraftRequest(BaseModel):
 async def save_draft(
     form_type: str,
     body: SaveDraftRequest,
-    workspace_id: str = Query(...),
+    workspace_id: str = Depends(require_auth),
     dek: bytes = Depends(require_unlock),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1019,7 +1113,7 @@ async def save_draft(
 @router.get("/drafts/{form_type}")
 async def get_draft(
     form_type: str,
-    workspace_id: str = Query(...),
+    workspace_id: str = Depends(require_auth),
     dek: bytes = Depends(require_unlock),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1076,7 +1170,7 @@ Expected: all tests pass — 5 original + crypto unit tests + auth integration t
 **Files:**
 - Modify: `frontend/app/(auth)/login/page.tsx` (replace stub)
 
-Spec: minimal and functional — no design tokens yet. Password input + submit, calls `POST /api/v1/auth/login`, redirects to `/readiness` on success, shows error on failure.
+Spec: minimal and functional — no design tokens yet. Password input + submit, calls `POST /api/v1/auth/login`, redirects to `/readiness` on success, shows error on failure. Uses `credentials: 'include'` so the browser stores the httpOnly session cookie.
 
 - [ ] **Step 1: Replace `frontend/app/(auth)/login/page.tsx`**
 
@@ -1166,25 +1260,27 @@ Expected: TypeScript compiles cleanly, no errors.
 | Spec requirement | Task | Covered |
 |---|---|---|
 | `POST /auth/login` — bcrypt verify, httpOnly cookie | Task 4 | ✅ |
-| `POST /auth/logout` — clear cookie | Task 4 | ✅ |
+| `POST /auth/logout` — clear session AND unlock_session cookies | Task 4 | ✅ |
 | `GET /auth/session` — session status | Task 4 | ✅ |
-| `app/repositories/auth.py` — WorkspaceSecurity DB access | Task 2 | ✅ |
+| `app/repositories/auth.py` — WorkspaceSecurity + EncryptedDraft DB access | Task 2 | ✅ |
 | `app/api/dependencies.py` — `require_auth`, `require_unlock` | Task 3 | ✅ |
 | First-run: `APP_PASSWORD_HASH` empty → 503 with message | Task 4 | ✅ |
-| Cookie: `httpOnly`, `secure`, `samesite=strict`, correct `max_age` | Task 4 | ✅ |
+| Cookie: `httpOnly`, `secure` (prod only), `samesite=strict`, correct `max_age` | Task 4 | ✅ |
 | `POST /auth/setup` — workspace + DEK + recovery key | Task 4 | ✅ |
-| `POST /auth/unlock` — decrypt DEK, store unlock token | Task 4 | ✅ |
+| `POST /auth/unlock` — decrypt DEK, store token in DB, set `unlock_session` httpOnly cookie | Task 4 | ✅ |
 | `POST /auth/recover` — verify recovery key, re-encrypt DEK | Task 4 | ✅ |
-| DEK never in plaintext, never logged, never in response | Task 1 + 4 | ✅ |
+| `require_unlock` reads `unlock_session` cookie (not query param) | Task 3 | ✅ |
+| No workspace_id or token in any URL or query parameter | Task 3 + 5 | ✅ |
+| DEK never in plaintext, never logged, never in any API response | Task 1 + 4 | ✅ |
 | `POST /drafts/{form_type}` + `GET /drafts/{form_type}` | Task 5 | ✅ |
 | Valid form types: `tax_profile`, `interview`, `manual_entry` | Task 5 | ✅ |
 | Test: login correct → cookie set | Task 4 | ✅ |
 | Test: login wrong → 401, no cookie | Task 4 | ✅ |
-| Test: logout → cookie cleared | Task 4 | ✅ |
+| Test: logout → both cookies cleared | Task 4 | ✅ |
 | Test: session authenticated → 200 | Task 4 | ✅ |
 | Test: session unauthenticated → 401 | Task 4 | ✅ |
 | Test: setup → WorkspaceSecurity created, DEK fields populated | Task 4 | ✅ |
 | Test: recover → DEK re-encrypted, login works with new password | Task 4 | ✅ |
-| Test: unlock expired → sensitive endpoint returns 401 | Task 4 | ✅ |
+| Test: unlock session expires → sensitive endpoint returns 401 | Task 4 | ✅ |
 | Frontend login page — minimal, password input, redirect on success | Task 6 | ✅ |
 | No tax logic, no document handling, no workspace creation UI | all | ✅ |

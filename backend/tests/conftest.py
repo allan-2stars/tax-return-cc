@@ -75,9 +75,11 @@ def patch_password(monkeypatch):
 @pytest_asyncio.fixture
 async def auth_client(client, patch_password):
     """
-    HTTP client in the post-setup, logged-in state.
+    HTTP client in the post-setup, confirmed, logged-in state.
     Carries a valid session cookie. Does NOT carry an unlock_session cookie.
     """
+    from app.security import normalize_recovery_key
+
     setup_resp = await client.post(
         "/api/v1/auth/setup",
         json={"password": TEST_PASSWORD, "financial_year": "2024-25"},
@@ -85,6 +87,14 @@ async def auth_client(client, patch_password):
     assert setup_resp.status_code == 200, setup_resp.text
     client.workspace_id = setup_resp.json()["workspace_id"]
     client.recovery_key = setup_resp.json()["recovery_key"]
+
+    # Confirm setup (required before require_auth allows through)
+    last_8 = normalize_recovery_key(client.recovery_key)[-8:]
+    confirm_resp = await client.post(
+        "/api/v1/auth/setup/confirm",
+        json={"confirmation": f"{last_8[:4]}-{last_8[4:]}"},
+    )
+    assert confirm_resp.status_code == 200, confirm_resp.text
 
     login_resp = await client.post(
         "/api/v1/auth/login", json={"password": TEST_PASSWORD}

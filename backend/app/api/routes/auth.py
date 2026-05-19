@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import require_auth, sign_session, sign_unlock_session
+from app.api.dependencies import require_auth, require_session, sign_session, sign_unlock_session
 from app.config import settings
 from app.db.base import get_db
 from app.db.models import Workspace
@@ -44,6 +44,10 @@ class RecoverRequest(BaseModel):
     recovery_key: str
     new_password: str = Field(..., min_length=8)
     workspace_id: str
+
+
+class ConfirmSetupRequest(BaseModel):
+    confirmation: str  # last 8 chars formatted as "XXXX-XXXX"
 
 
 @router.post("/auth/login")
@@ -144,6 +148,8 @@ async def setup(
         normalized_rk.encode(), bcrypt.gensalt(rounds=12)
     ).decode()
     recovery_encrypted_dek = encrypt_dek(dek, normalized_rk)
+    last_8 = normalized_rk[-8:]
+    recovery_confirm_hash = bcrypt.hashpw(last_8.encode(), bcrypt.gensalt(rounds=12)).decode()
 
     await auth_repo.create_security(
         db,
@@ -152,6 +158,7 @@ async def setup(
         password_encrypted_dek=password_encrypted_dek,
         recovery_key_hash=recovery_key_hash,
         recovery_encrypted_dek=recovery_encrypted_dek,
+        recovery_confirm_hash=recovery_confirm_hash,
     )
 
     max_age = settings.SESSION_MAX_AGE_DAYS * 86400
@@ -243,4 +250,32 @@ async def recover(body: RecoverRequest, db: AsyncSession = Depends(get_db)):
         password_hash=new_hash,
         password_encrypted_dek=new_encrypted_dek,
     )
+    return {"status": "ok"}
+
+
+@router.post("/auth/setup/confirm")
+async def confirm_setup(
+    body: ConfirmSetupRequest,
+    db: AsyncSession = Depends(get_db),
+    workspace_id: str = Depends(require_session),
+):
+    ws = await auth_repo.get_security(db, workspace_id)
+    if not ws or not ws.recovery_confirm_hash:
+        raise HTTPException(
+            status_code=404,
+            detail=error_response(
+                "workspace_not_found", "Workspace not found.", retryable=False
+            ),
+        )
+    normalized = normalize_recovery_key(body.confirmation)
+    if not bcrypt.checkpw(normalized.encode(), ws.recovery_confirm_hash.encode()):
+        raise HTTPException(
+            status_code=400,
+            detail=error_response(
+                "invalid_confirmation",
+                "Confirmation does not match. Enter the last 8 characters of your recovery key.",
+                retryable=True,
+            ),
+        )
+    await auth_repo.update_security(db, ws, setup_confirmed=True)
     return {"status": "ok"}

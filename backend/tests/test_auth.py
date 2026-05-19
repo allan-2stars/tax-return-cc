@@ -307,3 +307,72 @@ async def test_draft_invalid_form_type_returns_422(auth_client, patch_password):
         json={"content": {}},
     )
     assert resp.status_code == 422
+
+
+# ── setup confirmation ────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_setup_confirm_correct_chars(client, patch_password):
+    from app.security import normalize_recovery_key
+
+    setup = await client.post(
+        "/api/v1/auth/setup",
+        json={"password": TEST_PASSWORD, "financial_year": "2024-25"},
+    )
+    assert setup.status_code == 200
+    recovery_key = setup.json()["recovery_key"]
+
+    last_8 = normalize_recovery_key(recovery_key)[-8:]
+    resp = await client.post(
+        "/api/v1/auth/setup/confirm",
+        json={"confirmation": f"{last_8[:4]}-{last_8[4:]}"},
+    )
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_setup_confirm_wrong_chars_returns_400(client, patch_password):
+    await client.post(
+        "/api/v1/auth/setup",
+        json={"password": TEST_PASSWORD, "financial_year": "2024-25"},
+    )
+    resp = await client.post(
+        "/api/v1/auth/setup/confirm",
+        json={"confirmation": "0000-0000"},
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_require_auth_blocks_before_confirm(client, patch_password):
+    # After setup but before confirm, protected endpoints must return 403
+    setup = await client.post(
+        "/api/v1/auth/setup",
+        json={"password": TEST_PASSWORD, "financial_year": "2024-25"},
+    )
+    assert setup.status_code == 200
+    # session cookie is set by setup — client is authenticated but NOT confirmed
+    resp = await client.get("/api/v1/auth/session")
+    assert resp.status_code == 403
+    assert resp.json()["detail"]["error_code"] == "setup_not_confirmed"
+
+
+@pytest.mark.asyncio
+async def test_recover_wrong_key_returns_401(auth_client, patch_password):
+    workspace_id = auth_client.workspace_id
+
+    resp = await auth_client.post(
+        "/api/v1/auth/recover",
+        json={
+            "workspace_id": workspace_id,
+            "recovery_key": "WRONG-WRONG-WRONG-WRONG / WRONG-WRONG-WRONG-WRONG",
+            "new_password": "some-new-password",
+        },
+    )
+    assert resp.status_code == 401
+
+    # Verify old password still works (data unchanged)
+    login = await auth_client.post(
+        "/api/v1/auth/login", json={"password": TEST_PASSWORD}
+    )
+    assert login.status_code == 200
