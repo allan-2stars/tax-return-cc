@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import EncryptedDraft, WorkspaceSecurity
+from app.db.models import EncryptedDraft, Workspace, WorkspaceSecurity
 
 
 async def get_security(db: AsyncSession, workspace_id: str) -> WorkspaceSecurity | None:
@@ -50,6 +50,11 @@ async def get_draft(
             EncryptedDraft.form_type == form_type,
         )
     )
+    return result.scalar_one_or_none()
+
+
+async def get_singleton_workspace(db: AsyncSession) -> Workspace | None:
+    result = await db.execute(select(Workspace).limit(1))
     return result.scalar_one_or_none()
 
 

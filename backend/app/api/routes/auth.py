@@ -2,8 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel
-from sqlalchemy import select
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_auth, sign_session, sign_unlock_session
@@ -33,17 +32,17 @@ class LoginRequest(BaseModel):
 
 
 class SetupRequest(BaseModel):
-    password: str
+    password: str = Field(..., min_length=8)
     financial_year: str = "2024-25"
 
 
 class UnlockRequest(BaseModel):
-    password: str
+    password: str = Field(..., min_length=8)
 
 
 class RecoverRequest(BaseModel):
     recovery_key: str
-    new_password: str
+    new_password: str = Field(..., min_length=8)
     workspace_id: str
 
 
@@ -51,7 +50,7 @@ class RecoverRequest(BaseModel):
 async def login(
     body: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)
 ):
-    workspace = (await db.execute(select(Workspace).limit(1))).scalar_one_or_none()
+    workspace = await auth_repo.get_singleton_workspace(db)
 
     password_ok = False
     workspace_id_for_session = workspace.id if workspace else ""
@@ -117,16 +116,14 @@ async def setup(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ):
-    existing = (await db.execute(select(Workspace).limit(1))).scalar_one_or_none()
-    if existing:
-        sec = await auth_repo.get_security(db, existing.id)
-        if sec and sec.password_encrypted_dek:
-            raise HTTPException(
-                status_code=409,
-                detail=error_response(
-                    "already_setup", "Workspace already configured.", retryable=False
-                ),
-            )
+    existing = await auth_repo.get_singleton_workspace(db)
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=error_response(
+                "already_setup", "Workspace already configured.", retryable=False
+            ),
+        )
 
     workspace = Workspace(
         name="My Tax Return",
