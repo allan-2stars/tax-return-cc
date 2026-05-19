@@ -12,6 +12,7 @@ class Settings(BaseSettings):
 
     AI_PROVIDER: str = "claude"
     ANTHROPIC_API_KEY: str = ""
+    ANTHROPIC_MODEL: str = "claude-sonnet-4-6"
     AI_TIMEOUT_SECONDS: int = 15
 
     APP_PASSWORD_HASH: str = ""

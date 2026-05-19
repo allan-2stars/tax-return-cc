@@ -1,7 +1,6 @@
 import csv
 import hashlib
 import io
-import re
 import uuid
 
 import magic
@@ -11,6 +10,7 @@ from PIL import Image
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.engines.sanitize import sanitize_for_ai
 from app.errors import AppError, DuplicateDocumentError
 from app.repositories import documents as doc_repo
 from app.storage.base import StorageBackend
@@ -22,18 +22,6 @@ _ALLOWED_MIME: dict[str, str] = {
     "text/csv": "csv",
     "text/plain": "csv",
 }
-
-# Sanitization patterns — order matters (TFN first, then shorter patterns)
-_TFN_RE = re.compile(r"\b\d{3}-\d{3}-\d{3}\b")
-_BSB_RE = re.compile(r"\b\d{6}\b")
-_ACCT_RE = re.compile(r"\b\d{8,16}\b")
-
-
-def _sanitize(text: str) -> str:
-    text = _TFN_RE.sub("[TFN]", text)
-    text = _BSB_RE.sub("[BSB]", text)
-    text = _ACCT_RE.sub("[ACCT]", text)
-    return text
 
 
 class EvidenceEngine:
@@ -108,7 +96,7 @@ class EvidenceEngine:
             return
         try:
             text, fields, method, confidence = self._extract(doc)
-            sanitized = _sanitize(text) if text else None
+            sanitized, _ = sanitize_for_ai(text, None)
             await doc_repo.update_extraction(
                 self._db, doc, sanitized, fields, method, confidence
             )
