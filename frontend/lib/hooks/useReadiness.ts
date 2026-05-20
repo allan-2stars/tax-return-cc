@@ -1,18 +1,23 @@
-import { useQuery } from '@tanstack/react-query'
-import client from '@/lib/api/client'
-import type { ApiResponse } from '@/lib/api/types'
+'use client'
 
-interface ReadinessData {
-  score: number
+import { useQuery } from '@tanstack/react-query'
+import { getReadiness, getMissing } from '@/lib/api/readiness'
+import type { ReadinessData, MissingData } from '@/lib/api/types'
+
+export function useReadiness() {
+  const { data, isLoading, isError } = useQuery<ReadinessData>({
+    queryKey: ['readiness'],
+    queryFn: () => getReadiness().then((r) => r.data.data),
+    refetchInterval: (query) =>
+      query.state.data?.is_stale ? 3_000 : 30_000,
+  })
+  return { data, isLoading, isError }
 }
 
-export function useReadiness(workspaceId: string | null) {
-  return useQuery<ApiResponse<ReadinessData>>({
-    queryKey: ['readiness', workspaceId],
-    queryFn: () =>
-      client
-        .get<ApiResponse<ReadinessData>>(`/api/v1/readiness?workspace_id=${workspaceId}`)
-        .then((r) => r.data),
-    enabled: workspaceId !== null,
+export function useMissing() {
+  const { data, isLoading, isError } = useQuery<MissingData>({
+    queryKey: ['readiness', 'missing'],
+    queryFn: () => getMissing().then((r) => r.data.data),
   })
+  return { data, isLoading, isError }
 }
