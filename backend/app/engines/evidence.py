@@ -25,10 +25,17 @@ _ALLOWED_MIME: dict[str, str] = {
 
 
 class EvidenceEngine:
-    def __init__(self, db: AsyncSession, storage: StorageBackend, ai_adapter=None) -> None:
+    def __init__(
+        self,
+        db: AsyncSession,
+        storage: StorageBackend,
+        ai_adapter=None,
+        readiness_engine=None,
+    ) -> None:
         self._db = db
         self.storage = storage
         self._ai_adapter = ai_adapter
+        self._readiness_engine = readiness_engine
 
     async def validate_and_create(
         self,
@@ -139,6 +146,9 @@ class EvidenceEngine:
                 await doc_repo.update_status(self._db, document_id, "ready")
             else:
                 await doc_repo.update_status(self._db, document_id, "ready")
+
+            if self._readiness_engine is not None:
+                await self._readiness_engine.mark_stale(doc.workspace_id, self._db)
 
         except Exception:
             await doc_repo.update_status(self._db, document_id, "failed")

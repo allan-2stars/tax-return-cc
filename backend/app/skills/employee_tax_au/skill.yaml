@@ -58,6 +58,7 @@ questions:
 
 evidence_requirements:
   - id: payg_summary
+    covers_category: payg_income
     display: "PAYG Payment Summary"
     weight: 30
     available_after_fy: true
@@ -65,6 +66,7 @@ evidence_requirements:
     required: true
 
   - id: bank_interest_statement
+    covers_category: bank_interest
     display: "Bank Interest Statement"
     weight: 10
     available_after_fy: true
@@ -72,6 +74,7 @@ evidence_requirements:
     required: false
 
   - id: wfh_diary
+    covers_category: wfh_deduction
     display: "Work from home diary or timesheet"
     weight: 15
     available_after_fy: false
@@ -80,6 +83,7 @@ evidence_requirements:
     required: false
 
   - id: private_health_statement
+    covers_category: private_health_rebate
     display: "Private Health Insurance Statement"
     weight: 10
     available_after_fy: true
@@ -88,6 +92,7 @@ evidence_requirements:
     required: false
 
   - id: work_receipts
+    covers_category: work_expense
     display: "Work-related expense receipts"
     weight: 15
     available_after_fy: false

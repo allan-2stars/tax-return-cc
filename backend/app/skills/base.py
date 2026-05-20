@@ -21,6 +21,7 @@ class EvidenceRequirement:
     available_from: str = "anytime"            # anytime | july | august | etc.
     condition: str | None = None               # e.g. "has_wfh", "has_private_health"
     required: bool = False
+    covers_category: str | None = None         # TaxEvent category that satisfies this req
 
 
 @dataclass
@@ -30,6 +31,7 @@ class MissingEvidence:
     weight: int
     skill_id: str
     how_to_get: str = ""
+    available_after_fy: bool = False           # mirrors EvidenceRequirement.available_after_fy
 
 
 @dataclass

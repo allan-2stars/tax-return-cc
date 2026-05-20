@@ -145,11 +145,15 @@ class _SkillRef:
 # ── InterviewEngine ───────────────────────────────────────────────────────────
 
 class InterviewEngine:
-    def __init__(self, registry=None) -> None:
+    def __init__(self, registry=None, readiness_engine=None) -> None:
         if registry is None:
             from app.skills.registry import get_registry
             registry = get_registry()
         self._registry = registry
+        if readiness_engine is None:
+            from app.engines.readiness import ReadinessEngine
+            readiness_engine = ReadinessEngine()
+        self._readiness_engine = readiness_engine
 
     async def start(
         self,
@@ -251,11 +255,13 @@ class InterviewEngine:
             session.current_step = {"id": next_id}
             session.pending_queue = pending
             session = await interview_repo.save(db, session)
+            await self._readiness_engine.mark_stale(session.workspace_id, db)
             return session, _QUESTION_BY_ID[next_id]
 
         session.current_step = None
         session.pending_queue = []
         session = await interview_repo.save(db, session)
+        await self._readiness_engine.mark_stale(session.workspace_id, db)
         return session, None
 
     async def go_back(
@@ -353,10 +359,12 @@ class InterviewEngine:
         return session, _QUESTION_BY_ID[current_id]
 
     async def complete(self, session_id: str, db: AsyncSession) -> InterviewSession:
+        import asyncio
         session = await interview_repo.get_by_id(db, session_id)
         session.state = "awaiting_evidence"
         session.completed_at = datetime.now(timezone.utc)
         session = await interview_repo.save(db, session)
+        asyncio.create_task(self._readiness_engine.recalculate(session.workspace_id))
         return session
 
     async def check_inline_questions(

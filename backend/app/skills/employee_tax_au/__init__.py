@@ -143,6 +143,7 @@ class EmployeeTaxAU(TaxSkill):
                 available_from=r.get("available_from", "anytime"),
                 condition=r.get("condition"),
                 required=r.get("required", False),
+                covers_category=r.get("covers_category"),
             )
             for r in _YAML.get("evidence_requirements", [])
         ]
@@ -171,6 +172,7 @@ class EmployeeTaxAU(TaxSkill):
                     display=req.display,
                     weight=req.weight,
                     skill_id=self.skill_id,
+                    available_after_fy=req.available_after_fy,
                 )
             )
         return missing
