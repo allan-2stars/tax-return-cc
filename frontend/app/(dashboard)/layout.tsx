@@ -114,7 +114,7 @@ export default function DashboardLayout({
 
       {/* ── Main content ─────────────────────────────────────────── */}
       <main className="flex-1 flex flex-col min-w-0 pb-16 md:pb-0">
-        <div className="flex-1 max-w-[880px] w-full mx-auto px-4 py-6">
+        <div className="flex-1 max-w-4xl w-full mx-auto px-4 py-6">
           {children}
         </div>
       </main>
@@ -127,14 +127,19 @@ export default function DashboardLayout({
         {MOBILE_TABS.map((item) => {
           const Icon = item.icon
           const active = pathname === item.href
+          const tabClass = `flex-1 flex flex-col items-center justify-center py-2 gap-0.5 font-ui text-xs transition-colors ${
+            active ? 'text-accent' : 'text-text-muted'
+          }`
+          if (item.href.startsWith('#')) {
+            return (
+              <button key={item.href} type="button" className={tabClass}>
+                <Icon size={20} />
+                {item.label}
+              </button>
+            )
+          }
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex-1 flex flex-col items-center justify-center py-2 gap-0.5 font-ui text-xs transition-colors ${
-                active ? 'text-accent' : 'text-text-muted'
-              }`}
-            >
+            <Link key={item.href} href={item.href} className={tabClass}>
               <Icon size={20} />
               {item.label}
             </Link>
