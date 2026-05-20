@@ -1,17 +1,10 @@
+// frontend/components/shared/Disclaimer.tsx
 export default function Disclaimer() {
   return (
-    <p
-      style={{
-        color: 'var(--color-text-muted)',
-        fontSize: 'var(--text-xs)',
-        lineHeight: '1.5',
-        borderTop: '1px solid var(--color-border)',
-        paddingTop: 'var(--space-3)',
-        marginTop: 'var(--space-3)',
-      }}
-    >
-      AI suggestions are supporting evidence only — not financial or tax advice.
-      Always review with a registered tax agent before lodging.
+    <p className="text-xs text-text-muted border-t border-border pt-3 mt-3 font-ui">
+      This tool helps organise your tax information and prepare a review package.
+      It does not provide final tax advice and does not replace review by
+      a registered tax agent.
     </p>
   )
 }
