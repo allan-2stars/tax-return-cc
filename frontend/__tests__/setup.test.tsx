@@ -53,6 +53,17 @@ describe('SetupPage', () => {
     expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument()
   })
 
+  it('step 1 shows password mismatch error when passwords do not match', async () => {
+    const user = userEvent.setup()
+    render(<SetupPage />)
+    await user.type(screen.getByLabelText('Password'), 'StrongPass1!')
+    await user.type(screen.getByLabelText('Confirm password'), 'DifferentPass1!')
+    await user.click(screen.getByRole('button', { name: /continue/i }))
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Passwords do not match.')
+    })
+  })
+
   it("shows step 3 — confirmation input after \"I've saved it\" click", async () => {
     const user = userEvent.setup()
     ;(mockSetup as jest.Mock).mockResolvedValue({
@@ -65,7 +76,7 @@ describe('SetupPage', () => {
     await waitFor(() => expect(screen.getByText(RECOVERY_KEY)).toBeInTheDocument())
     await user.click(screen.getByRole('button', { name: /i've saved it/i }))
     await waitFor(() => {
-      expect(screen.getByLabelText('Last 8 characters')).toBeInTheDocument()
+      expect(screen.getByLabelText(/last key segment/i)).toBeInTheDocument()
     })
   })
 
@@ -83,9 +94,9 @@ describe('SetupPage', () => {
     await waitFor(() => expect(screen.getByText(RECOVERY_KEY)).toBeInTheDocument())
     // Step 2
     await user.click(screen.getByRole('button', { name: /i've saved it/i }))
-    await waitFor(() => expect(screen.getByLabelText('Last 8 characters')).toBeInTheDocument())
-    // Step 3 — last 8 chars of RECOVERY_KEY are "1234-5678"
-    await user.type(screen.getByLabelText('Last 8 characters'), '1234-5678')
+    await waitFor(() => expect(screen.getByLabelText(/last key segment/i)).toBeInTheDocument())
+    // Step 3 — last segment of RECOVERY_KEY is "1234-5678"
+    await user.type(screen.getByLabelText(/last key segment/i), '1234-5678')
     await user.click(screen.getByRole('button', { name: /^confirm$/i }))
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith('/journey')

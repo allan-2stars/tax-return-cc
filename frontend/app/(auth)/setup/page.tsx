@@ -87,7 +87,7 @@ export default function SetupPage() {
       const msg = (
         err as { response?: { data?: { detail?: { message?: string } } } }
       )?.response?.data?.detail?.message
-      setServerError(msg ?? 'Confirmation failed. Check the last 8 characters.')
+      setServerError(msg ?? 'Confirmation failed. Check the last key segment.')
     }
   }
 
@@ -95,6 +95,8 @@ export default function SetupPage() {
     navigator.clipboard.writeText(recoveryKey).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
+    }).catch(() => {
+      setServerError('Failed to copy to clipboard. Please copy the key manually.')
     })
   }
 
@@ -249,9 +251,15 @@ export default function SetupPage() {
               </button>
             </div>
 
+            {serverError && (
+              <p role="alert" className="font-ui text-sm text-risk-high">
+                {serverError}
+              </p>
+            )}
+
             <button
               type="button"
-              onClick={() => setStep(3)}
+              onClick={() => { setServerError(null); setStep(3) }}
               className="w-full py-3 rounded-md bg-accent hover:bg-accent-hover text-white font-ui font-medium text-base transition-colors"
             >
               I&apos;ve saved it
@@ -259,14 +267,14 @@ export default function SetupPage() {
           </div>
         )}
 
-        {/* ── Step 3: Confirm last 8 chars ── */}
+        {/* ── Step 3: Confirm last key segment ── */}
         {step === 3 && (
           <form onSubmit={handleConfirmSubmit(onConfirmSubmit)} className="space-y-4">
             <h2 className="font-ui text-xl font-semibold text-text-primary">
               Confirm your recovery key
             </h2>
             <p className="font-ui text-sm text-text-muted">
-              Enter the last 8 characters of your recovery key to confirm
+              Enter the last segment of your recovery key to confirm
               you&apos;ve saved it correctly.
             </p>
 
@@ -275,7 +283,7 @@ export default function SetupPage() {
                 htmlFor="confirmation"
                 className="block font-ui text-sm font-medium text-text-body mb-1"
               >
-                Last 8 characters
+                Last key segment (XXXX-XXXX)
               </label>
               <input
                 id="confirmation"
