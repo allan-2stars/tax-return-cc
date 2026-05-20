@@ -106,6 +106,7 @@ async def get_missing_items(
                 "display": item.display,
                 "weight": item.weight,
                 "skill_id": item.skill_id,
+                "how_to_get": item.how_to_get,
             })
         else:
             available_now.append({
@@ -113,6 +114,7 @@ async def get_missing_items(
                 "display": item.display,
                 "weight": item.weight,
                 "skill_id": item.skill_id,
+                "how_to_get": item.how_to_get,
             })
 
     return {
