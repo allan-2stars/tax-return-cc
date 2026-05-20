@@ -60,3 +60,7 @@ export interface MissingData {
   available_now: MissingItem[]
   available_after_fy: MissingItem[]
 }
+
+export interface RecalculateData {
+  status: 'recalculating'
+}
