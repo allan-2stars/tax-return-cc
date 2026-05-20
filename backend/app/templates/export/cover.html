@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Tax Review Package — {{ fy }}</title>
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 11pt; color: #333; margin: 40px; }
+    h1 { font-size: 20pt; color: #1a1a1a; margin-bottom: 4px; }
+    h2 { font-size: 13pt; color: #444; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-top: 24px; }
+    .meta { color: #666; font-size: 10pt; margin-bottom: 24px; }
+    .score { font-size: 28pt; font-weight: bold; color: #2c7a2c; }
+    .score-label { font-size: 10pt; color: #666; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th { text-align: left; font-size: 10pt; color: #555; border-bottom: 1px solid #ddd; padding: 4px 8px; }
+    td { padding: 4px 8px; font-size: 10pt; border-bottom: 1px solid #eee; }
+    .amount { text-align: right; font-family: monospace; }
+    .flag-item { margin: 4px 0; padding: 6px 10px; background: #fff8e1; border-left: 3px solid #f0a500; font-size: 10pt; }
+    .disclaimer { background: #f5f5f5; border: 1px solid #ddd; padding: 10px 14px; margin-top: 32px; font-size: 9pt; color: #555; }
+  </style>
+</head>
+<body>
+
+<h1>Tax-Ready Evidence Package</h1>
+<p class="meta">
+  Financial Year: <strong>{{ fy }}</strong> &nbsp;|&nbsp;
+  Generated: <strong>{{ generated_at }}</strong> &nbsp;|&nbsp;
+  Workspace: {{ workspace_id[:8] }}
+</p>
+
+<h2>Readiness Score at Time of Export</h2>
+<span class="score">{{ readiness_pct | int }}%</span>
+<span class="score-label"> tax-ready</span>
+
+<h2>Income Summary (confirmed items only)</h2>
+<table>
+  <tr><th>Description</th><th>Category</th><th class="amount">Amount (AUD)</th></tr>
+  {% for ev in income_events %}
+  <tr>
+    <td>{{ ev.description or ev.category }}</td>
+    <td>{{ ev.category }}</td>
+    <td class="amount">{{ "%.2f" | format(ev.amount or 0) }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="3" style="color:#999;">No confirmed income items.</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Deductions Summary (confirmed items only)</h2>
+<table>
+  <tr><th>Description</th><th>Category</th><th class="amount">Amount (AUD)</th></tr>
+  {% for ev in deduction_events %}
+  <tr>
+    <td>{{ ev.description or ev.category }}</td>
+    <td>{{ ev.category }}</td>
+    <td class="amount">{{ "%.2f" | format(ev.amount or 0) }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="3" style="color:#999;">No confirmed deduction items.</td></tr>
+  {% endfor %}
+</table>
+
+{% if agent_items %}
+<h2>Items Flagged for Agent Review</h2>
+{% for item in agent_items %}
+<div class="flag-item">
+  <strong>{{ item.title or item.category }}</strong>
+  {% if item.user_note %} — {{ item.user_note }}{% endif %}
+  {% if item.amount %} &nbsp;(AUD {{ "%.2f" | format(item.amount) }}){% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+{% include "_disclaimer.html" %}
+
+</body>
+</html>

@@ -1,0 +1,337 @@
+"""
+Tests for M9 Export Engine — TDD (all tests written before implementation).
+"""
+import asyncio
+from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock, patch
+
+import pytest
+import pytest_asyncio
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.db.models import (
+    BackgroundJob,
+    Document,
+    ExportRecord,
+    InterviewSession,
+    ReviewItem,
+    TaxEvent,
+    Workspace,
+)
+
+
+# ── fixtures ──────────────────────────────────────────────────────────────────
+
+@pytest_asyncio.fixture(autouse=True)
+async def patch_async_session_local(test_engine, monkeypatch):
+    import app.db.base as db_base
+    test_maker = async_sessionmaker(
+        test_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    monkeypatch.setattr(db_base, "AsyncSessionLocal", test_maker)
+
+
+@pytest_asyncio.fixture
+async def db_session(test_engine):
+    maker = async_sessionmaker(
+        test_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    async with maker() as session:
+        yield session
+
+
+@pytest_asyncio.fixture
+async def workspace(db_session):
+    ws = Workspace(name="Export Test WS", financial_year="2024-25", status="active")
+    db_session.add(ws)
+    await db_session.commit()
+    await db_session.refresh(ws)
+    return ws
+
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+async def _create_event(
+    db,
+    workspace_id: str,
+    status: str = "confirmed",
+    event_type: str = "income",
+    category: str = "payg_income",
+    amount: float = 5000.0,
+) -> TaxEvent:
+    ev = TaxEvent(
+        workspace_id=workspace_id,
+        financial_year="2024-25",
+        event_type=event_type,
+        category=category,
+        description="Test event",
+        amount=amount,
+        status=status,
+    )
+    db.add(ev)
+    await db.commit()
+    await db.refresh(ev)
+    return ev
+
+
+async def _create_document(
+    db,
+    workspace_id: str,
+    status: str = "ready",
+    archived: bool = False,
+) -> Document:
+    doc = Document(
+        workspace_id=workspace_id,
+        financial_year="2024-25",
+        original_filename="test.pdf",
+        storage_key=f"{workspace_id}/doc1/original.pdf",
+        file_type="pdf",
+        sha256_hash="ab" * 32,
+        status=status,
+        archived=archived,
+    )
+    db.add(doc)
+    await db.commit()
+    await db.refresh(doc)
+    return doc
+
+
+async def _create_interview_session(
+    db, workspace_id: str, state: str = "complete"
+) -> InterviewSession:
+    sess = InterviewSession(
+        workspace_id=workspace_id,
+        financial_year="2024-25",
+        state=state,
+        answers={},
+        activated_skills=[],
+        pending_queue=[],
+        completed_steps=[],
+    )
+    db.add(sess)
+    await db.commit()
+    await db.refresh(sess)
+    return sess
+
+
+async def _create_review_item(
+    db, workspace_id: str, status: str = "needs_user_review"
+) -> ReviewItem:
+    item = ReviewItem(
+        workspace_id=workspace_id,
+        category="work_expense",
+        amount=100.0,
+        risk_level="low",
+        status=status,
+        questions_complete=True,
+    )
+    db.add(item)
+    await db.commit()
+    await db.refresh(item)
+    return item
+
+
+def _mock_zipper():
+    mock_zf = MagicMock()
+    mock_pz = MagicMock()
+    mock_pz.AESZipFile.return_value.__enter__.return_value = mock_zf
+    mock_pz.AESZipFile.return_value.__exit__.return_value = False
+    mock_pz.ZIP_DEFLATED = 8
+    mock_pz.WZ_AES = 99
+    return mock_pz, mock_zf
+
+
+# ── 1. eligibility blocked — interview not complete ───────────────────────────
+
+@pytest.mark.asyncio
+async def test_check_eligibility_blocked_interview_not_complete(workspace, db_session):
+    from app.engines.export import ExportEngine
+
+    await _create_interview_session(db_session, workspace.id, state="in_progress")
+    await _create_event(db_session, workspace.id, status="confirmed")
+
+    engine = ExportEngine()
+    result = await engine.check_eligibility(workspace.id, db_session)
+
+    assert result.can_export is False
+    assert any("interview" in r.lower() for r in result.blocking_reasons)
+
+
+# ── 2. eligibility blocked — no confirmed events ──────────────────────────────
+
+@pytest.mark.asyncio
+async def test_check_eligibility_blocked_no_confirmed_events(workspace, db_session):
+    from app.engines.export import ExportEngine
+
+    await _create_interview_session(db_session, workspace.id, state="complete")
+    await _create_event(db_session, workspace.id, status="needs_user_review")
+
+    engine = ExportEngine()
+    result = await engine.check_eligibility(workspace.id, db_session)
+
+    assert result.can_export is False
+    assert any("confirmed" in r.lower() for r in result.blocking_reasons)
+
+
+# ── 3. eligibility blocked — documents still processing ──────────────────────
+
+@pytest.mark.asyncio
+async def test_check_eligibility_blocked_documents_processing(workspace, db_session):
+    from app.engines.export import ExportEngine
+
+    await _create_interview_session(db_session, workspace.id, state="complete")
+    await _create_event(db_session, workspace.id, status="confirmed")
+    await _create_document(db_session, workspace.id, status="processing")
+
+    engine = ExportEngine()
+    result = await engine.check_eligibility(workspace.id, db_session)
+
+    assert result.can_export is False
+    assert any("processing" in r.lower() for r in result.blocking_reasons)
+
+
+# ── 4. eligibility warns — pending review items (not a hard block) ────────────
+
+@pytest.mark.asyncio
+async def test_check_eligibility_warns_pending_review_items(workspace, db_session):
+    from app.engines.export import ExportEngine
+
+    await _create_interview_session(db_session, workspace.id, state="complete")
+    await _create_event(db_session, workspace.id, status="confirmed")
+    await _create_review_item(db_session, workspace.id, status="needs_user_review")
+
+    engine = ExportEngine()
+    result = await engine.check_eligibility(workspace.id, db_session)
+
+    assert result.can_export is True
+    assert len(result.warnings) > 0
+
+
+# ── 5. generate() creates BackgroundJob + ExportRecord ────────────────────────
+
+@pytest.mark.asyncio
+async def test_generate_creates_background_job_and_export_record(workspace, db_session):
+    from app.engines.export import ExportEngine
+
+    await _create_interview_session(db_session, workspace.id, state="complete")
+    await _create_event(db_session, workspace.id, status="confirmed")
+
+    mock_pz, _ = _mock_zipper()
+    with patch("app.engines.export.HTML") as mock_html, \
+         patch("app.engines.export.pyzipper", mock_pz):
+        mock_html.return_value.write_pdf.return_value = b"PDF"
+        engine = ExportEngine()
+        record = await engine.generate(workspace.id, "test-password", db_session)
+
+    # Check immediately — background task has not yet run
+    assert record.status == "generating"
+    assert record.workspace_id == workspace.id
+    assert record.id is not None
+
+    job_result = await db_session.execute(
+        select(BackgroundJob).where(
+            BackgroundJob.workspace_id == workspace.id,
+            BackgroundJob.job_type == "export_generate",
+        )
+    )
+    job = job_result.scalar_one_or_none()
+    assert job is not None
+    assert job.status in ("pending", "running")
+
+
+# ── 6. background task completes and ExportRecord becomes "ready" ─────────────
+
+@pytest.mark.asyncio
+async def test_generate_package_structure_correct(workspace, db_session, tmp_path):
+    from app.engines.export import ExportEngine
+
+    await _create_interview_session(db_session, workspace.id, state="complete")
+    await _create_event(db_session, workspace.id, status="confirmed")
+
+    mock_pz, mock_zf = _mock_zipper()
+    mock_storage = MagicMock()
+    mock_storage.get.return_value = b"fake-file-content"
+
+    with patch("app.engines.export.HTML") as mock_html, \
+         patch("app.engines.export.pyzipper", mock_pz):
+        mock_html.return_value.write_pdf.return_value = b"PDF"
+        engine = ExportEngine(export_path=str(tmp_path), storage=mock_storage)
+        record = await engine.generate(workspace.id, "test-password", db_session)
+        await asyncio.sleep(0.05)
+
+    await db_session.refresh(record)
+    assert record.status == "ready"
+
+    # WeasyPrint called for cover, summary, missing (3 PDF pages)
+    assert mock_html.return_value.write_pdf.call_count == 3
+
+
+# ── 7. cleanup_expired marks records expired and deletes files ────────────────
+
+@pytest.mark.asyncio
+async def test_cleanup_expired_marks_records_expired_and_deletes_files(
+    workspace, db_session, tmp_path
+):
+    from app.engines.export import ExportEngine
+
+    zip_dir = tmp_path / workspace.id
+    zip_dir.mkdir(parents=True)
+    fake_zip = zip_dir / "expiredexport.zip"
+    fake_zip.write_bytes(b"fake zip content")
+
+    past_time = datetime.now(timezone.utc) - timedelta(hours=48)
+    export_rec = ExportRecord(
+        workspace_id=workspace.id,
+        financial_year="2024-25",
+        storage_key=f"{workspace.id}/expiredexport.zip",
+        status="ready",
+        expires_at=past_time,
+    )
+    db_session.add(export_rec)
+    await db_session.commit()
+    await db_session.refresh(export_rec)
+
+    engine = ExportEngine(export_path=str(tmp_path))
+    expired_count = await engine.cleanup_expired(db_session)
+
+    assert expired_count == 1
+    assert not fake_zip.exists()
+
+    await db_session.refresh(export_rec)
+    assert export_rec.status == "expired"
+
+
+# ── 8. zip contains all required files (exhaustive structure check) ───────────
+
+@pytest.mark.asyncio
+async def test_export_zip_contains_all_required_files(workspace, db_session, tmp_path):
+    from app.engines.export import ExportEngine
+
+    await _create_interview_session(db_session, workspace.id, state="complete")
+    await _create_event(db_session, workspace.id, status="confirmed")
+
+    REQUIRED_FILES = [
+        "00-COVER.pdf",
+        "01-TAX-EVENTS.json",
+        "02-REVIEW-SUMMARY.pdf",
+        "03-MISSING-ITEMS.pdf",
+        "04-AI-REASONING.json",
+        "05-AUDIT-LOG.json",
+        "06-SCHEMA-VERSION.txt",
+        "07-DISCLAIMER.txt",
+        "evidence/manifest.json",
+    ]
+
+    mock_pz, mock_zf = _mock_zipper()
+
+    with patch("app.engines.export.HTML") as mock_html, \
+         patch("app.engines.export.pyzipper", mock_pz):
+        mock_html.return_value.write_pdf.return_value = b"PDF"
+        engine = ExportEngine(export_path=str(tmp_path), storage=MagicMock())
+        await engine.generate(workspace.id, "test-password", db_session)
+        await asyncio.sleep(0.05)
+
+    written_names = {args[0] for args, _ in mock_zf.writestr.call_args_list}
+    for req in REQUIRED_FILES:
+        assert req in written_names, f"Missing required file in zip: {req}"

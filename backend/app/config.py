@@ -23,6 +23,7 @@ class Settings(BaseSettings):
 
     MAX_FILE_SIZE_MB: int = 20
     EXPORT_RETENTION_HOURS: int = 24
+    EXPORT_PATH: str = "/data/exports"
     LOG_LEVEL: str = "INFO"
 
     class Config:

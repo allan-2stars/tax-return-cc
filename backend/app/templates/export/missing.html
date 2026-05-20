@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Missing Evidence — {{ fy }}</title>
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 11pt; color: #333; margin: 40px; }
+    h1 { font-size: 18pt; color: #1a1a1a; }
+    h2 { font-size: 13pt; color: #444; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-top: 24px; }
+    .meta { color: #666; font-size: 10pt; margin-bottom: 24px; }
+    .item { margin: 8px 0; padding: 8px 12px; border-left: 3px solid #ccc; }
+    .item.required { border-color: #e53e3e; background: #fff5f5; }
+    .item.optional { border-color: #a0aec0; background: #f7fafc; }
+    .item-title { font-weight: bold; font-size: 10pt; }
+    .item-skill { font-size: 9pt; color: #718096; }
+    .item-weight { font-size: 9pt; color: #4a5568; float: right; }
+    .no-missing { color: #2c7a2c; font-size: 12pt; margin: 24px 0; }
+    .disclaimer { background: #f5f5f5; border: 1px solid #ddd; padding: 10px 14px; margin-top: 32px; font-size: 9pt; color: #555; }
+  </style>
+</head>
+<body>
+
+<h1>Missing Evidence Items</h1>
+<p class="meta">Financial Year: <strong>{{ fy }}</strong> &nbsp;|&nbsp; Generated: {{ generated_at }}</p>
+
+{% if missing_items %}
+<h2>Items to Obtain Before Finalising</h2>
+{% for item in missing_items %}
+<div class="item {{ 'required' if item.weight >= 20 else 'optional' }}">
+  <span class="item-weight">Weight: {{ item.weight }}</span>
+  <div class="item-title">{{ item.display }}</div>
+  <div class="item-skill">Skill: {{ item.skill_id }}</div>
+</div>
+{% endfor %}
+{% else %}
+<p class="no-missing">All required evidence has been uploaded. Well done!</p>
+{% endif %}
+
+{% include "_disclaimer.html" %}
+
+</body>
+</html>

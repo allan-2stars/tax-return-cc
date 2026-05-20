@@ -29,6 +29,12 @@ async def _run_alembic_upgrade() -> None:
 async def lifespan(app: FastAPI):
     if settings.ENVIRONMENT != "test":
         await _run_alembic_upgrade()
+        from app.db.base import AsyncSessionLocal
+        from app.engines.export import ExportEngine
+        async with AsyncSessionLocal() as db:
+            expired = await ExportEngine().cleanup_expired(db)
+            if expired:
+                logger.info("Cleaned up %d expired export(s) on startup", expired)
     yield
 
 

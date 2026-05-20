@@ -1,5 +1,17 @@
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.ai.base import AIResponse
 from app.db.models import AuditLog
+
+
+async def get_by_workspace(db: AsyncSession, workspace_id: str) -> list[AuditLog]:
+    result = await db.execute(
+        select(AuditLog)
+        .where(AuditLog.workspace_id == workspace_id)
+        .order_by(AuditLog.created_at.asc())
+    )
+    return list(result.scalars().all())
 
 
 async def log_skill_conflict(
