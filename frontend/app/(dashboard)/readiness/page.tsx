@@ -6,25 +6,26 @@ import SkillBreakdown from '@/components/readiness/SkillBreakdown'
 import Disclaimer from '@/components/shared/Disclaimer'
 import { useReadiness } from '@/lib/hooks/useReadiness'
 import useWorkspaceStore from '@/lib/stores/workspace.store'
-
-function getFYEndLabel(fy: string): string {
-  const endYear = parseInt(fy.split('-')[1]) + 2000
-  return `30 June ${endYear}`
-}
-
-function isFYActive(fy: string): boolean {
-  const endYear = parseInt(fy.split('-')[1]) + 2000
-  return new Date() < new Date(endYear, 5, 30)
-}
+import { getFYEndLabel, isFYActive } from '@/lib/utils/fy'
 
 export default function ReadinessPage() {
-  const { data, isLoading } = useReadiness()
+  const { data, isLoading, isError } = useReadiness()
   const { financialYear } = useWorkspaceStore()
 
-  if (isLoading || !data) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
         <p className="text-sm font-ui text-text-muted">Loading your tax readiness…</p>
+      </div>
+    )
+  }
+
+  if (isError || !data) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <p className="text-sm font-ui text-risk-high">
+          Unable to load tax readiness. Please try refreshing the page.
+        </p>
       </div>
     )
   }
@@ -76,9 +77,9 @@ export default function ReadinessPage() {
             </p>
           )}
           {data.missing_items_count > 0 && (
-            <p className="text-sm font-ui text-text-muted">
-              ⬜ {data.missing_items_count} piece{data.missing_items_count !== 1 ? 's' : ''} of evidence still missing
-            </p>
+            <Link href="/readiness/missing" className="text-sm font-ui text-text-muted hover:text-text-body transition-colors">
+              ⬜ {data.missing_items_count} piece{data.missing_items_count !== 1 ? 's' : ''} of evidence still missing →
+            </Link>
           )}
         </div>
 

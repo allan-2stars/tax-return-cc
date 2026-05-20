@@ -87,4 +87,10 @@ describe('ReadinessPage', () => {
     expect(screen.getByText(/1.*agent|agent.*1/i)).toBeInTheDocument()
     expect(screen.getByText(/2.*missing|missing.*2/i)).toBeInTheDocument()
   })
+
+  it('shows error state when query fails', () => {
+    ;(mockUseReadiness as jest.Mock).mockReturnValue({ isLoading: false, data: undefined, isError: true })
+    render(<ReadinessPage />)
+    expect(screen.getByText(/unable to load tax readiness/i)).toBeInTheDocument()
+  })
 })

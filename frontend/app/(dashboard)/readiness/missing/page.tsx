@@ -2,22 +2,29 @@
 
 import Link from 'next/link'
 import MissingEvidenceList from '@/components/readiness/MissingEvidenceList'
+import Disclaimer from '@/components/shared/Disclaimer'
 import { useMissing } from '@/lib/hooks/useReadiness'
 import useWorkspaceStore from '@/lib/stores/workspace.store'
-
-function getFYEndLabel(fy: string): string {
-  const endYear = parseInt(fy.split('-')[1]) + 2000
-  return `30 June ${endYear}`
-}
+import { getFYEndLabel } from '@/lib/utils/fy'
 
 export default function MissingPage() {
-  const { data, isLoading } = useMissing()
+  const { data, isLoading, isError } = useMissing()
   const { financialYear } = useWorkspaceStore()
 
-  if (isLoading || !data) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
         <p className="text-sm font-ui text-text-muted">Loading missing items…</p>
+      </div>
+    )
+  }
+
+  if (isError || !data) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <p className="text-sm font-ui text-risk-high">
+          Unable to load missing items. Please try refreshing the page.
+        </p>
       </div>
     )
   }
@@ -49,6 +56,8 @@ export default function MissingPage() {
           fyEndLabel={fyLabel}
         />
       )}
+
+      <Disclaimer />
     </div>
   )
 }

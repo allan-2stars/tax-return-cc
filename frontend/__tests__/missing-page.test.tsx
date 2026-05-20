@@ -60,4 +60,10 @@ describe('MissingPage', () => {
     render(<MissingPage />)
     expect(screen.getByText(/nothing missing/i)).toBeInTheDocument()
   })
+
+  it('shows error state when query fails', () => {
+    ;(mockUseMissing as jest.Mock).mockReturnValue({ isLoading: false, data: undefined, isError: true })
+    render(<MissingPage />)
+    expect(screen.getByText(/unable to load missing items/i)).toBeInTheDocument()
+  })
 })
