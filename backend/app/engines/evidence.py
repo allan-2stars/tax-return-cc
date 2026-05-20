@@ -13,6 +13,7 @@ from app.config import settings
 from app.engines.sanitize import sanitize_for_ai
 from app.errors import AppError, DuplicateDocumentError
 from app.repositories import documents as doc_repo
+from app.skills.registry import get_registry
 from app.storage.base import StorageBackend
 
 _ALLOWED_MIME: dict[str, str] = {
@@ -31,11 +32,13 @@ class EvidenceEngine:
         storage: StorageBackend,
         ai_adapter=None,
         readiness_engine=None,
+        review_engine=None,
     ) -> None:
         self._db = db
         self.storage = storage
         self._ai_adapter = ai_adapter
         self._readiness_engine = readiness_engine
+        self._review_engine = review_engine
 
     async def validate_and_create(
         self,
@@ -100,7 +103,6 @@ class EvidenceEngine:
 
     async def extract_and_finalize(self, document_id: str) -> None:
         from app.db.models import TaxEvent
-        from app.skills.registry import get_registry
 
         doc = await doc_repo.get_by_id(self._db, document_id)
         if not doc:
@@ -125,8 +127,9 @@ class EvidenceEngine:
                 skill = get_registry().get_owner(classification.skill_id or "")
                 if skill:
                     candidates = skill.extract_events(doc, classification)
+                    new_events = []
                     for c in candidates:
-                        self._db.add(TaxEvent(
+                        ev = TaxEvent(
                             workspace_id=doc.workspace_id,
                             document_id=doc.id,
                             financial_year=doc.financial_year,
@@ -139,10 +142,17 @@ class EvidenceEngine:
                             ai_reasoning=c.ai_reasoning,
                             confidence=c.confidence,
                             status="needs_user_review",
-                            skill_id=skill.skill_id,
-                            skill_version=skill.version,
-                        ))
+                            skill_id=classification.skill_id,
+                            skill_version=skill.version if isinstance(getattr(skill, "version", None), str) else None,
+                        )
+                        self._db.add(ev)
+                        new_events.append(ev)
                     await self._db.commit()
+                    for ev in new_events:
+                        await self._db.refresh(ev)
+                    if self._review_engine is not None:
+                        for ev in new_events:
+                            await self._review_engine.create_review_item(ev, self._db)
                 await doc_repo.update_status(self._db, document_id, "ready")
             else:
                 await doc_repo.update_status(self._db, document_id, "ready")
