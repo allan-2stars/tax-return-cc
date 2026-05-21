@@ -26,11 +26,10 @@ export default function DocumentCard({ document, onRemove }: DocumentCardProps) 
   const [expanded, setExpanded] = useState(false)
   const cfg = STATUS_CONFIG[document.status] ?? STATUS_CONFIG.failed
 
-  const uploadedDate = new Date(document.uploaded_at).toLocaleDateString('en-AU', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
+  const d = new Date(document.uploaded_at)
+  const uploadedDate = isNaN(d.getTime())
+    ? '—'
+    : d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
 
   return (
     <div className="bg-surface border border-border rounded-md p-4">
@@ -75,6 +74,7 @@ export default function DocumentCard({ document, onRemove }: DocumentCardProps) 
         {document.status === 'ready' && document.document_type && (
           <button
             type="button"
+            aria-expanded={expanded}
             onClick={() => setExpanded(!expanded)}
             className="ml-auto text-sm font-ui text-text-muted hover:text-text-body transition-colors"
           >
