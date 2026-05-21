@@ -64,3 +64,48 @@ export interface MissingData {
 export interface RecalculateData {
   status: 'recalculating'
 }
+
+export type InterviewState = 'not_started' | 'in_progress' | 'paused' | 'awaiting_evidence' | 'complete'
+
+export interface InterviewQuestion {
+  id: string
+  ask: string
+  type: 'single_choice' | 'multi_choice' | 'text' | 'number'
+  options: string[] | null
+  branches: Record<string, string[]> | null
+  required: boolean
+  why: string | null
+  hint: string | null
+}
+
+export interface InterviewProgress {
+  completed: number
+  total: number
+}
+
+export interface InterviewSessionData {
+  state: InterviewState
+  session_id?: string
+  current_question: InterviewQuestion | null
+  answers?: Record<string, string>
+  activated_skills?: string[]
+  progress: InterviewProgress
+  resumed?: boolean
+}
+
+export interface AnswerResponseData {
+  session_id: string
+  state: InterviewState
+  next_question: InterviewQuestion | null
+  activated_skills: string[]
+  progress: InterviewProgress
+}
+
+export interface YoYSuggestion {
+  id: string
+  category: string
+  description: string
+  amount_last_year: number | null
+  frequency: string | null
+  status: string
+}
