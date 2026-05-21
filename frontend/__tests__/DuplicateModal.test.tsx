@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import DuplicateModal from '@/components/evidence/DuplicateModal'
 
@@ -45,5 +45,14 @@ describe('DuplicateModal', () => {
     // No "Replace" or "Keep both" options
     expect(screen.queryByRole('button', { name: /replace/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /keep both/i })).not.toBeInTheDocument()
+  })
+
+  it('calls onClose when Close button is clicked', async () => {
+    ;(getDocumentSummary as jest.Mock).mockResolvedValue({ data: { data: SUMMARY } })
+    const onClose = jest.fn()
+    wrap(<DuplicateModal existingDocumentId="doc-1" onClose={onClose} />)
+    await screen.findByText('payslip.pdf')
+    fireEvent.click(screen.getByRole('button', { name: /close/i }))
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 })
