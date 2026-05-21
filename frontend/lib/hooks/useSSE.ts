@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import type { SSEEvent } from '@/lib/api/types'
 
+// 'processing' is intentionally excluded — stream stays open while processing
 const TERMINAL = new Set(['ready', 'failed', 'archived'])
 const TIMEOUT_MS = 5 * 60 * 1000
 
@@ -24,10 +25,18 @@ export function useSSE(url: string | null): {
 
     const es = new EventSource(url)
 
-    const timer = setTimeout(() => {
+    let closed = false
+    const closeConnection = (reason?: string) => {
+      if (closed) return
+      closed = true
+      clearTimeout(timer)
       es.close()
       setStatus('closed')
-      setError('timeout')
+      if (reason) setError(reason)
+    }
+
+    const timer = setTimeout(() => {
+      closeConnection('timeout')
     }, TIMEOUT_MS)
 
     es.onopen = () => setStatus('open')
@@ -37,9 +46,7 @@ export function useSSE(url: string | null): {
         const evt: SSEEvent = JSON.parse(e.data as string)
         setData(evt)
         if (TERMINAL.has(evt.status)) {
-          clearTimeout(timer)
-          es.close()
-          setStatus('closed')
+          closeConnection()
         }
       } catch {
         // ignore malformed events
@@ -47,15 +54,11 @@ export function useSSE(url: string | null): {
     }
 
     es.onerror = () => {
-      clearTimeout(timer)
-      es.close()
-      setStatus('closed')
-      setError('connection_error')
+      closeConnection('connection_error')
     }
 
     return () => {
-      clearTimeout(timer)
-      es.close()
+      closeConnection()
     }
   }, [url])
 
