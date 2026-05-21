@@ -130,3 +130,41 @@ export interface YoYSuggestion {
   status: string
   actioned_at: string | null
 }
+
+export type DocumentStatus = 'processing' | 'ready' | 'failed' | 'archived'
+
+export interface DocumentData {
+  document_id: string
+  original_filename: string
+  file_type: string | null
+  file_size_bytes: number | null
+  status: DocumentStatus
+  document_type: string | null
+  uploaded_at: string
+  processed_at: string | null
+}
+
+export interface DocumentSummaryData extends DocumentData {
+  extraction_method: string | null
+  extraction_confidence: number | null
+  extracted_fields: Record<string, unknown> | null
+}
+
+export interface UploadResponse {
+  document_id: string
+  status: 'processing'
+}
+
+export interface DuplicateUploadResponse {
+  status: 'duplicate'
+  existing_document_id: string
+}
+
+export interface SSEEvent {
+  document_id: string
+  status: DocumentStatus
+  stage?: string
+  progress?: number
+  events_created?: number
+  error_code?: string
+}
