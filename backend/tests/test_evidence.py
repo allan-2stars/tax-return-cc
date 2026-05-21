@@ -282,7 +282,7 @@ async def test_list_documents_returns_empty_for_new_workspace(auth_client):
 
 
 @pytest.mark.asyncio
-async def test_list_documents_excludes_archived(auth_client, tmp_path):
+async def test_list_documents_excludes_archived(auth_client):
     """GET /documents excludes archived documents."""
     pdf_bytes = b"%PDF-1.4 minimal"
     response = await auth_client.post(

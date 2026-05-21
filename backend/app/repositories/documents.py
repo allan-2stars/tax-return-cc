@@ -78,7 +78,8 @@ async def list_by_workspace(db: AsyncSession, workspace_id: str) -> list[Documen
 
 async def archive_by_id(db: AsyncSession, document_id: str) -> None:
     doc = await get_by_id(db, document_id)
-    if doc:
-        doc.archived = True
-        doc.archived_reason = "user_removed"
-        await db.commit()
+    if not doc:
+        raise ValueError(f"Document {document_id} not found")
+    doc.archived = True
+    doc.archived_reason = "user_removed"
+    await db.commit()
