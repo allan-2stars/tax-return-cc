@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  getSession, startInterview, answerQuestion,
+  startInterview, answerQuestion,
   goBack, skipQuestion, getYoySuggestions, actOnSuggestion,
 } from '@/lib/api/interview'
 import type { InterviewSessionData, YoYSuggestion } from '@/lib/api/types'
@@ -10,6 +10,8 @@ import QuestionCard from '@/components/interview/QuestionCard'
 import ProgressDots from '@/components/interview/ProgressDots'
 import YoYSuggestionCard from '@/components/interview/YoYSuggestionCard'
 import useInterviewStore from '@/lib/stores/interview.store'
+import { useInterview } from '@/lib/hooks/useInterview'
+import Disclaimer from '@/components/shared/Disclaimer'
 
 const NEXT_STEPS: Record<string, { label: string; hint: string }> = {
   employee_tax_au: {
@@ -34,10 +36,7 @@ export default function JourneyPage() {
   const queryClient = useQueryClient()
   const { newSkillPending, setNewSkillPending } = useInterviewStore()
 
-  const { data, isLoading, isError } = useQuery<InterviewSessionData>({
-    queryKey: ['interview', 'session'],
-    queryFn: () => getSession().then((r) => r.data.data),
-  })
+  const { data, isLoading, isError } = useInterview()
 
   const { data: yoy } = useQuery<YoYSuggestion[]>({
     queryKey: ['yoy', 'suggestions'],
@@ -46,8 +45,9 @@ export default function JourneyPage() {
   })
 
   const patch = (p: Partial<InterviewSessionData>) =>
-    queryClient.setQueryData<InterviewSessionData>(['interview', 'session'], (old) =>
-      old ? { ...old, ...p } : old
+    queryClient.setQueryData<InterviewSessionData>(
+      ['interview', 'session'],
+      (old): InterviewSessionData | undefined => (old ? { ...old, ...p } : undefined)
     )
 
   const startMutation = useMutation({
@@ -63,7 +63,12 @@ export default function JourneyPage() {
       const prev = data?.activated_skills ?? []
       const newSkill = d.activated_skills.find((s) => !prev.includes(s))
       if (newSkill) setNewSkillPending(newSkill)
-      patch({ state: d.state, current_question: d.next_question, activated_skills: d.activated_skills, progress: d.progress })
+      patch({
+        state: d.state,
+        current_question: d.next_question, // answer response uses next_question; cache uses current_question
+        activated_skills: d.activated_skills,
+        progress: d.progress,
+      })
     },
   })
 
@@ -178,6 +183,7 @@ export default function JourneyPage() {
           >
             View your readiness →
           </Link>
+          <Disclaimer />
         </div>
       )}
 
@@ -196,6 +202,7 @@ export default function JourneyPage() {
           >
             View your tax readiness →
           </Link>
+          <Disclaimer />
         </div>
       )}
     </div>
