@@ -39,6 +39,9 @@ def _q_dict(q: Question | None) -> dict | None:
         "type": q.type,
         "options": q.options,
         "branches": q.branches,
+        "required": q.required,
+        "why": q.why,
+        "hint": q.hint,
     }
 
 

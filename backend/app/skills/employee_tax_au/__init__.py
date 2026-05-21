@@ -127,6 +127,9 @@ class EmployeeTaxAU(TaxSkill):
                 type=q["type"],
                 options=q.get("options"),
                 branches=q.get("branches"),
+                required=q.get("required", True),
+                why=q.get("why"),
+                hint=q.get("hint"),
             )
             for q in _YAML.get("questions", [])
         ]

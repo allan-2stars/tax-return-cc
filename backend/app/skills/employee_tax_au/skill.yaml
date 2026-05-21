@@ -28,6 +28,8 @@ questions:
     ask: "Did you work from home during this financial year?"
     type: single_choice
     options: [yes_regular, yes_sometimes, no]
+    required: false
+    why: "This helps us determine if you can claim a work-from-home deduction."
     branches:
       yes_regular:   [wfh_method, wfh_days]
       yes_sometimes: [wfh_method]
@@ -36,25 +38,35 @@ questions:
     ask: "Which WFH calculation method are you using?"
     type: single_choice
     options: [fixed_rate, actual_cost]
+    required: false
+    hint: "Fixed rate is 67¢/hour. Actual cost requires receipts."
+    why: "The method affects what records you'll need to keep."
 
   - id: wfh_days
     ask: "How many days per week did you regularly work from home?"
     type: number
+    required: false
 
   - id: has_private_health
     ask: "Do you have private health insurance?"
     type: single_choice
     options: [yes, no]
+    required: false
+    why: "Private health insurance may affect your Medicare Levy Surcharge."
 
   - id: has_novated_lease
     ask: "Do you have a novated lease through your employer?"
     type: single_choice
     options: [yes, no]
+    required: false
+    why: "Novated leases are reported on your PAYG Summary as fringe benefits."
 
   - id: self_education
     ask: "Did you pay for any work-related courses or training?"
     type: single_choice
     options: [yes, no]
+    required: false
+    why: "Self-education expenses may be a candidate deduction if the course directly relates to your current employment."
 
 evidence_requirements:
   - id: payg_summary

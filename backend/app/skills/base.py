@@ -10,6 +10,9 @@ class Question:
     options: list[str] | None = None
     branches: dict[str, list[str]] | None = None   # option_value → [question_ids to insert]
     trigger: str | None = None                 # optional condition string
+    required: bool = True                      # False → show skip button in UI
+    why: str | None = None                     # shown in "Why do we ask?" tooltip
+    hint: str | None = None                    # shown as sub-text below question
 
 
 @dataclass
