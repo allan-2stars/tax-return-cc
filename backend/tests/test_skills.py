@@ -199,6 +199,29 @@ async def test_skill_conflict_logged_and_written_to_audit(caplog, db_session, wo
     assert "mock_skill_b" in (log.note or "")
 
 
+# ── 10. get_questions exposes required, why, hint from YAML ──────────────────
+
+def test_get_questions_exposes_required_why_hint():
+    from app.skills.employee_tax_au import EmployeeTaxAU
+    skill = EmployeeTaxAU()
+    profile = _make_profile()
+    questions = skill.get_questions(profile)
+    # All skill questions have required=False in the YAML
+    assert all(q.required is False for q in questions)
+    # wfh question has a why string
+    wfh_q = next(q for q in questions if q.id == "wfh")
+    assert wfh_q.why is not None
+    assert len(wfh_q.why) > 0
+    # wfh_method question has a hint string
+    wfh_method_q = next(q for q in questions if q.id == "wfh_method")
+    assert wfh_method_q.hint is not None
+    assert len(wfh_method_q.hint) > 0
+    # wfh_days has no why or hint
+    wfh_days_q = next(q for q in questions if q.id == "wfh_days")
+    assert wfh_days_q.why is None
+    assert wfh_days_q.hint is None
+
+
 # ── 9. Skill version locked on activation → SkillVersionLock created ─────────
 
 @pytest.mark.asyncio

@@ -351,3 +351,19 @@ async def test_full_platform_flow_activates_employee_skill(db_session, workspace
     assert "employee_tax_au" in (session.activated_skills or [])
     platform_ids = {"fy_confirm", "residency", "employment_type", "family_situation", "lodger_type"}
     assert q.id not in platform_ids
+
+
+# ── 13. _q_dict exposes required, why, hint fields ───────────────────────────
+
+@pytest.mark.asyncio
+async def test_question_dict_includes_required_why_hint(auth_client):
+    """_q_dict must serialise required, why, hint for the frontend."""
+    await auth_client.post("/api/v1/interview/start")
+    resp = await auth_client.get("/api/v1/interview/session")
+    assert resp.status_code == 200
+    q = resp.json()["data"]["current_question"]
+    assert q is not None
+    assert "required" in q
+    assert "why" in q
+    assert "hint" in q
+    assert isinstance(q["required"], bool)
