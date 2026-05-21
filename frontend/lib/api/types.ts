@@ -101,11 +101,32 @@ export interface AnswerResponseData {
   progress: InterviewProgress
 }
 
+export interface SkipResponseData {
+  session_id: string
+  state: InterviewState
+  next_question: InterviewQuestion | null
+  progress: InterviewProgress
+}
+
+export interface PauseResponseData {
+  session_id: string
+  state: InterviewState
+}
+
+export interface CompleteResponseData {
+  session_id: string
+  state: InterviewState
+}
+
 export interface YoYSuggestion {
   id: string
+  workspace_id: string
+  source_workspace_id: string | null
+  financial_year: string
   category: string
   description: string
   amount_last_year: number | null
   frequency: string | null
   status: string
+  actioned_at: string | null
 }

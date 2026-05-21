@@ -3,7 +3,9 @@ import type {
   ApiResponse,
   InterviewSessionData,
   AnswerResponseData,
-  InterviewState,
+  SkipResponseData,
+  PauseResponseData,
+  CompleteResponseData,
   YoYSuggestion,
 } from './types'
 
@@ -20,13 +22,13 @@ export const goBack = () =>
   client.post<ApiResponse<InterviewSessionData>>('/api/v1/interview/back')
 
 export const skipQuestion = (question_id: string, reason: string) =>
-  client.post<ApiResponse<AnswerResponseData>>('/api/v1/interview/skip', { question_id, reason })
+  client.post<ApiResponse<SkipResponseData>>('/api/v1/interview/skip', { question_id, reason })
 
 export const pauseInterview = () =>
-  client.post<ApiResponse<{ session_id: string; state: InterviewState }>>('/api/v1/interview/pause')
+  client.post<ApiResponse<PauseResponseData>>('/api/v1/interview/pause')
 
 export const completeInterview = () =>
-  client.post<ApiResponse<{ session_id: string; state: InterviewState }>>('/api/v1/interview/complete')
+  client.post<ApiResponse<CompleteResponseData>>('/api/v1/interview/complete')
 
 export const getYoySuggestions = () =>
   client.get<ApiResponse<YoYSuggestion[]>>('/api/v1/yoy/suggestions')
