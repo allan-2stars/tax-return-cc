@@ -269,3 +269,41 @@ async def test_sanitization_removes_tfn_bsb_account(engine, workspace):
     assert "12345678" not in result.extracted_text
     assert "[ACCT]" in result.extracted_text
     assert "$500" in result.extracted_text  # amounts preserved
+
+
+@pytest.mark.asyncio
+async def test_list_documents_returns_empty_for_new_workspace(auth_client):
+    """GET /documents returns empty list when no documents exist."""
+    response = await auth_client.get("/api/v1/documents")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["data"] == []
+
+
+@pytest.mark.asyncio
+async def test_list_documents_excludes_archived(auth_client, tmp_path):
+    """GET /documents excludes archived documents."""
+    pdf_bytes = b"%PDF-1.4 minimal"
+    response = await auth_client.post(
+        "/api/v1/documents/upload",
+        files={"file": ("test.pdf", pdf_bytes, "application/pdf")},
+    )
+    assert response.status_code == 200
+    doc_id = response.json()["document_id"]
+
+    # Archive it
+    del_response = await auth_client.delete(f"/api/v1/documents/{doc_id}")
+    assert del_response.status_code == 200
+
+    # Now list should be empty
+    list_response = await auth_client.get("/api/v1/documents")
+    assert list_response.status_code == 200
+    assert list_response.json()["data"] == []
+
+
+@pytest.mark.asyncio
+async def test_archive_document_not_found(auth_client):
+    """DELETE /documents/{id} returns 404 for unknown document."""
+    response = await auth_client.delete("/api/v1/documents/nonexistent-id")
+    assert response.status_code == 404

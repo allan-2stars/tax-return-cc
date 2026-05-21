@@ -65,3 +65,20 @@ async def get_ready_docs(db: AsyncSession, workspace_id: str) -> list[Document]:
         )
     )
     return list(result.scalars().all())
+
+
+async def list_by_workspace(db: AsyncSession, workspace_id: str) -> list[Document]:
+    result = await db.execute(
+        select(Document)
+        .where(Document.workspace_id == workspace_id, Document.archived == False)
+        .order_by(Document.uploaded_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def archive_by_id(db: AsyncSession, document_id: str) -> None:
+    doc = await get_by_id(db, document_id)
+    if doc:
+        doc.archived = True
+        doc.archived_reason = "user_removed"
+        await db.commit()

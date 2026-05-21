@@ -59,6 +59,30 @@ async def upload_document(
     return {"document_id": doc.id, "status": "processing"}
 
 
+@router.get("/documents")
+async def list_documents(
+    workspace_id: str = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    docs = await doc_repo.list_by_workspace(db, workspace_id)
+    return {
+        "status": "ok",
+        "data": [
+            {
+                "document_id": d.id,
+                "original_filename": d.original_filename,
+                "file_type": d.file_type,
+                "file_size_bytes": d.file_size_bytes,
+                "status": d.status,
+                "document_type": d.document_type,
+                "uploaded_at": d.uploaded_at.isoformat() if d.uploaded_at else None,
+                "processed_at": d.processed_at.isoformat() if d.processed_at else None,
+            }
+            for d in docs
+        ],
+    }
+
+
 @router.get("/documents/{document_id}/stream")
 async def stream_document_progress(
     document_id: str,
@@ -150,3 +174,19 @@ async def get_document_summary(
             "processed_at": doc.processed_at.isoformat() if doc.processed_at else None,
         },
     }
+
+
+@router.delete("/documents/{document_id}")
+async def archive_document(
+    document_id: str,
+    workspace_id: str = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    doc = await doc_repo.get_by_id(db, document_id)
+    if not doc or doc.workspace_id != workspace_id:
+        raise HTTPException(
+            status_code=404,
+            detail=error_response("not_found", "Document not found.", retryable=False),
+        )
+    await doc_repo.archive_by_id(db, document_id)
+    return {"status": "ok", "data": {"document_id": document_id}}
