@@ -52,9 +52,13 @@ test('back button is always visible and calls onBack', () => {
   expect(onBack).toHaveBeenCalled()
 })
 
-test('skip button shown for non-required questions', () => {
-  render(<QuestionCard question={choiceQ} onAnswer={jest.fn()} onBack={jest.fn()} onSkip={jest.fn()} />)
-  expect(screen.getByRole('button', { name: /skip/i })).toBeInTheDocument()
+test('skip button shown and calls onSkip for non-required questions', () => {
+  const onSkip = jest.fn()
+  render(<QuestionCard question={choiceQ} onAnswer={jest.fn()} onBack={jest.fn()} onSkip={onSkip} />)
+  const skipBtn = screen.getByRole('button', { name: /skip/i })
+  expect(skipBtn).toBeInTheDocument()
+  fireEvent.click(skipBtn)
+  expect(onSkip).toHaveBeenCalledWith('wfh')
 })
 
 test('skip button hidden for required questions', () => {
@@ -77,4 +81,11 @@ test('why tooltip hidden initially, shown on toggle', () => {
 test('why button absent when question.why is null', () => {
   render(<QuestionCard question={requiredQ} onAnswer={jest.fn()} onBack={jest.fn()} onSkip={jest.fn()} />)
   expect(screen.queryByRole('button', { name: /why do we ask/i })).not.toBeInTheDocument()
+})
+
+test('all interactive buttons disabled when isSubmitting', () => {
+  render(<QuestionCard question={choiceQ} onAnswer={jest.fn()} onBack={jest.fn()} onSkip={jest.fn()} isSubmitting />)
+  expect(screen.getByRole('button', { name: /back/i })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'yes_regular' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: /skip/i })).toBeDisabled()
 })
