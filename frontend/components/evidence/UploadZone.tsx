@@ -8,7 +8,6 @@ const ALLOWED_TYPES = new Set([
   'image/jpeg',
   'image/png',
   'text/csv',
-  'application/vnd.ms-excel',
 ])
 const ALLOWED_EXTS = new Set(['.pdf', '.jpg', '.jpeg', '.png', '.csv'])
 const MAX_BYTES = 20 * 1024 * 1024
@@ -41,6 +40,8 @@ export default function UploadZone({ onUploadComplete, onDuplicate }: UploadZone
   const [sseStage, setSseStage] = useState('')
   const [documentId, setDocumentId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const dragCounterRef = useRef(0)
+  const uploadingRef = useRef(false)
 
   const sseUrl = documentId ? `/api/v1/documents/${documentId}/stream` : null
   const { data: sseData } = useSSE(sseUrl)
@@ -62,6 +63,7 @@ export default function UploadZone({ onUploadComplete, onDuplicate }: UploadZone
 
   const processFile = useCallback(
     async (file: File) => {
+      if (uploadingRef.current) return
       const ext = `.${file.name.split('.').pop()?.toLowerCase() ?? ''}`
       if (!ALLOWED_TYPES.has(file.type) && !ALLOWED_EXTS.has(ext)) {
         setKind('error')
@@ -73,6 +75,7 @@ export default function UploadZone({ onUploadComplete, onDuplicate }: UploadZone
         setErrorMessage(ERROR_MESSAGES.file_too_large)
         return
       }
+      uploadingRef.current = true
       setFilename(file.name)
       setKind('uploading')
       setSseStage('')
@@ -88,6 +91,8 @@ export default function UploadZone({ onUploadComplete, onDuplicate }: UploadZone
       } catch {
         setKind('error')
         setErrorMessage(ERROR_MESSAGES.default)
+      } finally {
+        uploadingRef.current = false
       }
     },
     [onDuplicate]
@@ -99,13 +104,6 @@ export default function UploadZone({ onUploadComplete, onDuplicate }: UploadZone
     e.target.value = ''
   }
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    setKind('idle')
-    const file = e.dataTransfer.files?.[0]
-    if (file) void processFile(file)
-  }
-
   const handleReset = () => {
     setKind('idle')
     setFilename('')
@@ -114,12 +112,20 @@ export default function UploadZone({ onUploadComplete, onDuplicate }: UploadZone
     setDocumentId(null)
   }
 
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    dragCounterRef.current = 0
+    handleReset()
+    const file = e.dataTransfer.files?.[0]
+    if (file) void processFile(file)
+  }
+
   return (
     <div
       role="region"
       aria-label="File upload zone"
-      onDragEnter={() => setKind('hover')}
-      onDragLeave={() => kind === 'hover' && setKind('idle')}
+      onDragEnter={() => { dragCounterRef.current++; setKind('hover') }}
+      onDragLeave={() => { dragCounterRef.current--; if (dragCounterRef.current <= 0) { dragCounterRef.current = 0; setKind(prev => prev === 'hover' ? 'idle' : prev) } }}
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
       className={[
