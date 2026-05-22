@@ -10,6 +10,7 @@ from app.api.routes.health import router as health_router
 from app.api.routes.interview import router as interview_router
 from app.api.routes.readiness import router as readiness_router
 from app.api.routes.review import router as review_router
+from app.api.routes.settings import router as settings_router
 from app.api.routes.workspaces import router as workspaces_router
 from app.api.routes.yoy import router as yoy_router
 
@@ -26,3 +27,4 @@ api_router.include_router(review_router)
 api_router.include_router(export_router)
 api_router.include_router(yoy_router)
 api_router.include_router(estimator_router)
+api_router.include_router(settings_router)
