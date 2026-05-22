@@ -15,8 +15,8 @@ export default function EligibilityCard({ eligibility, onGenerateAnyway }: Props
         <div className="space-y-2">
           <p className="text-sm font-ui font-semibold text-risk-high">Cannot export yet</p>
           <ul className="space-y-1">
-            {eligibility.blocking_reasons.map((reason, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm font-ui text-text-body">
+            {eligibility.blocking_reasons.map((reason) => (
+              <li key={reason} className="flex items-start gap-2 text-sm font-ui text-text-body">
                 <span className="text-risk-high mt-0.5">•</span>
                 <span>{reason}</span>
               </li>
@@ -30,8 +30,8 @@ export default function EligibilityCard({ eligibility, onGenerateAnyway }: Props
             {isBlocked ? 'Warnings' : 'Before you export'}
           </p>
           <ul className="space-y-1">
-            {eligibility.warnings.map((w, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm font-ui text-text-body">
+            {eligibility.warnings.map((w) => (
+              <li key={w} className="flex items-start gap-2 text-sm font-ui text-text-body">
                 <span className="text-review mt-0.5">•</span>
                 <span>{w}</span>
               </li>

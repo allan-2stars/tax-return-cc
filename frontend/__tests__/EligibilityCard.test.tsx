@@ -22,6 +22,13 @@ describe('EligibilityCard', () => {
     expect(screen.queryByText(/generate anyway/i)).not.toBeInTheDocument()
   })
 
+  it('renders ready state — shows ready message, no Generate anyway', () => {
+    const ready: ExportEligibility = { can_export: true, blocking_reasons: [], warnings: [] }
+    render(<EligibilityCard eligibility={ready} onGenerateAnyway={jest.fn()} />)
+    expect(screen.getByText(/ready to export/i)).toBeInTheDocument()
+    expect(screen.queryByText(/generate anyway/i)).not.toBeInTheDocument()
+  })
+
   it('renders warning state — shows warning, shows Generate anyway, calls callback', () => {
     const onGenerateAnyway = jest.fn()
     render(<EligibilityCard eligibility={warnOnly} onGenerateAnyway={onGenerateAnyway} />)
