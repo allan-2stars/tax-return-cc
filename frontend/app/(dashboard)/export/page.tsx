@@ -133,7 +133,7 @@ export default function ExportPage() {
       )}
 
       {isReady && exportStatus && (
-        <div className="rounded-lg border border-ready p-4 space-y-2">
+        <div className="rounded-lg border border-ready bg-ready-bg p-4 space-y-2">
           <p className="text-sm font-ui font-semibold text-ready">
             Your review pack is ready
           </p>
