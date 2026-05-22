@@ -7,6 +7,11 @@ jest.mock('next/navigation', () => ({
   useRouter: () => ({ replace: jest.fn(), push: jest.fn() }),
 }))
 
+jest.mock('@/lib/hooks/useReadiness', () => ({
+  useReadiness: () => ({ data: undefined, isLoading: false, isError: false }),
+  __esModule: true,
+}))
+
 jest.mock('@/lib/hooks/useAuth', () => ({
   useAuth: jest.fn().mockReturnValue({ isAuthenticated: true }),
   __esModule: true,

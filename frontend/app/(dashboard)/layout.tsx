@@ -20,6 +20,7 @@ import {
 import { useAuth } from '@/lib/hooks/useAuth'
 import useWorkspaceStore from '@/lib/stores/workspace.store'
 import NewFYModal from '@/components/settings/NewFYModal'
+import DeadlineBanner from '@/components/shared/DeadlineBanner'
 import type { CreateWorkspaceResult } from '@/lib/api/types'
 
 interface NavItem {
@@ -126,6 +127,7 @@ export default function DashboardLayout({
 
       {/* ── Main content ─────────────────────────────────────────── */}
       <main className="flex-1 flex flex-col min-w-0 pb-16 md:pb-0">
+        <DeadlineBanner />
         <div className="flex-1 max-w-4xl w-full mx-auto px-4 py-6">
           {children}
         </div>
