@@ -114,21 +114,21 @@ export default function ReviewCard({ item, onAction, onInlineAnswer }: ReviewCar
           <button
             type="button"
             onClick={handleConfirm}
-            className="min-h-[44px] px-3 py-2 rounded text-sm font-ui font-medium bg-ready text-surface hover:opacity-90 transition-opacity"
+            className="min-h-11 px-3 py-2 rounded text-sm font-ui font-medium bg-ready text-surface hover:opacity-90 transition-opacity"
           >
             Looks right
           </button>
           <button
             type="button"
             onClick={() => setShowAmend((v) => !v)}
-            className="min-h-[44px] px-3 py-2 rounded text-sm font-ui font-medium border border-border text-text-body hover:bg-surface-raised transition-colors"
+            className="min-h-11 px-3 py-2 rounded text-sm font-ui font-medium border border-border text-text-body hover:bg-surface-raised transition-colors"
           >
             Change this
           </button>
           <button
             type="button"
             onClick={() => setShowAsk(true)}
-            className="min-h-[44px] px-3 py-2 rounded text-sm font-ui font-medium border border-border text-text-body hover:bg-surface-raised transition-colors"
+            className="min-h-11 px-3 py-2 rounded text-sm font-ui font-medium border border-border text-text-body hover:bg-surface-raised transition-colors"
           >
             Ask Claude
           </button>
