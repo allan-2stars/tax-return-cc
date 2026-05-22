@@ -78,5 +78,9 @@ describe('InlineQuestion', () => {
     fireEvent.click(screen.getByRole('button', { name: 'yes' }))
     expect(screen.getByRole('button', { name: 'yes' })).toBeDisabled()
     resolve()
+    // wait for component to finish processing (moves to next question or renders null)
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'yes' })).not.toBeInTheDocument()
+    )
   })
 })

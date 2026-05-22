@@ -19,10 +19,13 @@ export default function InlineQuestion({ questions, onAnswer }: InlineQuestionPr
   async function submit(answer: string) {
     if (!answer.trim() || pending) return
     setPending(true)
-    await onAnswer(nextQuestion!.id, answer)
-    setAnsweredIds((prev) => new Set([...prev, nextQuestion!.id]))
-    setTextValue('')
-    setPending(false)
+    try {
+      await onAnswer(nextQuestion!.id, answer)
+      setAnsweredIds((prev) => new Set([...prev, nextQuestion!.id]))
+      setTextValue('')
+    } finally {
+      setPending(false)
+    }
   }
 
   return (
