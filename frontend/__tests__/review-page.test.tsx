@@ -50,7 +50,7 @@ describe('ReviewPage', () => {
   })
 
   it('shows all-done empty state when pending is 0 and total is 0', async () => {
-    mockGetReviewQueue.mockResolvedValue({ data: emptyQueue })
+    mockGetReviewQueue.mockResolvedValue({ data: { data: emptyQueue } })
     wrap(<ReviewPage />)
     await waitFor(() =>
       expect(screen.getByText(/no items to review yet/i)).toBeInTheDocument()
@@ -70,7 +70,7 @@ describe('ReviewPage', () => {
       total: 2,
       pending: 2,
     }
-    mockGetReviewQueue.mockResolvedValue({ data: queue })
+    mockGetReviewQueue.mockResolvedValue({ data: { data: queue } })
     wrap(<ReviewPage />)
     await waitFor(() => expect(screen.getAllByTestId('review-card')).toHaveLength(2))
     expect(screen.getByText('Work laptop')).toBeInTheDocument()
@@ -87,7 +87,7 @@ describe('ReviewPage', () => {
       total: 1,
       pending: 1,
     }
-    mockGetReviewQueue.mockResolvedValue({ data: queue })
+    mockGetReviewQueue.mockResolvedValue({ data: { data: queue } })
     wrap(<ReviewPage />)
     await waitFor(() =>
       expect(screen.getByText(/agent review/i)).toBeInTheDocument()
@@ -109,7 +109,7 @@ describe('ReviewPage', () => {
       total: 3,
       pending: 3,
     }
-    mockGetReviewQueue.mockResolvedValue({ data: queue })
+    mockGetReviewQueue.mockResolvedValue({ data: { data: queue } })
     wrap(<ReviewPage />)
     await waitFor(() =>
       expect(screen.getByText(/3 items? to review/i)).toBeInTheDocument()

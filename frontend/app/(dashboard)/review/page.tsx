@@ -22,7 +22,7 @@ export default function ReviewPage() {
 
   const { data: queue, isLoading, isError } = useQuery<ReviewQueue>({
     queryKey: ['review-queue'],
-    queryFn: () => getReviewQueue().then((r) => r.data),
+    queryFn: () => getReviewQueue().then((r) => r.data.data),
   })
 
   const actionMutation = useMutation({
