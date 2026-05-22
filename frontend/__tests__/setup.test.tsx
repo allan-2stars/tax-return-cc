@@ -51,7 +51,7 @@ describe('SetupPage', () => {
   it('shows step 2 — recovery key after step 1 completes', async () => {
     const user = userEvent.setup()
     ;(mockSetup as jest.Mock).mockResolvedValue({
-      data: { data: { recovery_key: RECOVERY_KEY } },
+      data: { data: { recovery_key: RECOVERY_KEY, workspace_id: 'ws-1' } },
     })
     render(<SetupPage />)
     // Navigate past step 0 FY selection
@@ -82,7 +82,7 @@ describe('SetupPage', () => {
   it("shows step 3 — confirmation input after \"I've saved it\" click", async () => {
     const user = userEvent.setup()
     ;(mockSetup as jest.Mock).mockResolvedValue({
-      data: { data: { recovery_key: RECOVERY_KEY } },
+      data: { data: { recovery_key: RECOVERY_KEY, workspace_id: 'ws-1' } },
     })
     render(<SetupPage />)
     // Navigate past step 0 FY selection
@@ -100,7 +100,7 @@ describe('SetupPage', () => {
   it('step 3 confirms and redirects to /journey on success', async () => {
     const user = userEvent.setup()
     ;(mockSetup as jest.Mock).mockResolvedValue({
-      data: { data: { recovery_key: RECOVERY_KEY } },
+      data: { data: { recovery_key: RECOVERY_KEY, workspace_id: 'ws-1' } },
     })
     ;(mockSetupConfirm as jest.Mock).mockResolvedValue({})
     render(<SetupPage />)
