@@ -1,9 +1,11 @@
 'use client'
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { bulkAction, getReviewQueue, submitInlineAnswer, takeAction } from '@/lib/api/review'
 import type { ReviewItem, ReviewQueue } from '@/lib/api/types'
 import ReviewCard from '@/components/review/ReviewCard'
 import BulkActionBar from '@/components/review/BulkActionBar'
+import ManualEntryForm from '@/components/review/ManualEntryForm'
 
 function findGroups(items: ReviewItem[]): Map<string, { ids: string[]; label: string }> {
   const groups = new Map<string, { ids: string[]; label: string }>()
@@ -19,6 +21,7 @@ function findGroups(items: ReviewItem[]): Map<string, { ids: string[]; label: st
 
 export default function ReviewPage() {
   const queryClient = useQueryClient()
+  const [showManualEntry, setShowManualEntry] = useState(false)
 
   const { data: queue, isLoading, isError } = useQuery<ReviewQueue>({
     queryKey: ['review-queue'],
@@ -84,6 +87,13 @@ export default function ReviewPage() {
         ) : (
           <p className="text-sm font-ui text-ready mt-1">All caught up</p>
         )}
+        <button
+          type="button"
+          className="mt-3 text-sm font-ui text-accent underline"
+          onClick={() => setShowManualEntry(true)}
+        >
+          + Add item manually
+        </button>
       </div>
 
       {queue.pending === 0 && queue.total === 0 && (
@@ -172,6 +182,19 @@ export default function ReviewPage() {
             ))}
           </div>
         </section>
+      )}
+      {showManualEntry && (
+        <div className="fixed inset-0 z-50 bg-canvas overflow-y-auto">
+          <div className="max-w-lg mx-auto px-4 py-8">
+            <ManualEntryForm
+              onSuccess={() => {
+                setShowManualEntry(false)
+                queryClient.invalidateQueries({ queryKey: ['review-queue'] })
+              }}
+              onCancel={() => setShowManualEntry(false)}
+            />
+          </div>
+        </div>
       )}
     </div>
   )
