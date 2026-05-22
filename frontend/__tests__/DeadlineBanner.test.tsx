@@ -72,4 +72,13 @@ describe('DeadlineBanner', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(sessionStorage.getItem('deadline-banner-dismissed')).toBe('1')
   })
+
+  it('shows October lodgement warning for self-lodger with low readiness', () => {
+    setStore('2024-25', 'self_lodger')
+    mockReadiness.mockReturnValue({ data: { percentage: 60 } })
+    freezeDate('2025-06-25T00:00:00.000Z') // within terracotta zone
+    render(<DeadlineBanner />)
+    expect(screen.getByText(/31 October/i)).toBeInTheDocument()
+    expect(screen.getByText(/60%/)).toBeInTheDocument()
+  })
 })
