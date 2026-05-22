@@ -7,6 +7,8 @@ import type {
   WorkspaceListData,
   WorkspaceInfo,
   RecoveryKeyData,
+  DeleteWorkspaceResult,
+  CreateWorkspaceResult,
 } from './types'
 
 export const getAiUsage = () =>
@@ -46,3 +48,17 @@ export const listWorkspaces = () =>
 
 export const updateWorkspaceName = (id: string, name: string) =>
   client.patch<ApiResponse<WorkspaceInfo>>(`/api/v1/workspaces/${id}`, { name })
+
+export const deleteWorkspace = (id: string, password: string) =>
+  client.delete<ApiResponse<DeleteWorkspaceResult>>(`/api/v1/workspaces/${id}`, {
+    data: { password },
+  })
+
+export const archiveWorkspace = (id: string) =>
+  client.post<ApiResponse<WorkspaceInfo>>(`/api/v1/workspaces/${id}/archive`)
+
+export const createWorkspace = (name: string, financial_year: string) =>
+  client.post<ApiResponse<CreateWorkspaceResult>>('/api/v1/workspaces', {
+    name,
+    financial_year,
+  })

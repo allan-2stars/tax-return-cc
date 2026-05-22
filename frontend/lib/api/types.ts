@@ -21,6 +21,8 @@ export interface SessionData {
   workspace_id: string
   financial_year: string
   is_unlocked: boolean
+  user_lodger_type?: string | null
+  setup_confirmed?: boolean
 }
 
 export interface LoginData extends SessionData {
@@ -29,6 +31,7 @@ export interface LoginData extends SessionData {
 
 export interface SetupData {
   recovery_key: string
+  workspace_id: string
 }
 
 export interface SkillBreakdownItem {
@@ -312,6 +315,25 @@ export interface WorkspaceInfo {
 
 export interface WorkspaceListData {
   items: WorkspaceInfo[]
+}
+
+export interface DeleteWorkspaceResult {
+  redirect_to: string
+}
+
+export interface CreateWorkspaceResult extends WorkspaceInfo {
+  yoy_count: number
+}
+
+export interface TaxEstimateSummary {
+  gross_income: string
+  total_deductions: string
+  taxable_income: string
+  payg_withheld: string
+  confirmed_only: boolean
+  pending_count: number
+  ato_calculator_url: string
+  disclaimer: string
 }
 
 export interface AiUsageItem {
