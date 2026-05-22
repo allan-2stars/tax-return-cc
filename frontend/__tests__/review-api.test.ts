@@ -13,7 +13,7 @@ beforeEach(() => jest.clearAllMocks())
 
 describe('review API', () => {
   it('getReviewQueue calls GET /api/v1/review/queue', async () => {
-    mockGet.mockResolvedValue({ data: { agent_required: { items: [], count: 0 }, high_risk: { items: [], count: 0 }, needs_review: { items: [], count: 0 }, confirmed: { items: [], count: 0 }, total: 0, pending: 0 } })
+    mockGet.mockResolvedValue({ data: { data: { agent_required: { items: [], count: 0 }, high_risk: { items: [], count: 0 }, needs_review: { items: [], count: 0 }, confirmed: { items: [], count: 0 }, total: 0, pending: 0 } } })
     await reviewApi.getReviewQueue()
     expect(mockGet).toHaveBeenCalledWith('/api/v1/review/queue')
   })

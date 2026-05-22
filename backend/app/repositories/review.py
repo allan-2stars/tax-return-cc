@@ -70,5 +70,7 @@ async def update(db: AsyncSession, item: ReviewItem) -> ReviewItem:
         .where(ReviewItem.id == item.id)
         .options(selectinload(ReviewItem.tax_event))
     )
-    refreshed = result.scalar_one()
+    refreshed = result.scalar_one_or_none()
+    if refreshed is None:
+        raise ValueError(f"ReviewItem {item.id} not found after update")
     return _normalize_datetimes(refreshed)
