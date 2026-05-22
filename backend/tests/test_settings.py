@@ -246,6 +246,14 @@ async def test_patch_workspace_wrong_id_returns_403(auth_client):
 
 
 @pytest.mark.asyncio
+async def test_is_unlocked_false_when_no_unlock_session(auth_client):
+    """is_unlocked must be False when no unlock session has been created."""
+    res = await auth_client.get("/api/v1/auth/session")
+    assert res.status_code == 200
+    assert res.json()["data"]["is_unlocked"] is False
+
+
+@pytest.mark.asyncio
 async def test_session_returns_data_wrapper(auth_client):
     res = await auth_client.get("/api/v1/auth/session")
     assert res.status_code == 200

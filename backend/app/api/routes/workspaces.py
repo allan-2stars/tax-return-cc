@@ -15,6 +15,10 @@ from app.repositories import auth as auth_repo
 router = APIRouter()
 
 
+def _cookie_secure() -> bool:
+    return settings.ENVIRONMENT == "production"
+
+
 class UpdateWorkspaceRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
 
@@ -142,7 +146,7 @@ async def delete_workspace(
             sign_session(other.id),
             max_age=max_age,
             httponly=True,
-            secure=settings.ENVIRONMENT != "development",
+            secure=_cookie_secure(),
             samesite="strict",
             path="/",
         )

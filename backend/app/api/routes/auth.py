@@ -36,8 +36,12 @@ async def _workspace_session_data(db: AsyncSession, workspace_id: str) -> dict:
 
     sec = await auth_repo.get_security(db, workspace_id)
     setup_confirmed = sec.setup_confirmed if sec else False
+    now = datetime.now(timezone.utc)
     is_unlocked = bool(
-        sec and sec.unlock_session_token and sec.unlock_session_expires
+        sec
+        and sec.unlock_session_token
+        and sec.unlock_session_expires
+        and sec.unlock_session_expires > now
     )
 
     profile_row = await db.execute(
