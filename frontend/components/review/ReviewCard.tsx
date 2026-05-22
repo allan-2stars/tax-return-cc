@@ -45,8 +45,7 @@ export default function ReviewCard({ item, onAction, onInlineAnswer }: ReviewCar
   const [newSkillPending, setNewSkillPending] = useState(false)
 
   const borderClass = getBorderClass(item)
-  const actionsLocked = !item.questions_complete
-  const lockClass = actionsLocked ? 'opacity-50 pointer-events-none' : ''
+  const lockClass = !item.questions_complete ? 'opacity-50 pointer-events-none' : ''
 
   const displayAmount = item.amended_amount ?? item.amount
   const displayCategory = item.amended_category ?? item.category
@@ -64,6 +63,7 @@ export default function ReviewCard({ item, onAction, onInlineAnswer }: ReviewCar
 
   function handleConfirm() {
     setConfirmed(true)
+    setShowAmend(false)
     onAction(item.id, 'confirmed', {})
   }
 
