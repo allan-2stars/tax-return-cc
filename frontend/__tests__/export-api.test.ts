@@ -33,4 +33,32 @@ describe('export API', () => {
     await exportApi.getExportHistory()
     expect(mockGet).toHaveBeenCalledWith('/api/v1/export/history')
   })
+  it('downloadExport fetches blob and triggers anchor download', async () => {
+    const fakeBlob = new Blob(['zip content'])
+    mockGet.mockResolvedValue({
+      data: fakeBlob,
+      headers: { 'content-disposition': 'attachment; filename="review-package-2024-25-abc12345.zip"' },
+    })
+
+    const mockUrl = 'blob:http://localhost/fake'
+    const createObjectURL = jest.fn().mockReturnValue(mockUrl)
+    const revokeObjectURL = jest.fn()
+    Object.defineProperty(globalThis, 'URL', {
+      value: { createObjectURL, revokeObjectURL },
+      writable: true,
+    })
+
+    const clickSpy = jest.fn()
+    const mockAnchor = { href: '', download: '', click: clickSpy }
+    jest.spyOn(document, 'createElement').mockReturnValueOnce(mockAnchor as unknown as HTMLAnchorElement)
+
+    await exportApi.downloadExport('e-1')
+
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/export/e-1/download', { responseType: 'blob' })
+    expect(mockAnchor.download).toBe('review-package-2024-25-abc12345.zip')
+    expect(clickSpy).toHaveBeenCalledTimes(1)
+    expect(revokeObjectURL).toHaveBeenCalledWith(mockUrl)
+
+    jest.restoreAllMocks()
+  })
 })
