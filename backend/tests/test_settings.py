@@ -335,3 +335,70 @@ async def test_delete_workspace_forbidden_for_other(auth_client):
         json={"password": TEST_PASSWORD},
     )
     assert res.status_code == 403
+
+
+# ── create workspace ────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_create_workspace_success(auth_client):
+    res = await auth_client.post(
+        "/api/v1/workspaces",
+        json={"name": "FY 2025-26", "financial_year": "2025-26"},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert body["data"]["financial_year"] == "2025-26"
+    assert body["data"]["name"] == "FY 2025-26"
+    assert "yoy_count" in body["data"]
+    assert body["data"]["yoy_count"] == 0  # no prior FY workspace exists
+
+
+@pytest.mark.asyncio
+async def test_create_workspace_duplicate_fy_rejected(auth_client, workspace_id):
+    res = await auth_client.post(
+        "/api/v1/workspaces",
+        json={"name": "Dupe", "financial_year": "2024-25"},
+    )
+    assert res.status_code == 409
+    assert res.json()["detail"]["error_code"] == "already_exists"
+
+
+@pytest.mark.asyncio
+async def test_create_workspace_invalid_fy_format(auth_client):
+    res = await auth_client.post(
+        "/api/v1/workspaces",
+        json={"name": "Bad FY", "financial_year": "2025"},
+    )
+    assert res.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_create_workspace_copies_taxprofile(auth_client, workspace_id, db_session):
+    from app.repositories import profiles as profiles_repo
+    profile = await profiles_repo.get_or_create(db_session, workspace_id, "2024-25")
+    await profiles_repo.update_fields(
+        db_session, profile,
+        {"employment_type": "full_time", "resident_status": "resident"}
+    )
+    res = await auth_client.post(
+        "/api/v1/workspaces",
+        json={"name": "New FY", "financial_year": "2025-26"},
+    )
+    assert res.status_code == 200
+    new_ws_id = res.json()["data"]["id"]
+    new_profile = await profiles_repo.get_by_workspace(db_session, new_ws_id)
+    assert new_profile is not None
+    assert new_profile.employment_type == "full_time"
+    assert new_profile.resident_status == "resident"
+
+
+@pytest.mark.asyncio
+async def test_create_workspace_sets_session_cookie(auth_client):
+    res = await auth_client.post(
+        "/api/v1/workspaces",
+        json={"name": "Cookie Test", "financial_year": "2025-26"},
+    )
+    assert res.status_code == 200
+    assert "session" in res.cookies

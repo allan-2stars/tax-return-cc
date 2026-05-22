@@ -19,6 +19,11 @@ def _cookie_secure() -> bool:
     return settings.ENVIRONMENT == "production"
 
 
+class CreateWorkspaceRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    financial_year: str = Field(..., pattern=r"^\d{4}-\d{2}$")
+
+
 class UpdateWorkspaceRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
 
@@ -34,6 +39,72 @@ def _ws_dict(ws: Workspace, readiness_pct: float) -> dict:
         "financial_year": ws.financial_year,
         "status": ws.status,
         "readiness_pct": readiness_pct,
+    }
+
+
+@router.post("/workspaces")
+async def create_workspace(
+    body: CreateWorkspaceRequest,
+    response: Response,
+    workspace_id: str = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.repositories import profiles as profiles_repo
+    from app.engines.yoy import YoYEngine
+
+    # 1. Check no duplicate FY
+    existing = await db.execute(
+        select(Workspace).where(Workspace.financial_year == body.financial_year)
+    )
+    if existing.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=error_response(
+                "already_exists",
+                f"A workspace for {body.financial_year} already exists.",
+                retryable=False,
+            ),
+        )
+
+    # 2. Create workspace
+    new_ws = Workspace(name=body.name, financial_year=body.financial_year, status="active")
+    db.add(new_ws)
+    await db.commit()
+    await db.refresh(new_ws)
+
+    # 3. Copy TaxProfile basics from current workspace
+    current_profile = await profiles_repo.get_by_workspace(db, workspace_id)
+    new_profile = await profiles_repo.get_or_create(db, new_ws.id, body.financial_year)
+    if current_profile:
+        copy_keys = [
+            "employment_type", "resident_status", "user_lodger_type",
+            "has_wfh", "has_investments", "has_crypto", "has_property",
+            "has_private_health", "has_sole_trader", "has_spouse", "has_dependents",
+        ]
+        await profiles_repo.update_fields(
+            db, new_profile, {k: getattr(current_profile, k) for k in copy_keys}
+        )
+
+    # 4. Trigger YoY suggestions (graceful no-op if no prior FY workspace)
+    yoy = YoYEngine()
+    suggestions = await yoy.generate_suggestions(new_ws.id, db)
+
+    # 5. Re-issue session cookie pointing to the new workspace
+    max_age = settings.SESSION_MAX_AGE_DAYS * 86400
+    response.set_cookie(
+        "session",
+        sign_session(new_ws.id),
+        max_age=max_age,
+        httponly=True,
+        secure=_cookie_secure(),
+        samesite="strict",
+        path="/",
+    )
+
+    # 6. Return
+    return {
+        "data": {**_ws_dict(new_ws, 0.0), "yoy_count": len(suggestions)},
+        "status": "ok",
     }
 
 
