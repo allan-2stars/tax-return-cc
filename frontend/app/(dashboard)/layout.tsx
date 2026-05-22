@@ -1,8 +1,9 @@
 // frontend/app/(dashboard)/layout.tsx
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import {
   Map,
   BarChart2,
@@ -18,6 +19,8 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/lib/hooks/useAuth'
 import useWorkspaceStore from '@/lib/stores/workspace.store'
+import NewFYModal from '@/components/settings/NewFYModal'
+import type { CreateWorkspaceResult } from '@/lib/api/types'
 
 interface NavItem {
   label: string
@@ -73,9 +76,17 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const pathname = usePathname()
-  const { financialYear } = useWorkspaceStore()
+  const router = useRouter()
+  const { financialYear, setWorkspace } = useWorkspaceStore()
+  const [showNewFY, setShowNewFY] = useState(false)
 
   useAuth()
+
+  function handleNewFYSuccess(ws: CreateWorkspaceResult) {
+    setWorkspace(ws.id, ws.financial_year)
+    setShowNewFY(false)
+    router.push('/journey')
+  }
 
   return (
     <div className="flex min-h-screen bg-canvas">
@@ -94,6 +105,7 @@ export default function DashboardLayout({
             <button
               type="button"
               className="font-ui text-xs text-text-muted hover:text-text-body flex items-center gap-1"
+              onClick={() => setShowNewFY(true)}
             >
               FY {financialYear} ▾
             </button>
@@ -146,6 +158,14 @@ export default function DashboardLayout({
           )
         })}
       </nav>
+
+      {showNewFY && financialYear && (
+        <NewFYModal
+          currentFY={financialYear}
+          onSuccess={handleNewFYSuccess}
+          onCancel={() => setShowNewFY(false)}
+        />
+      )}
     </div>
   )
 }

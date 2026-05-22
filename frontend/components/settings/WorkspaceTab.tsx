@@ -1,155 +1,150 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { listWorkspaces, updateWorkspaceName } from '@/lib/api/settings'
+import { useRouter } from 'next/navigation'
+import {
+  listWorkspaces,
+  updateWorkspaceName,
+  archiveWorkspace,
+  deleteWorkspace,
+} from '@/lib/api/settings'
 import type { WorkspaceInfo } from '@/lib/api/types'
-import useWorkspaceStore from '@/lib/stores/workspace.store'
+import PasswordModal from './PasswordModal'
 
 export default function WorkspaceTab() {
-  const qc = useQueryClient()
-  const { workspaceId, financialYear } = useWorkspaceStore()
+  const queryClient = useQueryClient()
+  const router = useRouter()
   const [nameInput, setNameInput] = useState('')
-  const [nameSaved, setNameSaved] = useState(false)
   const [nameInitialized, setNameInitialized] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
-  const { data: wsData, isLoading } = useQuery({
-    queryKey: ['workspaces-list'],
-    queryFn: () => listWorkspaces().then((r) => r.data.data),
+  const { data: wsData } = useQuery({
+    queryKey: ['workspaces'],
+    queryFn: () =>
+      listWorkspaces().then((r) => r.data.data.items[0] as WorkspaceInfo | undefined),
   })
 
   useEffect(() => {
     if (wsData && !nameInitialized) {
-      const current = wsData.items.find((w: WorkspaceInfo) => w.id === workspaceId)
-      if (current) {
-        setNameInput(current.name)
-        setNameInitialized(true)
-      }
+      setNameInput(wsData.name)
+      setNameInitialized(true)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wsData])
+  }, [wsData, nameInitialized])
 
-  const nameMutation = useMutation({
-    mutationFn: (name: string) => updateWorkspaceName(workspaceId!, name),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['workspaces-list'] })
-      setNameSaved(true)
-      setTimeout(() => setNameSaved(false), 2000)
+  const renameMutation = useMutation({
+    mutationFn: (name: string) => updateWorkspaceName(wsData!.id, name),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workspaces'] }),
+  })
+
+  const archiveMutation = useMutation({
+    mutationFn: () => archiveWorkspace(wsData!.id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workspaces'] }),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (password: string) => deleteWorkspace(wsData!.id, password),
+    onSuccess: (res) => {
+      router.replace(res.data.data.redirect_to)
     },
   })
 
-  function handleSaveName(e: React.FormEvent) {
-    e.preventDefault()
-    nameMutation.mutate(nameInput)
+  async function handleDelete(password: string) {
+    setDeleteError(null)
+    try {
+      await deleteMutation.mutateAsync(password)
+      setShowDeleteModal(false)
+    } catch {
+      setDeleteError('Incorrect password or delete failed. Please try again.')
+    }
   }
 
+  if (!wsData) return null
+
   return (
-    <div className="space-y-8">
-      <section className="space-y-4">
-        <h2 className="font-display text-base font-semibold text-text-primary">
-          Workspace details
-        </h2>
-        <form onSubmit={handleSaveName} className="space-y-3 max-w-sm">
+    <div className="space-y-6">
+      <div>
+        <label htmlFor="ws-name" className="text-sm font-ui text-text-body block mb-1">
+          Workspace name
+        </label>
+        <div className="flex gap-3">
+          <input
+            id="ws-name"
+            type="text"
+            value={nameInput}
+            onChange={(e) => setNameInput(e.target.value)}
+            className="flex-1 rounded-md border border-border bg-surface px-3 py-2 text-sm font-ui"
+            aria-label="Workspace name"
+          />
+          <button
+            type="button"
+            disabled={renameMutation.isPending || nameInput === wsData.name}
+            onClick={() => renameMutation.mutate(nameInput)}
+            className="px-4 py-2 rounded-md bg-accent text-white text-sm font-ui disabled:opacity-50"
+          >
+            {renameMutation.isPending ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <p className="text-sm font-ui text-text-body mb-1">Financial year</p>
+        <p aria-label="Financial year (read only)" className="text-sm font-mono text-text-primary">
+          FY {wsData.financial_year}
+        </p>
+      </div>
+
+      <div className="border border-risk-high rounded-lg p-4 space-y-3">
+        <h3 className="font-ui text-sm font-semibold text-risk-high">Danger Zone</h3>
+
+        <div className="flex items-center justify-between">
           <div>
-            <label
-              htmlFor="ws-name"
-              className="text-sm font-ui text-text-body block mb-1"
-            >
-              Workspace name
-            </label>
-            <input
-              id="ws-name"
-              type="text"
-              value={nameInput}
-              onChange={(e) => setNameInput(e.target.value)}
-              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-ui"
-              aria-label="Workspace name"
-              required
-            />
-          </div>
-          <div>
-            <p className="text-sm font-ui text-text-body mb-1">Financial year</p>
-            <p
-              className="text-sm font-mono text-text-muted"
-              aria-label="Financial year (read only)"
-            >
-              {financialYear ?? '—'}
+            <p className="text-sm font-ui text-text-primary">Archive workspace</p>
+            <p className="text-xs font-ui text-text-muted">
+              Mark this FY as complete. Data is preserved.
             </p>
           </div>
           <button
-            type="submit"
-            disabled={nameMutation.isPending}
-            className="min-h-11 px-5 rounded-md bg-accent text-white text-sm font-ui font-semibold disabled:opacity-50"
-          >
-            {nameSaved ? 'Saved' : nameMutation.isPending ? 'Saving…' : 'Save'}
-          </button>
-          {nameMutation.isError && (
-            <p className="text-sm font-ui text-risk-high">Failed to save name.</p>
-          )}
-        </form>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="font-display text-base font-semibold text-text-primary">
-          All workspaces
-        </h2>
-        {isLoading ? (
-          <p className="text-sm font-ui text-text-muted">Loading…</p>
-        ) : (
-          <div className="space-y-2">
-            {wsData?.items.map((ws: WorkspaceInfo) => (
-              <div
-                key={ws.id}
-                className="flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-3"
-              >
-                <div>
-                  <p className="font-ui font-semibold text-text-primary text-sm">
-                    FY {ws.financial_year}
-                  </p>
-                  <p className="text-xs font-ui text-text-muted">
-                    {Math.round(ws.readiness_pct)}% ready
-                  </p>
-                </div>
-                <span
-                  className={`text-xs font-ui px-2 py-0.5 rounded-full ${
-                    ws.status === 'active'
-                      ? 'bg-ready/10 text-ready'
-                      : 'bg-surface text-text-muted border border-border'
-                  }`}
-                >
-                  {ws.status === 'active' ? 'Active' : 'Complete'}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="space-y-3 border border-risk-high/30 rounded-lg p-4">
-        <h2 className="font-display text-base font-semibold text-risk-high">
-          Danger zone
-        </h2>
-        <div className="flex flex-col gap-2">
-          <button
             type="button"
-            disabled
-            title="Coming soon"
-            className="w-full max-w-xs text-left rounded-md border border-border px-4 py-2 text-sm font-ui text-text-muted opacity-50 cursor-not-allowed"
+            onClick={() => archiveMutation.mutate()}
+            disabled={archiveMutation.isPending || wsData.status === 'archived'}
+            className="px-4 py-2 rounded-md border border-risk-high text-risk-high text-sm font-ui disabled:opacity-50"
           >
-            Archive this workspace
-          </button>
-          <button
-            type="button"
-            disabled
-            title="Coming soon"
-            className="w-full max-w-xs text-left rounded-md border border-risk-high/40 px-4 py-2 text-sm font-ui text-risk-high/50 opacity-50 cursor-not-allowed"
-          >
-            Delete this workspace
+            {archiveMutation.isPending ? 'Archiving…' : 'Archive'}
           </button>
         </div>
-        <p className="text-xs font-ui text-text-muted">
-          Archive and delete actions are coming soon.
-        </p>
-      </section>
+
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-ui text-text-primary">Delete workspace</p>
+            <p className="text-xs font-ui text-text-muted">
+              Permanently removes all data. Requires your password.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowDeleteModal(true)}
+            className="px-4 py-2 rounded-md bg-risk-high text-white text-sm font-ui"
+          >
+            Delete workspace
+          </button>
+        </div>
+      </div>
+
+      {showDeleteModal && (
+        <PasswordModal
+          title="Delete workspace"
+          description="Enter your password to permanently delete this workspace. This cannot be undone."
+          confirmLabel="Confirm"
+          pending={deleteMutation.isPending}
+          error={deleteError}
+          onConfirm={handleDelete}
+          onCancel={() => {
+            setShowDeleteModal(false)
+            setDeleteError(null)
+          }}
+        />
+      )}
     </div>
   )
 }
