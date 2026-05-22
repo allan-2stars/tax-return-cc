@@ -1,0 +1,115 @@
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import ExportPage from '@/app/(dashboard)/export/page'
+import * as exportApi from '@/lib/api/export'
+import type { ExportEligibility, ExportRecord } from '@/lib/api/types'
+
+jest.mock('@/lib/api/export')
+jest.mock('@/components/export/EligibilityCard', () => ({
+  default: ({ eligibility, onGenerateAnyway }: { eligibility: ExportEligibility; onGenerateAnyway: () => void }) => (
+    <div>
+      {eligibility.can_export && (
+        <button onClick={onGenerateAnyway} data-testid="generate-anyway">Generate anyway</button>
+      )}
+      {eligibility.blocking_reasons.map((r, i) => <p key={i}>{r}</p>)}
+    </div>
+  ),
+  __esModule: true,
+}))
+jest.mock('@/components/export/ExportHistoryCard', () => ({
+  default: ({ record }: { record: ExportRecord }) => (
+    <div data-testid={`history-${record.id}`}>{record.status}</div>
+  ),
+  __esModule: true,
+}))
+jest.mock('@/components/shared/Disclaimer', () => ({
+  default: () => <div data-testid="disclaimer" />,
+  __esModule: true,
+}))
+
+const mockGetEligibility = exportApi.getEligibility as jest.Mock
+const mockGenerateExport = exportApi.generateExport as jest.Mock
+const mockGetExportStatus = exportApi.getExportStatus as jest.Mock
+const mockGetExportHistory = exportApi.getExportHistory as jest.Mock
+
+const readyEligibility: ExportEligibility = { can_export: true, blocking_reasons: [], warnings: [] }
+const emptyHistory: ExportRecord[] = []
+
+function wrap(ui: React.ReactElement) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>)
+}
+
+beforeEach(() => {
+  jest.clearAllMocks()
+  mockGetExportHistory.mockResolvedValue({ data: { data: emptyHistory } })
+})
+
+describe('ExportPage', () => {
+  it('clears password field immediately after generate', async () => {
+    mockGetEligibility.mockResolvedValue({ data: { data: readyEligibility } })
+    mockGenerateExport.mockResolvedValue({
+      data: { data: { export_id: 'exp-1', status: 'generating', warnings: [] } },
+    })
+    mockGetExportStatus.mockReturnValue(new Promise(() => {}))
+
+    wrap(<ExportPage />)
+    await waitFor(() => screen.getByLabelText(/export password/i))
+
+    fireEvent.change(screen.getByLabelText(/export password/i), {
+      target: { value: 'mysecret123' },
+    })
+    expect(screen.getByLabelText(/export password/i)).toHaveValue('mysecret123')
+
+    fireEvent.click(screen.getByRole('button', { name: /generate review pack/i }))
+
+    await waitFor(() =>
+      expect(screen.queryByLabelText(/export password/i)).not.toBeInTheDocument()
+    )
+    expect(mockGenerateExport).toHaveBeenCalledWith('mysecret123')
+  })
+
+  it('polls status until ready then shows download button', async () => {
+    jest.useFakeTimers()
+    mockGetEligibility.mockResolvedValue({ data: { data: readyEligibility } })
+    mockGenerateExport.mockResolvedValue({
+      data: { data: { export_id: 'exp-2', status: 'generating', warnings: [] } },
+    })
+    mockGetExportStatus
+      .mockResolvedValueOnce({
+        data: {
+          data: {
+            id: 'exp-2', workspace_id: 'ws-1', financial_year: '2024-25',
+            status: 'generating', readiness_pct: 80, confirmed_count: 5,
+            review_count: 1, agent_count: 0, missing_count: 0,
+            file_size_bytes: null, expires_at: null, created_at: null,
+          },
+        },
+      })
+      .mockResolvedValue({
+        data: {
+          data: {
+            id: 'exp-2', workspace_id: 'ws-1', financial_year: '2024-25',
+            status: 'ready', readiness_pct: 80, confirmed_count: 5,
+            review_count: 1, agent_count: 0, missing_count: 0,
+            file_size_bytes: 102400, expires_at: '2026-05-23T10:00:00+00:00',
+            created_at: '2026-05-22T10:00:00+00:00',
+          },
+        },
+      })
+
+    wrap(<ExportPage />)
+    await waitFor(() => screen.getByLabelText(/export password/i))
+    fireEvent.change(screen.getByLabelText(/export password/i), { target: { value: 'pass' } })
+    fireEvent.click(screen.getByRole('button', { name: /generate review pack/i }))
+
+    await waitFor(() => screen.getByTestId('generating-spinner'))
+
+    await act(async () => {
+      jest.advanceTimersByTime(2100)
+    })
+
+    await waitFor(() => screen.getByText(/download now/i))
+    jest.useRealTimers()
+  })
+})
