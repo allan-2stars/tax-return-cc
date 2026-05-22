@@ -51,12 +51,16 @@ describe('export API', () => {
     const clickSpy = jest.fn()
     const mockAnchor = { href: '', download: '', click: clickSpy }
     jest.spyOn(document, 'createElement').mockReturnValueOnce(mockAnchor as unknown as HTMLAnchorElement)
+    const appendSpy = jest.spyOn(document.body, 'appendChild').mockReturnValueOnce(mockAnchor as unknown as HTMLAnchorElement)
+    const removeSpy = jest.spyOn(document.body, 'removeChild').mockReturnValueOnce(mockAnchor as unknown as HTMLAnchorElement)
 
     await exportApi.downloadExport('e-1')
 
     expect(mockGet).toHaveBeenCalledWith('/api/v1/export/e-1/download', { responseType: 'blob' })
     expect(mockAnchor.download).toBe('review-package-2024-25-abc12345.zip')
+    expect(appendSpy).toHaveBeenCalledWith(mockAnchor)
     expect(clickSpy).toHaveBeenCalledTimes(1)
+    expect(removeSpy).toHaveBeenCalledWith(mockAnchor)
     expect(revokeObjectURL).toHaveBeenCalledWith(mockUrl)
 
     jest.restoreAllMocks()
