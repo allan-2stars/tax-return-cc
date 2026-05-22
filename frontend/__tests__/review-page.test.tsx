@@ -38,7 +38,7 @@ describe('ReviewPage', () => {
   it('shows loading state initially', () => {
     mockGetReviewQueue.mockReturnValue(new Promise(() => {}))
     wrap(<ReviewPage />)
-    expect(screen.getByText(/loading/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/loading/i)).toBeInTheDocument()
   })
 
   it('shows error state on fetch failure', async () => {

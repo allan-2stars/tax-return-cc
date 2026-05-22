@@ -14,8 +14,20 @@ export default function ReadinessPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <p className="text-sm font-ui text-text-muted">Loading your tax readiness…</p>
+      <div className="space-y-8 animate-pulse" aria-label="Loading">
+        <div className="h-8 w-48 bg-surface rounded" />
+        <div className="bg-surface rounded-lg shadow-sm p-6 flex flex-col items-center gap-6">
+          <div className="w-40 h-40 rounded-full bg-border" />
+          <div className="w-full space-y-2">
+            <div className="h-4 bg-border rounded w-3/4" />
+            <div className="h-4 bg-border rounded w-1/2" />
+          </div>
+        </div>
+        <div className="bg-surface rounded-lg shadow-sm p-6 space-y-3">
+          <div className="h-4 bg-border rounded w-1/3" />
+          <div className="h-3 bg-border rounded" />
+          <div className="h-3 bg-border rounded w-5/6" />
+        </div>
       </div>
     )
   }

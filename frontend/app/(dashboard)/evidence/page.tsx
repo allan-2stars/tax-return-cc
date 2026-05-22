@@ -32,8 +32,12 @@ export default function EvidencePage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <p className="text-sm font-ui text-text-muted">Loading your documents…</p>
+      <div className="space-y-8 animate-pulse" aria-label="Loading">
+        <div className="h-8 w-48 bg-surface rounded" />
+        <div className="bg-surface border border-border rounded-lg h-32" />
+        {[1, 2].map((i) => (
+          <div key={i} className="bg-surface rounded-lg p-4 h-16" />
+        ))}
       </div>
     )
   }

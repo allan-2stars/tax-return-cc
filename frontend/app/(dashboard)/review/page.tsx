@@ -59,8 +59,11 @@ export default function ReviewPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <p className="text-sm font-ui text-text-muted">Loading your review queue…</p>
+      <div className="space-y-8 animate-pulse" aria-label="Loading">
+        <div className="h-8 w-32 bg-surface rounded" />
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="bg-surface rounded-lg p-4 h-20" />
+        ))}
       </div>
     )
   }

@@ -2,6 +2,10 @@
 import { render, screen } from '@testing-library/react'
 import DashboardLayout from '@/app/(dashboard)/layout'
 
+jest.mock('@/lib/api/client', () => ({
+  get: jest.fn().mockResolvedValue({ status: 200 }),
+}))
+
 jest.mock('next/navigation', () => ({
   usePathname: () => '/readiness',
   useRouter: () => ({ replace: jest.fn(), push: jest.fn() }),

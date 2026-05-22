@@ -34,7 +34,7 @@ describe('ReadinessPage', () => {
   it('shows loading state while data is fetching', () => {
     ;(mockUseReadiness as jest.Mock).mockReturnValue({ isLoading: true, data: undefined, isError: false })
     render(<ReadinessPage />)
-    expect(screen.getByText(/loading/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/loading/i)).toBeInTheDocument()
   })
 
   it('shows readiness ring with correct percentage', () => {
