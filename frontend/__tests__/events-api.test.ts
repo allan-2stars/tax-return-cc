@@ -16,10 +16,13 @@ describe('events API', () => {
     await eventsApi.createManualEvent(payload)
     expect(mockPost).toHaveBeenCalledWith('/api/v1/events/manual', payload)
   })
-  it('attachReceipt posts file as multipart', async () => {
+  it('attachReceipt posts file as multipart with correct field name', async () => {
     mockPost.mockResolvedValue({ data: { data: { document_id: 'doc-1' } } })
     const file = new File(['content'], 'receipt.pdf', { type: 'application/pdf' })
     await eventsApi.attachReceipt('evt-1', file)
-    expect(mockPost).toHaveBeenCalledWith('/api/v1/events/evt-1/attach-receipt', expect.any(FormData), { headers: { 'Content-Type': 'multipart/form-data' } })
+    const [url, body] = mockPost.mock.calls[0]
+    expect(url).toBe('/api/v1/events/evt-1/attach-receipt')
+    expect(body).toBeInstanceOf(FormData)
+    expect((body as FormData).get('file')).toBe(file)
   })
 })

@@ -9,7 +9,6 @@ export const attachReceipt = (eventId: string, file: File) => {
   form.append('file', file)
   return client.post<{ data: AttachReceiptData }>(
     `/api/v1/events/${eventId}/attach-receipt`,
-    form,
-    { headers: { 'Content-Type': 'multipart/form-data' } }
+    form
   )
 }
