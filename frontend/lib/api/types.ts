@@ -299,3 +299,50 @@ export interface CreateManualEventData {
 export interface AttachReceiptData {
   document_id: string
 }
+
+// ── Settings types ────────────────────────────────────────────────────────────
+
+export interface WorkspaceInfo {
+  id: string
+  name: string
+  financial_year: string
+  status: string
+  readiness_pct: number
+}
+
+export interface WorkspaceListData {
+  items: WorkspaceInfo[]
+}
+
+export interface AiUsageItem {
+  operation: string
+  calls: number
+  cost_usd: number
+}
+
+export interface AiUsageData {
+  ai_provider: string
+  items: AiUsageItem[]
+  total_cost_usd: number
+}
+
+export interface StorageUsageData {
+  documents_bytes: number
+  exports_bytes: number
+  db_bytes: number
+}
+
+export interface SkillInfo {
+  skill_id: string
+  version: string
+  display_name: string
+}
+
+export interface AboutData {
+  active_skills: SkillInfo[]
+  disclaimer: string
+}
+
+export interface RecoveryKeyData {
+  recovery_key: string
+}
