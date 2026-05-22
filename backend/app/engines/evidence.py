@@ -101,6 +101,58 @@ class EvidenceEngine:
         )
         return doc
 
+    async def attach_receipt(
+        self,
+        event_id: str,
+        workspace_id: str,
+        file_data: bytes,
+        filename: str,
+    ) -> object:
+        """Save file + link its Document to an existing TaxEvent. No OCR/classification."""
+        from app.repositories import events as events_repo
+
+        max_bytes = settings.MAX_FILE_SIZE_MB * 1024 * 1024
+        if len(file_data) > max_bytes:
+            raise AppError(
+                "file_too_large",
+                f"This file is too large. Maximum size is {settings.MAX_FILE_SIZE_MB}MB.",
+                retryable=False,
+            )
+
+        mime = magic.from_buffer(file_data, mime=True)
+        if mime not in _ALLOWED_MIME:
+            raise AppError(
+                "unsupported_format",
+                "This file format isn't supported.",
+                retryable=False,
+            )
+        file_type = _ALLOWED_MIME[mime]
+
+        sha256 = hashlib.sha256(file_data).hexdigest()
+
+        document_id = str(uuid.uuid4())
+        orig_ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else file_type
+        storage_key = f"{workspace_id}/{document_id}/original.{orig_ext}"
+        self.storage.save(storage_key, file_data)
+
+        doc = await doc_repo.create(
+            self._db,
+            id=document_id,
+            workspace_id=workspace_id,
+            financial_year="",
+            original_filename=filename,
+            storage_key=storage_key,
+            file_type=file_type,
+            file_size_bytes=len(file_data),
+            sha256_hash=sha256,
+            extraction_method="manual_attachment",
+            status="ready",
+        )
+
+        await events_repo.attach_document(self._db, event_id, doc.id)
+
+        return doc
+
     async def extract_and_finalize(self, document_id: str) -> None:
         from app.db.models import TaxEvent
 

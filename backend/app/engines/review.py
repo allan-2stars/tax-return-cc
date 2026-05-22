@@ -117,6 +117,77 @@ class ReviewEngine:
         await db.refresh(item)
         return item
 
+    async def create_manual_event(
+        self,
+        workspace_id: str,
+        financial_year: str,
+        event_type: str,
+        category: str,
+        description: str,
+        amount: float,
+        date: str,
+        frequency: str,
+        note: str | None,
+        periods: list[dict] | None,
+        db: AsyncSession,
+    ) -> list[TaxEvent]:
+        """Create TaxEvent(s) + ReviewItem(s) for a manual entry."""
+        import uuid as _uuid
+
+        group_id = str(_uuid.uuid4()) if frequency == "monthly" and periods else None
+
+        if frequency == "monthly" and periods:
+            total_amount = sum(p["months"] * p["amount_per_month"] for p in periods)
+            n = len(periods)
+            group_display = (
+                f"{description} · {n} period{'s' if n != 1 else ''} · ${total_amount:.2f} total"
+            )
+            created_events = []
+            for idx, period in enumerate(periods):
+                period_amount = period["months"] * period["amount_per_month"]
+                event = await events_repo.create_event(
+                    db,
+                    workspace_id=workspace_id,
+                    financial_year=financial_year,
+                    event_type=event_type,
+                    category=category,
+                    description=description,
+                    amount=period_amount,
+                    date=date,
+                    source="manual_entry",
+                    note=note,
+                    group_id=group_id,
+                    group_display=group_display,
+                    is_recurring=True,
+                    recurrence_index=idx,
+                )
+                created_events.append(event)
+        else:
+            event = await events_repo.create_event(
+                db,
+                workspace_id=workspace_id,
+                financial_year=financial_year,
+                event_type=event_type,
+                category=category,
+                description=description,
+                amount=amount,
+                date=date,
+                source="manual_entry",
+                note=note,
+                group_id=None,
+                group_display=None,
+                is_recurring=False,
+                recurrence_index=None,
+            )
+            created_events = [event]
+
+        for event in created_events:
+            await self.create_review_item(event, db)
+
+        asyncio.create_task(self._readiness_engine.recalculate(workspace_id))
+
+        return created_events
+
     # ── queue ─────────────────────────────────────────────────────────────────
 
     async def get_queue(
