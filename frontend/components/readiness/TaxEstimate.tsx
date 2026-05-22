@@ -2,7 +2,7 @@ import type { TaxEstimateSummary } from '@/lib/api/types'
 
 function fmt(value: string): string {
   const n = parseFloat(value)
-  if (isNaN(n)) return value
+  if (isNaN(n)) return '—'
   return `$${Math.round(n).toLocaleString('en-AU')}`
 }
 

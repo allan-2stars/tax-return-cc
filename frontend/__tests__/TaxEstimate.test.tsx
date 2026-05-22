@@ -38,5 +38,6 @@ describe('TaxEstimate', () => {
     const link = screen.getByRole('link', { name: /ato/i })
     expect(link).toHaveAttribute('href', 'https://www.ato.gov.au/calculators')
     expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
   })
 })

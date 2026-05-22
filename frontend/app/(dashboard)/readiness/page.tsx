@@ -10,11 +10,9 @@ import { useReadiness } from '@/lib/hooks/useReadiness'
 import { getEstimatorSummary } from '@/lib/api/estimator'
 import useWorkspaceStore from '@/lib/stores/workspace.store'
 import { getFYEndLabel, isFYActive } from '@/lib/utils/fy'
-import type { TaxEstimateSummary } from '@/lib/api/types'
-
 export default function ReadinessPage() {
   const { data, isLoading, isError } = useReadiness()
-  const { data: estimate, isLoading: estimateLoading } = useQuery<TaxEstimateSummary>({
+  const { data: estimate, isLoading: estimateLoading } = useQuery({
     queryKey: ['tax-estimate'],
     queryFn: () => getEstimatorSummary().then((r) => r.data.data),
   })
