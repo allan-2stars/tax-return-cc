@@ -35,10 +35,22 @@ describe('auth API', () => {
     expect(mockGet).toHaveBeenCalledWith('/api/v1/auth/session')
   })
 
-  it('setup POSTs to /api/v1/auth/setup with password', async () => {
+  it('setup POSTs to /api/v1/auth/setup with password and financial_year', async () => {
+    mockPost.mockResolvedValue({ data: { data: { recovery_key: 'key' } } })
+    await authApi.setup('mypassword', '2024-25')
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/auth/setup', {
+      password: 'mypassword',
+      financial_year: '2024-25',
+    })
+  })
+
+  it('setup uses default financial_year of 2024-25 when not specified', async () => {
     mockPost.mockResolvedValue({ data: { data: { recovery_key: 'key' } } })
     await authApi.setup('mypassword')
-    expect(mockPost).toHaveBeenCalledWith('/api/v1/auth/setup', { password: 'mypassword' })
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/auth/setup', {
+      password: 'mypassword',
+      financial_year: '2024-25',
+    })
   })
 
   it('setupConfirm POSTs to /api/v1/auth/setup/confirm with confirmation', async () => {

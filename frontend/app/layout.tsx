@@ -5,6 +5,7 @@ import '../styles/globals.css'
 export const metadata: Metadata = {
   title: 'Tax Return AI',
   description: 'AI-guided tax preparation workspace for Australian taxpayers',
+  manifest: '/manifest.json',
 }
 
 export default function RootLayout({

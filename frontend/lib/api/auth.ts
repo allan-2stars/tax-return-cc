@@ -11,8 +11,11 @@ export const logout = () =>
 export const getSession = () =>
   client.get<ApiResponse<SessionData>>('/api/v1/auth/session')
 
-export const setup = (password: string) =>
-  client.post<ApiResponse<SetupData>>('/api/v1/auth/setup', { password })
+export const setup = (password: string, financialYear: string = '2024-25') =>
+  client.post<ApiResponse<SetupData>>('/api/v1/auth/setup', {
+    password,
+    financial_year: financialYear,
+  })
 
 export const setupConfirm = (confirmation: string) =>
   client.post('/api/v1/auth/setup/confirm', { confirmation })

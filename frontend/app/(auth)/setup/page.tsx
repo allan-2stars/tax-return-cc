@@ -6,8 +6,9 @@ import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { Eye, EyeOff, Copy, Download, Check } from 'lucide-react'
 import { setup, setupConfirm } from '@/lib/api/auth'
+import useWorkspaceStore from '@/lib/stores/workspace.store'
 
-type Step = 1 | 2 | 3
+type Step = 0 | 1 | 2 | 3
 
 interface PasswordForm {
   password: string
@@ -36,13 +37,32 @@ const strengthColor: Record<number, string> = {
   3: 'bg-ready',
 }
 
+function getCurrentFY(): string {
+  const now = new Date()
+  const year = now.getFullYear()
+  return now.getMonth() >= 6
+    ? `${year}-${String(year + 1).slice(-2)}`
+    : `${year - 1}-${String(year).slice(-2)}`
+}
+
+function shiftFY(fy: string, delta: number): string {
+  const start = parseInt(fy.split('-')[0]) + delta
+  return `${start}-${String(start + 1).slice(-2)}`
+}
+
 export default function SetupPage() {
   const router = useRouter()
-  const [step, setStep] = useState<Step>(1)
+  const { setWorkspace } = useWorkspaceStore()
+  const [step, setStep] = useState<Step>(0)
+  const [selectedFY, setSelectedFY] = useState(getCurrentFY())
+  const [setupWorkspaceId, setSetupWorkspaceId] = useState('')
   const [recoveryKey, setRecoveryKey] = useState('')
   const [copied, setCopied] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
+
+  const currentFY = getCurrentFY()
+  const fyOptions = [currentFY, shiftFY(currentFY, -1), shiftFY(currentFY, -2)]
 
   const {
     register: registerPw,
@@ -67,7 +87,8 @@ export default function SetupPage() {
     }
     setServerError(null)
     try {
-      const res = await setup(password)
+      const res = await setup(password, selectedFY)
+      setSetupWorkspaceId(res.data.data.workspace_id ?? '')
       setRecoveryKey(res.data.data.recovery_key)
       setStep(2)
     } catch (err: unknown) {
@@ -82,6 +103,7 @@ export default function SetupPage() {
     setServerError(null)
     try {
       await setupConfirm(confirmation)
+      setWorkspace(setupWorkspaceId, selectedFY)
       router.push('/journey')
     } catch (err: unknown) {
       const msg = (
@@ -117,17 +139,44 @@ export default function SetupPage() {
           Tax Return AI
         </h1>
 
-        {/* Step progress bar */}
-        <div className="flex gap-2 mb-8">
-          {([1, 2, 3] as Step[]).map((s) => (
-            <div
-              key={s}
-              className={`h-1 flex-1 rounded-full ${
-                s <= step ? 'bg-accent' : 'bg-border'
-              }`}
-            />
-          ))}
-        </div>
+        {/* Step progress bar — steps 1-3 shown, step 0 is pre-flow */}
+        {step > 0 && (
+          <div className="flex gap-2 mb-8">
+            {([1, 2, 3] as const).map((s) => (
+              <div
+                key={s}
+                className={`h-1 flex-1 rounded-full ${
+                  s <= step ? 'bg-accent' : 'bg-border'
+                }`}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* ── Step 0: Select financial year ── */}
+        {step === 0 && (
+          <div className="space-y-4">
+            <h2 className="font-ui text-xl font-semibold text-text-primary">
+              Which financial year are you preparing?
+            </h2>
+            <div className="space-y-2">
+              {fyOptions.map((fy) => (
+                <button
+                  key={fy}
+                  type="button"
+                  onClick={() => { setSelectedFY(fy); setStep(1) }}
+                  className={`w-full text-left px-4 py-3 rounded-md border font-ui text-sm font-medium transition-colors ${
+                    selectedFY === fy
+                      ? 'border-accent text-accent'
+                      : 'border-border text-text-body hover:border-accent'
+                  }`}
+                >
+                  FY {fy}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ── Step 1: Set password ── */}
         {step === 1 && (
