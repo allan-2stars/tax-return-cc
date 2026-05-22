@@ -95,3 +95,47 @@ async def test_regenerate_recovery_key_old_key_invalid(auth_client):
         },
     )
     assert recover_resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_change_password_clears_unlock_session(auth_client, db_session):
+    # First unlock to set the token
+    await auth_client.post("/api/v1/auth/unlock", json={"password": TEST_PASSWORD})
+
+    from app.repositories import auth as auth_repo
+    ws_before = await auth_repo.get_security(db_session, auth_client.workspace_id)
+    assert ws_before.unlock_session_token is not None
+
+    await auth_client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": TEST_PASSWORD, "new_password": "new-secure-pw-1"},
+    )
+
+    # Refresh from DB
+    await db_session.refresh(ws_before)
+    assert ws_before.unlock_session_token is None
+    assert ws_before.unlock_session_expires is None
+
+
+@pytest.mark.asyncio
+async def test_regenerate_recovery_key_dek_unchanged(auth_client, db_session):
+    """DEK bytes are preserved — only the key wrapping changes."""
+    from app.repositories import auth as auth_repo
+    from app.security import decrypt_dek, normalize_recovery_key
+
+    # Get DEK under original password before regeneration
+    ws = await auth_repo.get_security(db_session, auth_client.workspace_id)
+    original_dek = decrypt_dek(ws.password_encrypted_dek, TEST_PASSWORD)
+
+    resp = await auth_client.post(
+        "/api/v1/auth/recovery-key/regenerate",
+        json={"password": TEST_PASSWORD},
+    )
+    assert resp.status_code == 200
+    new_key = resp.json()["data"]["recovery_key"]
+
+    # Refresh and verify DEK via the NEW recovery key
+    await db_session.refresh(ws)
+    normalized = normalize_recovery_key(new_key)
+    new_dek = decrypt_dek(ws.recovery_encrypted_dek, normalized)
+    assert new_dek == original_dek

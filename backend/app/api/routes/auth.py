@@ -283,7 +283,12 @@ async def change_password(
     new_hash = bcrypt.hashpw(body.new_password.encode(), bcrypt.gensalt(rounds=12)).decode()
     new_encrypted_dek = encrypt_dek(dek, body.new_password)
     await auth_repo.update_security(
-        db, ws, password_hash=new_hash, password_encrypted_dek=new_encrypted_dek
+        db,
+        ws,
+        password_hash=new_hash,
+        password_encrypted_dek=new_encrypted_dek,
+        unlock_session_token=None,
+        unlock_session_expires=None,
     )
     return {"status": "ok"}
 
@@ -316,7 +321,7 @@ async def regenerate_recovery_key(
         recovery_encrypted_dek=encrypt_dek(dek, normalized),
         recovery_confirm_hash=bcrypt.hashpw(last_8.encode(), bcrypt.gensalt(rounds=12)).decode(),
     )
-    return {"data": {"recovery_key": new_key}}
+    return {"data": {"recovery_key": new_key}, "status": "ok"}
 
 
 @router.post("/auth/setup/confirm")
