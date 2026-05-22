@@ -131,7 +131,9 @@ async def test_logout_clears_both_cookies(auth_client):
 async def test_session_endpoint_authenticated(auth_client):
     resp = await auth_client.get("/api/v1/auth/session")
     assert resp.status_code == 200
-    assert resp.json()["authenticated"] is True
+    assert resp.json()["status"] == "ok"
+    assert "data" in resp.json()
+    assert "workspace_id" in resp.json()["data"]
 
 
 @pytest.mark.asyncio

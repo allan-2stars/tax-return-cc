@@ -101,3 +101,9 @@ async def auth_client(client, patch_password):
     )
     assert login_resp.status_code == 200, login_resp.text
     yield client
+
+
+@pytest_asyncio.fixture
+async def workspace_id(auth_client) -> str:
+    """Return the workspace_id for the current auth_client session."""
+    return auth_client.workspace_id

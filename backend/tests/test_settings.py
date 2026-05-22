@@ -240,3 +240,90 @@ async def test_patch_workspace_wrong_id_returns_403(auth_client):
         json={"name": "Hacked"},
     )
     assert resp.status_code == 403
+
+
+# ── auth response shape ────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_session_returns_data_wrapper(auth_client):
+    res = await auth_client.get("/api/v1/auth/session")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert "data" in body
+    assert "workspace_id" in body["data"]
+    assert "financial_year" in body["data"]
+    assert "is_unlocked" in body["data"]
+    assert "user_lodger_type" in body["data"]
+    assert "setup_confirmed" in body["data"]
+
+
+@pytest.mark.asyncio
+async def test_login_returns_data_wrapper(auth_client):
+    res = await auth_client.post("/api/v1/auth/login", json={"password": TEST_PASSWORD})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert "data" in body
+    assert "financial_year" in body["data"]
+    assert "is_unlocked" in body["data"]
+    assert body["data"]["financial_year"] == "2024-25"
+
+
+# ── danger zone ────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_archive_workspace_sets_status(auth_client, workspace_id):
+    res = await auth_client.post(f"/api/v1/workspaces/{workspace_id}/archive")
+    assert res.status_code == 200
+    assert res.json()["data"]["status"] == "archived"
+
+
+@pytest.mark.asyncio
+async def test_archive_workspace_forbidden_for_other(auth_client):
+    res = await auth_client.post("/api/v1/workspaces/other-ws-id/archive")
+    assert res.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_delete_workspace_success(auth_client, workspace_id):
+    res = await auth_client.request(
+        "DELETE",
+        f"/api/v1/workspaces/{workspace_id}",
+        json={"password": TEST_PASSWORD},
+    )
+    assert res.status_code == 200
+    assert "redirect_to" in res.json()["data"]
+
+
+@pytest.mark.asyncio
+async def test_delete_workspace_wrong_password(auth_client, workspace_id):
+    res = await auth_client.request(
+        "DELETE",
+        f"/api/v1/workspaces/{workspace_id}",
+        json={"password": "wrongpassword"},
+    )
+    assert res.status_code == 400
+    assert res.json()["detail"]["error_code"] == "invalid_password"
+
+
+@pytest.mark.asyncio
+async def test_delete_workspace_no_other_workspaces_redirects_setup(auth_client, workspace_id):
+    res = await auth_client.request(
+        "DELETE",
+        f"/api/v1/workspaces/{workspace_id}",
+        json={"password": TEST_PASSWORD},
+    )
+    assert res.json()["data"]["redirect_to"] == "/setup"
+
+
+@pytest.mark.asyncio
+async def test_delete_workspace_forbidden_for_other(auth_client):
+    res = await auth_client.request(
+        "DELETE",
+        "/api/v1/workspaces/other-ws-id",
+        json={"password": TEST_PASSWORD},
+    )
+    assert res.status_code == 403

@@ -5,10 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import select
+
 from app.api.dependencies import require_auth, require_session, sign_session, sign_unlock_session
 from app.config import settings
 from app.db.base import get_db
-from app.db.models import Workspace
+from app.db.models import TaxProfile, Workspace
 from app.errors import error_response
 from app.repositories import auth as auth_repo
 from app.security import (
@@ -25,6 +27,32 @@ router = APIRouter()
 
 def _cookie_secure() -> bool:
     return settings.ENVIRONMENT == "production"
+
+
+async def _workspace_session_data(db: AsyncSession, workspace_id: str) -> dict:
+    """Build the standard session data dict returned by login and session endpoints."""
+    ws = await db.get(Workspace, workspace_id)
+    financial_year = ws.financial_year if ws else "unknown"
+
+    sec = await auth_repo.get_security(db, workspace_id)
+    setup_confirmed = sec.setup_confirmed if sec else False
+    is_unlocked = bool(
+        sec and sec.unlock_session_token and sec.unlock_session_expires
+    )
+
+    profile_row = await db.execute(
+        select(TaxProfile).where(TaxProfile.workspace_id == workspace_id).limit(1)
+    )
+    profile = profile_row.scalar_one_or_none()
+    user_lodger_type = (profile.user_lodger_type if profile and profile.user_lodger_type else "unknown")
+
+    return {
+        "workspace_id": workspace_id,
+        "financial_year": financial_year,
+        "is_unlocked": is_unlocked,
+        "user_lodger_type": user_lodger_type,
+        "setup_confirmed": setup_confirmed,
+    }
 
 
 class LoginRequest(BaseModel):
@@ -108,7 +136,8 @@ async def login(
         samesite="strict",
         path="/",
     )
-    return {"status": "ok", "workspace_id": workspace_id_for_session}
+    data = await _workspace_session_data(db, workspace_id_for_session)
+    return {"status": "ok", "data": data}
 
 
 @router.post("/auth/logout")
@@ -119,8 +148,12 @@ async def logout(response: Response):
 
 
 @router.get("/auth/session")
-async def session_status(workspace_id: str = Depends(require_auth)):
-    return {"authenticated": True, "workspace_id": workspace_id}
+async def session_status(
+    workspace_id: str = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    data = await _workspace_session_data(db, workspace_id)
+    return {"data": data, "status": "ok"}
 
 
 @router.post("/auth/setup")
