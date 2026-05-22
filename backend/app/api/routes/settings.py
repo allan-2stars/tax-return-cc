@@ -76,8 +76,9 @@ async def get_storage_usage(workspace_id: str = Depends(require_auth)):
             pass
         return total
 
-    documents_bytes = _dir_bytes(os.path.join(settings.STORAGE_PATH, workspace_id))
-    exports_bytes = _dir_bytes(os.path.join(settings.EXPORT_PATH, workspace_id))
+    safe_ws = os.path.basename(workspace_id)
+    documents_bytes = _dir_bytes(os.path.join(settings.STORAGE_PATH, safe_ws))
+    exports_bytes = _dir_bytes(os.path.join(settings.EXPORT_PATH, safe_ws))
 
     db_bytes = 0
     db_path = settings.DATABASE_URL.replace("sqlite+aiosqlite:////", "/")
@@ -126,7 +127,6 @@ async def get_diagnostic_log(
         "event_count": event_count,
         "active_skills": skills,
         "ai_provider": settings.AI_PROVIDER,
-        "environment": settings.ENVIRONMENT,
     }
     return Response(
         content=json.dumps(payload, indent=2),
