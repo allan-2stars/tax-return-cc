@@ -50,6 +50,15 @@ class ConfirmSetupRequest(BaseModel):
     confirmation: str  # last 8 chars formatted as "XXXX-XXXX"
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(..., min_length=8)
+
+
+class RecoveryKeyPasswordRequest(BaseModel):
+    password: str
+
+
 @router.post("/auth/login")
 async def login(
     body: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)
@@ -251,6 +260,63 @@ async def recover(body: RecoverRequest, db: AsyncSession = Depends(get_db)):
         password_encrypted_dek=new_encrypted_dek,
     )
     return {"status": "ok"}
+
+
+@router.post("/auth/change-password")
+async def change_password(
+    body: ChangePasswordRequest,
+    workspace_id: str = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    ws = await auth_repo.get_security(db, workspace_id)
+    if not ws or not ws.password_hash or not ws.password_encrypted_dek:
+        raise HTTPException(
+            status_code=404,
+            detail=error_response("workspace_not_found", "Workspace not found.", retryable=False),
+        )
+    if not bcrypt.checkpw(body.current_password.encode(), ws.password_hash.encode()):
+        raise HTTPException(
+            status_code=401,
+            detail=error_response("invalid_password", "Incorrect current password.", retryable=False),
+        )
+    dek = decrypt_dek(ws.password_encrypted_dek, body.current_password)
+    new_hash = bcrypt.hashpw(body.new_password.encode(), bcrypt.gensalt(rounds=12)).decode()
+    new_encrypted_dek = encrypt_dek(dek, body.new_password)
+    await auth_repo.update_security(
+        db, ws, password_hash=new_hash, password_encrypted_dek=new_encrypted_dek
+    )
+    return {"status": "ok"}
+
+
+@router.post("/auth/recovery-key/regenerate")
+async def regenerate_recovery_key(
+    body: RecoveryKeyPasswordRequest,
+    workspace_id: str = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    ws = await auth_repo.get_security(db, workspace_id)
+    if not ws or not ws.password_hash or not ws.password_encrypted_dek:
+        raise HTTPException(
+            status_code=404,
+            detail=error_response("workspace_not_found", "Workspace not found.", retryable=False),
+        )
+    if not bcrypt.checkpw(body.password.encode(), ws.password_hash.encode()):
+        raise HTTPException(
+            status_code=401,
+            detail=error_response("invalid_password", "Incorrect password.", retryable=False),
+        )
+    dek = decrypt_dek(ws.password_encrypted_dek, body.password)
+    new_key = generate_recovery_key()
+    normalized = normalize_recovery_key(new_key)
+    last_8 = normalized[-8:]
+    await auth_repo.update_security(
+        db,
+        ws,
+        recovery_key_hash=bcrypt.hashpw(normalized.encode(), bcrypt.gensalt(rounds=12)).decode(),
+        recovery_encrypted_dek=encrypt_dek(dek, normalized),
+        recovery_confirm_hash=bcrypt.hashpw(last_8.encode(), bcrypt.gensalt(rounds=12)).decode(),
+    )
+    return {"data": {"recovery_key": new_key}}
 
 
 @router.post("/auth/setup/confirm")
