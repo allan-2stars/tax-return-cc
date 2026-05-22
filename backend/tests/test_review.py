@@ -487,3 +487,32 @@ async def test_evidence_engine_creates_review_item_after_tax_event(
 
     # ReviewItem should have been created for the extracted TaxEvent
     mock_review.create_review_item.assert_called_once()
+
+
+# ── group_id and group_display appear in queue response ─────────────────────
+
+@pytest.mark.asyncio
+async def test_queue_response_includes_group_id_and_group_display(workspace, db_session, profile):
+    """GET /review/queue includes group_id and group_display from linked TaxEvent."""
+    from app.engines.review import ReviewEngine
+
+    engine = ReviewEngine()
+    event = await _create_event(db_session, workspace.id, category="work_expense")
+    # Set group_id on the event directly
+    event.group_id = "grp-recurring-123"
+    event.group_display = "Monthly subscription"
+    await db_session.commit()
+    await db_session.refresh(event)
+
+    await engine.create_review_item(event, db_session)
+
+    # Fetch queue via engine
+    queue = await engine.get_queue(workspace.id, db_session)
+    all_items = queue.agent_required + queue.high_risk + queue.needs_review + queue.confirmed
+    assert len(all_items) == 1
+
+    # Verify the item can be serialised and includes group fields
+    from app.api.routes.review import _item_dict
+    d = _item_dict(all_items[0])
+    assert d["group_id"] == "grp-recurring-123"
+    assert d["group_display"] == "Monthly subscription"

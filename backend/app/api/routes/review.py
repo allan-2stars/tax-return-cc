@@ -65,6 +65,8 @@ def _item_dict(item: ReviewItem) -> dict:
         "created_at": item.created_at.isoformat(),
         "reviewed_at": item.reviewed_at.isoformat() if item.reviewed_at else None,
         "review_duration_seconds": item.review_duration_seconds,
+        "group_id": item.tax_event.group_id if item.tax_event else None,
+        "group_display": item.tax_event.group_display if item.tax_event else None,
     }
 
 

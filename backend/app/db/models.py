@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Optional
 from uuid import uuid4
 
 from sqlalchemy import (
     BigInteger, Boolean, DateTime, Float, ForeignKey,
     Integer, JSON, String, Text,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
@@ -165,6 +166,10 @@ class ReviewItem(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     review_duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    tax_event: Mapped[Optional["TaxEvent"]] = relationship(
+        "TaxEvent", foreign_keys=[tax_event_id], lazy="raise"
+    )
 
 
 class ReadinessScore(Base):

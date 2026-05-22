@@ -168,3 +168,66 @@ export interface SSEEvent {
   events_created?: number
   error_code?: string
 }
+
+export interface ReviewItemQuestion {
+  id: string
+  ask: string
+  type: 'single_choice' | 'multi_choice' | 'text' | 'number'
+  options: string[] | null
+}
+
+export interface ReviewItem {
+  id: string
+  workspace_id: string
+  tax_event_id: string | null
+  title: string | null
+  category: string | null
+  amount: number | null
+  date: string | null
+  skill_id: string | null
+  risk_level: string
+  ai_reasoning: string | null
+  confidence: number | null
+  inline_questions: ReviewItemQuestion[]
+  questions_complete: boolean
+  status: string
+  user_action: string | null
+  user_note: string | null
+  amended_amount: number | null
+  amended_category: string | null
+  skipped_until: string | null
+  created_at: string
+  reviewed_at: string | null
+  review_duration_seconds: number | null
+  group_id: string | null
+  group_display: string | null
+}
+
+export interface ReviewQueueSection {
+  items: ReviewItem[]
+  count: number
+}
+
+export interface ReviewQueue {
+  agent_required: ReviewQueueSection
+  high_risk: ReviewQueueSection
+  needs_review: ReviewQueueSection
+  confirmed: ReviewQueueSection
+  total: number
+  pending: number
+}
+
+export interface ReviewActionResponse extends ReviewItem {}
+
+export interface InlineAnswerResponse extends ReviewItem {
+  new_skill_pending: boolean
+}
+
+export interface BulkActionResponseData {
+  items: ReviewItem[]
+  count: number
+}
+
+export interface AskClaudeResponseData {
+  answer: string
+}

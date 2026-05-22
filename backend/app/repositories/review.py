@@ -2,6 +2,7 @@ from datetime import timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.db.models import ReviewItem, TaxEvent
 
@@ -38,7 +39,9 @@ async def create(db: AsyncSession, event: TaxEvent) -> ReviewItem:
 
 async def get_by_id(db: AsyncSession, item_id: str) -> ReviewItem | None:
     result = await db.execute(
-        select(ReviewItem).where(ReviewItem.id == item_id)
+        select(ReviewItem)
+        .where(ReviewItem.id == item_id)
+        .options(selectinload(ReviewItem.tax_event))
     )
     return result.scalar_one_or_none()
 
@@ -52,12 +55,20 @@ async def get_by_event_id(db: AsyncSession, event_id: str) -> ReviewItem | None:
 
 async def get_queue(db: AsyncSession, workspace_id: str) -> list[ReviewItem]:
     result = await db.execute(
-        select(ReviewItem).where(ReviewItem.workspace_id == workspace_id)
+        select(ReviewItem)
+        .where(ReviewItem.workspace_id == workspace_id)
+        .options(selectinload(ReviewItem.tax_event))
     )
     return list(result.scalars().all())
 
 
 async def update(db: AsyncSession, item: ReviewItem) -> ReviewItem:
     await db.commit()
-    await db.refresh(item)
-    return _normalize_datetimes(item)
+    # Re-query with selectinload to restore relationship after commit expires it
+    result = await db.execute(
+        select(ReviewItem)
+        .where(ReviewItem.id == item.id)
+        .options(selectinload(ReviewItem.tax_event))
+    )
+    refreshed = result.scalar_one()
+    return _normalize_datetimes(refreshed)
