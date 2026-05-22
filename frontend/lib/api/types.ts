@@ -231,3 +231,71 @@ export interface BulkActionResponseData {
 export interface AskClaudeResponseData {
   answer: string
 }
+
+// ── Export types ─────────────────────────────────────────────────────────────
+
+export interface ExportEligibility {
+  can_export: boolean
+  blocking_reasons: string[]
+  warnings: string[]
+}
+
+export type ExportStatus = 'generating' | 'ready' | 'expired' | 'failed'
+
+export interface ExportRecord {
+  id: string
+  workspace_id: string
+  financial_year: string
+  readiness_pct: number | null
+  confirmed_count: number
+  review_count: number
+  agent_count: number
+  missing_count: number
+  status: ExportStatus
+  file_size_bytes: number | null
+  expires_at: string | null
+  created_at: string | null
+}
+
+export interface GenerateExportData {
+  export_id: string
+  status: ExportStatus
+  warnings: string[]
+}
+
+// ── Manual entry types ────────────────────────────────────────────────────────
+
+export interface ManualEventPeriod {
+  months: number
+  amount_per_month: number
+}
+
+export type ManualEventFrequency = 'one_off' | 'annual' | 'monthly'
+export type ManualEventType = 'income' | 'deduction' | 'investment' | 'wfh' | 'other'
+
+export interface ManualEventPayload {
+  event_type: ManualEventType
+  category: string
+  description: string
+  amount: number
+  date: string
+  frequency: ManualEventFrequency
+  note: string | null
+  periods: ManualEventPeriod[] | null
+}
+
+export interface ManualEventItem {
+  id: string
+  title: string | null
+  category: string | null
+  amount: number | null
+}
+
+export interface CreateManualEventData {
+  items: ManualEventItem[]
+  count: number
+}
+
+export interface AttachReceiptData {
+  document_id: string
+}
