@@ -378,10 +378,20 @@ async def test_create_workspace_invalid_fy_format(auth_client):
 async def test_create_workspace_copies_taxprofile(auth_client, workspace_id, db_session):
     from app.repositories import profiles as profiles_repo
     profile = await profiles_repo.get_or_create(db_session, workspace_id, "2024-25")
-    await profiles_repo.update_fields(
-        db_session, profile,
-        {"employment_type": "full_time", "resident_status": "resident"}
-    )
+    source_values = {
+        "employment_type": "full_time",
+        "resident_status": "resident",
+        "user_lodger_type": "self_lodger",
+        "has_wfh": True,
+        "has_investments": True,
+        "has_crypto": False,
+        "has_property": True,
+        "has_private_health": True,
+        "has_sole_trader": False,
+        "has_spouse": True,
+        "has_dependents": True,
+    }
+    await profiles_repo.update_fields(db_session, profile, source_values)
     res = await auth_client.post(
         "/api/v1/workspaces",
         json={"name": "New FY", "financial_year": "2025-26"},
@@ -390,8 +400,8 @@ async def test_create_workspace_copies_taxprofile(auth_client, workspace_id, db_
     new_ws_id = res.json()["data"]["id"]
     new_profile = await profiles_repo.get_by_workspace(db_session, new_ws_id)
     assert new_profile is not None
-    assert new_profile.employment_type == "full_time"
-    assert new_profile.resident_status == "resident"
+    for field, expected in source_values.items():
+        assert getattr(new_profile, field) == expected, f"{field} not copied correctly"
 
 
 @pytest.mark.asyncio
