@@ -11,6 +11,8 @@ from app.db.base import get_db
 from app.db.models import ReadinessScore, Workspace
 from app.errors import error_response
 from app.repositories import auth as auth_repo
+from app.repositories import profiles as profiles_repo
+from app.engines.yoy import YoYEngine
 
 router = APIRouter()
 
@@ -49,9 +51,6 @@ async def create_workspace(
     workspace_id: str = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.repositories import profiles as profiles_repo
-    from app.engines.yoy import YoYEngine
-
     # 1. Check no duplicate FY
     existing = await db.execute(
         select(Workspace).where(Workspace.financial_year == body.financial_year)
