@@ -368,3 +368,16 @@ export interface AboutData {
 export interface RecoveryKeyData {
   recovery_key: string
 }
+
+// ── Estimator types ───────────────────────────────────────────────────────────
+
+export interface TaxEstimateSummary {
+  gross_income: string
+  total_deductions: string
+  taxable_income: string
+  payg_withheld: string
+  confirmed_only: boolean
+  pending_count: number
+  ato_calculator_url: string
+  disclaimer: string
+}

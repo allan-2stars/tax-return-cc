@@ -1,15 +1,23 @@
 'use client'
 
 import Link from 'next/link'
+import { useQuery } from '@tanstack/react-query'
 import ReadinessRing from '@/components/readiness/ReadinessRing'
 import SkillBreakdown from '@/components/readiness/SkillBreakdown'
+import TaxEstimate from '@/components/readiness/TaxEstimate'
 import Disclaimer from '@/components/shared/Disclaimer'
 import { useReadiness } from '@/lib/hooks/useReadiness'
+import { getEstimatorSummary } from '@/lib/api/estimator'
 import useWorkspaceStore from '@/lib/stores/workspace.store'
 import { getFYEndLabel, isFYActive } from '@/lib/utils/fy'
+import type { TaxEstimateSummary } from '@/lib/api/types'
 
 export default function ReadinessPage() {
   const { data, isLoading, isError } = useReadiness()
+  const { data: estimate, isLoading: estimateLoading } = useQuery<TaxEstimateSummary>({
+    queryKey: ['tax-estimate'],
+    queryFn: () => getEstimatorSummary().then((r) => r.data.data),
+  })
   const { financialYear } = useWorkspaceStore()
 
   if (isLoading) {
@@ -119,6 +127,9 @@ export default function ReadinessPage() {
           </p>
         </div>
       )}
+
+      {/* Tax estimate */}
+      <TaxEstimate data={estimate} isLoading={estimateLoading} />
 
       <Disclaimer />
     </div>

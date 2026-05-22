@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ReadinessPage from '@/app/(dashboard)/readiness/page'
 
 jest.mock('@/lib/hooks/useReadiness', () => ({
@@ -16,7 +17,17 @@ jest.mock('@/lib/stores/workspace.store', () => ({
   __esModule: true,
 }))
 
+jest.mock('@/lib/api/estimator', () => ({
+  getEstimatorSummary: jest.fn(() => new Promise(() => {})),
+  __esModule: true,
+}))
+
 import { useReadiness as mockUseReadiness } from '@/lib/hooks/useReadiness'
+
+function wrap(ui: React.ReactElement) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>)
+}
 
 const MOCK_DATA = {
   percentage: 72,
@@ -33,13 +44,13 @@ beforeEach(() => jest.clearAllMocks())
 describe('ReadinessPage', () => {
   it('shows loading state while data is fetching', () => {
     ;(mockUseReadiness as jest.Mock).mockReturnValue({ isLoading: true, data: undefined, isError: false })
-    render(<ReadinessPage />)
+    wrap(<ReadinessPage />)
     expect(screen.getByLabelText(/loading/i)).toBeInTheDocument()
   })
 
   it('shows readiness ring with correct percentage', () => {
     ;(mockUseReadiness as jest.Mock).mockReturnValue({ isLoading: false, data: MOCK_DATA, isError: false })
-    render(<ReadinessPage />)
+    wrap(<ReadinessPage />)
     expect(screen.getByText('72%')).toBeInTheDocument()
   })
 
@@ -49,13 +60,13 @@ describe('ReadinessPage', () => {
       data: { ...MOCK_DATA, is_stale: true },
       isError: false,
     })
-    render(<ReadinessPage />)
+    wrap(<ReadinessPage />)
     expect(screen.getByText(/updating/i)).toBeInTheDocument()
   })
 
   it('shows CTA button linking to /journey', () => {
     ;(mockUseReadiness as jest.Mock).mockReturnValue({ isLoading: false, data: MOCK_DATA, isError: false })
-    render(<ReadinessPage />)
+    wrap(<ReadinessPage />)
     const cta = screen.getByRole('link', { name: /continue your tax journey/i })
     expect(cta).toHaveAttribute('href', '/journey')
   })
@@ -66,7 +77,7 @@ describe('ReadinessPage', () => {
       data: { ...MOCK_DATA, percentage: 0 },
       isError: false,
     })
-    render(<ReadinessPage />)
+    wrap(<ReadinessPage />)
     expect(screen.getByText(/upload your first document/i)).toBeInTheDocument()
   })
 
@@ -76,13 +87,13 @@ describe('ReadinessPage', () => {
       data: { ...MOCK_DATA, percentage: 100 },
       isError: false,
     })
-    render(<ReadinessPage />)
+    wrap(<ReadinessPage />)
     expect(screen.getByText(/your tax review package is ready/i)).toBeInTheDocument()
   })
 
   it('shows sub-indicators for review, agent, and missing counts', () => {
     ;(mockUseReadiness as jest.Mock).mockReturnValue({ isLoading: false, data: MOCK_DATA, isError: false })
-    render(<ReadinessPage />)
+    wrap(<ReadinessPage />)
     expect(screen.getByText(/3.*need.*your review|your review.*3/i)).toBeInTheDocument()
     expect(screen.getByText(/1.*agent|agent.*1/i)).toBeInTheDocument()
     expect(screen.getByText(/2.*missing|missing.*2/i)).toBeInTheDocument()
@@ -90,7 +101,7 @@ describe('ReadinessPage', () => {
 
   it('shows error state when query fails', () => {
     ;(mockUseReadiness as jest.Mock).mockReturnValue({ isLoading: false, data: undefined, isError: true })
-    render(<ReadinessPage />)
+    wrap(<ReadinessPage />)
     expect(screen.getByText(/unable to load tax readiness/i)).toBeInTheDocument()
   })
 })
