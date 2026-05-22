@@ -22,7 +22,7 @@ import useWorkspaceStore from '@/lib/stores/workspace.store'
 interface NavItem {
   label: string
   href: string
-  icon: React.ComponentType<{ size?: number; className?: string }>
+  icon: React.ComponentType<{ size?: number | string; className?: string }>
 }
 
 const NAV_ITEMS: NavItem[] = [

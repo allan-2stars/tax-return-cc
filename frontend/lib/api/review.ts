@@ -9,7 +9,7 @@ import type {
 } from './types'
 
 export const getReviewQueue = () =>
-  client.get<{ data: ReviewQueue }>('/api/v1/review/queue')
+  client.get<ReviewQueue>('/api/v1/review/queue')
 
 export const takeAction = (
   itemId: string,
