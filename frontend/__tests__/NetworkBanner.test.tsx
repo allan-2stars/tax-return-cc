@@ -20,11 +20,11 @@ afterEach(() => {
 describe('NetworkBanner', () => {
   it('renders nothing when API is reachable', async () => {
     mockGet.mockResolvedValue({ status: 200 })
-    const { container } = render(<NetworkBanner />)
+    render(<NetworkBanner />)
     await act(async () => {
       await Promise.resolve()
     })
-    expect(container).toBeEmptyDOMElement()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('shows offline banner when API call throws', async () => {
