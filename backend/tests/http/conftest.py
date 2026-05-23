@@ -51,7 +51,8 @@ async def review_item_id(auth_client, test_engine) -> str:
         )
         session.add(item)
         await session.commit()
-        return item.id
+        result_id = item.id
+    return result_id
 
 
 # ── bulk_review_item_ids ──────────────────────────────────────────────────────
@@ -99,7 +100,8 @@ async def bulk_review_item_ids(auth_client, test_engine) -> list[str]:
 async def eligible_client(auth_client, test_engine):
     """auth_client with interview complete + 1 confirmed event. No processing docs."""
     # Complete the interview
-    await auth_client.post("/api/v1/interview/start")
+    start_resp = await auth_client.post("/api/v1/interview/start")
+    assert start_resp.status_code == 200
     for qid, answer in [
         ("fy_confirm", "2024-25"),
         ("residency", "resident"),
@@ -107,11 +109,14 @@ async def eligible_client(auth_client, test_engine):
         ("family_situation", "single_no_dependents"),
         ("lodger_type", "self"),
     ]:
-        await auth_client.post(
+        resp = await auth_client.post(
             "/api/v1/interview/answer",
             json={"question_id": qid, "answer": answer},
         )
-    await auth_client.post("/api/v1/interview/complete")
+        assert resp.status_code == 200, f"Interview answer failed for {qid}: {resp.text}"
+    complete_resp = await auth_client.post("/api/v1/interview/complete")
+    assert complete_resp.status_code == 200
+    assert complete_resp.json()["data"]["state"] == "awaiting_evidence"
 
     # Insert a confirmed TaxEvent directly (bypasses AI extraction)
     maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
