@@ -16,7 +16,7 @@ with (_SKILL_DIR / "skill.yaml").open() as _f:
 
 
 class CryptoSkillAU(TaxSkill):
-    skill_id = "crypto_skill_au"
+    skill_id = _YAML["skill_id"]
     version = _YAML["version"]
     owned_categories = _YAML["owned_categories"]
 
@@ -37,9 +37,6 @@ class CryptoSkillAU(TaxSkill):
 
     def get_risk_flags(self, events: list) -> list[RiskFlag]:
         return []
-
-    def calculate(self, event) -> CalculationResult | None:
-        return CalculationResult(amount=0.0, method="stub")
 
     def explain(self, event) -> str:
         return "Crypto and digital assets are treated as capital gains events under Australian tax law."
