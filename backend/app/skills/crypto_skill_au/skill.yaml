@@ -1,0 +1,12 @@
+skill_id: crypto_skill_au
+version: "1.0.0"
+display_name: "Crypto & Digital Assets (AU)"
+
+activation:
+  requires:
+    has_crypto: true
+
+owned_categories:
+  - crypto_gain
+  - crypto_loss
+  - crypto_income

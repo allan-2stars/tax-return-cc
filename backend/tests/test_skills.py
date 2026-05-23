@@ -240,3 +240,19 @@ async def test_skill_version_locked_on_activation(db_session, workspace):
     lock = result.scalar_one()
     assert lock.skill_id == "employee_tax_au"
     assert lock.skill_version == skill.version
+
+
+def test_crypto_skill_activates_for_has_crypto():
+    from app.skills.registry import get_registry
+    from app.db.models import TaxProfile
+
+    profile = TaxProfile(
+        workspace_id="ws-test",
+        financial_year="2024-25",
+        employment_type="employee",
+        has_crypto=True,
+    )
+    registry = get_registry()
+    activated = registry.load_for_profile(profile)
+    skill_ids = [s.skill_id for s in activated]
+    assert "crypto_skill_au" in skill_ids

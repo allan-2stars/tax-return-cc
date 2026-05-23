@@ -86,7 +86,9 @@ def get_registry() -> SkillRegistry:
 
 def _bootstrap() -> None:
     from app.skills.employee_tax_au import EmployeeTaxAU
+    from app.skills.crypto_skill_au import CryptoSkillAU
     _registry.register(EmployeeTaxAU())
+    _registry.register(CryptoSkillAU())
 
 
 _bootstrap()
