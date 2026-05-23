@@ -52,7 +52,6 @@ async def test_complete_user_journey(auth_client, test_engine):
     # Background extraction is not executed by test client, so we insert
     # TaxEvents directly to simulate a document being processed.
     maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
-    review_item_id: str
     async with maker() as session:
         event = TaxEvent(
             workspace_id=auth_client.workspace_id,
