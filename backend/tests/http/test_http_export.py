@@ -28,11 +28,9 @@ async def test_generate(eligible_client):
         "/api/v1/export/generate",
         json={"password": "export-test-password"},
     )
-    # WeasyPrint may not be available in test env — accept either 200 (success) or
-    # 500 with a weasyprint-related error code
-    assert resp.status_code in (200, 500)
-    if resp.status_code == 200:
-        assert "export_id" in resp.json()["data"]
+    # Route always returns 200 — export runs as background task, failures update DB record
+    assert resp.status_code == 200
+    assert "export_id" in resp.json()["data"]
 
 
 @pytest.mark.asyncio
