@@ -70,6 +70,7 @@ def patch_password(monkeypatch):
     hashed = bcrypt.hashpw(TEST_PASSWORD.encode(), bcrypt.gensalt(rounds=4)).decode()
     monkeypatch.setattr(settings, "APP_PASSWORD_HASH", hashed)
     monkeypatch.setattr(settings, "SECRET_KEY", "test-secret-key-for-unit-tests")
+    monkeypatch.setattr(settings, "ENVIRONMENT", "test")
 
 
 @pytest_asyncio.fixture
@@ -85,8 +86,8 @@ async def auth_client(client, patch_password):
         json={"password": TEST_PASSWORD, "financial_year": "2024-25"},
     )
     assert setup_resp.status_code == 200, setup_resp.text
-    client.workspace_id = setup_resp.json()["workspace_id"]
-    client.recovery_key = setup_resp.json()["recovery_key"]
+    client.workspace_id = setup_resp.json()["data"]["workspace_id"]
+    client.recovery_key = setup_resp.json()["data"]["recovery_key"]
 
     # Confirm setup (required before require_auth allows through)
     last_8 = normalize_recovery_key(client.recovery_key)[-8:]
