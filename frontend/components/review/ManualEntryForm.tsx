@@ -1,7 +1,12 @@
 'use client'
 import { useState } from 'react'
 import { createManualEvent } from '@/lib/api/events'
-import type { ManualEventFrequency, ManualEventType } from '@/lib/api/types'
+import type { ManualEventFrequency, ManualEventType, InvestmentSubType } from '@/lib/api/types'
+import SharesForm from './investment/SharesForm'
+import CryptoForm from './investment/CryptoForm'
+import BankInterestForm from './investment/BankInterestForm'
+import ManagedFundForm from './investment/ManagedFundForm'
+import ForeignIncomeForm from './investment/ForeignIncomeForm'
 
 const TYPE_OPTIONS: { value: ManualEventType; label: string; description: string }[] = [
   { value: 'income', label: 'Income', description: 'Wages, allowances, interest' },
@@ -35,6 +40,7 @@ interface Props {
 export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
   const [step, setStep] = useState<1 | 2>(1)
   const [eventType, setEventType] = useState<ManualEventType | null>(null)
+  const [investmentSubType, setInvestmentSubType] = useState<InvestmentSubType | null>(null)
   const [category, setCategory] = useState('')
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('')
@@ -97,6 +103,7 @@ export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
               onClick={() => {
                 setEventType(opt.value)
                 setCategory(TYPE_CATEGORIES[opt.value][0])
+                setInvestmentSubType(null)
                 setStep(2)
               }}
             >
@@ -114,6 +121,48 @@ export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
         </button>
       </div>
     )
+  }
+
+  // Investment: sub-type selector
+  if (step === 2 && eventType === 'investment' && investmentSubType === null) {
+    return (
+      <div className="space-y-4">
+        <button type="button" onClick={() => setStep(1)} className="text-sm font-ui text-text-muted">← Back</button>
+        <h2 className="font-display text-xl font-semibold text-text-primary">What type of investment?</h2>
+        <div className="space-y-2">
+          {(
+            [
+              { value: 'shares', label: 'Shares / ETF', description: 'Buy, sell, or dividend transactions' },
+              { value: 'crypto', label: 'Cryptocurrency', description: 'Buy, sell, or staking income' },
+              { value: 'bank_interest', label: 'Bank Interest', description: 'Savings, term deposits, offset accounts' },
+              { value: 'managed_fund', label: 'Managed Fund', description: 'Fund distributions and tax statements' },
+              { value: 'foreign_income', label: 'Foreign Income / Investment', description: 'Income from overseas investments' },
+              { value: 'other', label: 'Other Investment', description: 'Anything not covered above' },
+            ] as { value: InvestmentSubType; label: string; description: string }[]
+          ).map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              className="w-full text-left rounded-lg border border-border bg-surface p-4 min-h-14 hover:border-accent transition-colors"
+              onClick={() => setInvestmentSubType(opt.value)}
+            >
+              <p className="font-ui font-semibold text-text-primary">{opt.label}</p>
+              <p className="text-sm font-ui text-text-muted">{opt.description}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // Investment: specific sub-form
+  if (step === 2 && eventType === 'investment' && investmentSubType !== null && investmentSubType !== 'other') {
+    const backToSubType = () => setInvestmentSubType(null)
+    if (investmentSubType === 'shares') return <SharesForm onSuccess={onSuccess} onBack={backToSubType} />
+    if (investmentSubType === 'crypto') return <CryptoForm onSuccess={onSuccess} onBack={backToSubType} />
+    if (investmentSubType === 'bank_interest') return <BankInterestForm onSuccess={onSuccess} onBack={backToSubType} />
+    if (investmentSubType === 'managed_fund') return <ManagedFundForm onSuccess={onSuccess} onBack={backToSubType} />
+    if (investmentSubType === 'foreign_income') return <ForeignIncomeForm onSuccess={onSuccess} onBack={backToSubType} />
   }
 
   const categories = TYPE_CATEGORIES[eventType!]

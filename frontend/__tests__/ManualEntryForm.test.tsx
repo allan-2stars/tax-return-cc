@@ -60,4 +60,19 @@ describe('ManualEntryForm', () => {
 
     expect(screen.getByText(/\$72\.00/)).toBeInTheDocument()
   })
+
+  it('clicking Investment shows investment sub-type selector', () => {
+    render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
+    fireEvent.click(screen.getByText(/^investment$/i))
+    expect(screen.getByRole('button', { name: /shares \/ ETF/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /cryptocurrency/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /bank interest/i })).toBeInTheDocument()
+  })
+
+  it('selecting Shares/ETF sub-type renders SharesForm', () => {
+    render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
+    fireEvent.click(screen.getByText(/^investment$/i))
+    fireEvent.click(screen.getByRole('button', { name: /shares \/ ETF/i }))
+    expect(screen.getByRole('button', { name: /^buy$/i })).toBeInTheDocument()
+  })
 })
