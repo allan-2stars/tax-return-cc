@@ -29,6 +29,9 @@ class ManualEventRequest(BaseModel):
     frequency: str
     note: str | None = None
     periods: list[_Period] | None = None
+    metadata: dict | None = None
+    review_status: str | None = None
+    possible_duplicate: bool = False
 
 
 def _event_dict(ev) -> dict:
@@ -62,6 +65,9 @@ async def create_manual_event(
             note=body.note,
             periods=[p.model_dump() for p in body.periods] if body.periods else None,
             db=db,
+            metadata=body.metadata,
+            review_status=body.review_status,
+            possible_duplicate=body.possible_duplicate,
         )
     except ValueError as e:
         raise HTTPException(

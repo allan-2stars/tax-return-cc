@@ -31,6 +31,10 @@ async def create_event(
     group_display: str | None = None,
     is_recurring: bool = False,
     recurrence_index: int | None = None,
+    event_metadata: dict | None = None,
+    status: str = "needs_user_review",
+    risk_level: str = "low",
+    possible_duplicate: bool = False,
 ) -> TaxEvent:
     event = TaxEvent(
         workspace_id=workspace_id,
@@ -46,8 +50,10 @@ async def create_event(
         group_display=group_display,
         is_recurring=is_recurring,
         recurrence_index=recurrence_index,
-        status="needs_user_review",
-        risk_level="low",
+        event_metadata=event_metadata,
+        status=status,
+        risk_level=risk_level,
+        possible_duplicate=possible_duplicate,
     )
     db.add(event)
     await db.commit()

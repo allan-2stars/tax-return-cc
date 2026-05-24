@@ -28,7 +28,7 @@ async def create(db: AsyncSession, event: TaxEvent) -> ReviewItem:
         risk_level=event.risk_level,
         ai_reasoning=event.ai_reasoning,
         confidence=event.confidence,
-        status="needs_user_review",
+        status=event.status,
         questions_complete=False,
     )
     db.add(item)

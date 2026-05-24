@@ -170,3 +170,72 @@ async def test_attach_receipt_links_document_no_new_event(
     )
     all_events = result.scalars().all()
     assert len(all_events) == 1
+
+
+@pytest.mark.asyncio
+async def test_create_manual_event_stores_metadata(db_session, workspace):
+    """metadata dict is persisted on the TaxEvent."""
+    import asyncio
+    from app.engines.review import ReviewEngine
+
+    engine = ReviewEngine()
+    meta = {"investment_sub_type": "shares", "transaction_type": "buy", "units": 100}
+
+    with patch.object(engine._readiness_engine, "recalculate") as mock_recalc:
+        mock_recalc.return_value = asyncio.sleep(0)
+        events = await engine.create_manual_event(
+            workspace_id=workspace.id,
+            financial_year="2024-25",
+            event_type="investment",
+            category="capital_gain",
+            description="Shares Buy: 100 × CBA @ $82.50",
+            amount=8259.95,
+            date="2025-08-15",
+            frequency="one_off",
+            note=None,
+            periods=None,
+            metadata=meta,
+            db=db_session,
+        )
+
+    assert events[0].event_metadata == meta
+
+
+@pytest.mark.asyncio
+async def test_create_manual_event_needs_agent_review_sets_status_on_event_and_review_item(
+    db_session, workspace
+):
+    """review_status='needs_agent_review' propagates to TaxEvent and ReviewItem."""
+    import asyncio
+    from app.engines.review import ReviewEngine
+    from sqlalchemy import select
+    from app.db.models import ReviewItem as ReviewItemModel
+
+    engine = ReviewEngine()
+
+    with patch.object(engine._readiness_engine, "recalculate") as mock_recalc:
+        mock_recalc.return_value = asyncio.sleep(0)
+        events = await engine.create_manual_event(
+            workspace_id=workspace.id,
+            financial_year="2024-25",
+            event_type="investment",
+            category="foreign_income",
+            description="US Dividends",
+            amount=500.0,
+            date="2025-03-01",
+            frequency="one_off",
+            note=None,
+            periods=None,
+            metadata={"investment_sub_type": "foreign_income"},
+            review_status="needs_agent_review",
+            db=db_session,
+        )
+
+    assert events[0].status == "needs_agent_review"
+    assert events[0].risk_level == "high"
+
+    result = await db_session.execute(
+        select(ReviewItemModel).where(ReviewItemModel.tax_event_id == events[0].id)
+    )
+    item = result.scalar_one()
+    assert item.status == "needs_agent_review"

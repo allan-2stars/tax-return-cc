@@ -130,9 +130,15 @@ class ReviewEngine:
         note: str | None,
         periods: list[dict] | None,
         db: AsyncSession,
+        metadata: dict | None = None,
+        review_status: str | None = None,
+        possible_duplicate: bool = False,
     ) -> list[TaxEvent]:
         """Create TaxEvent(s) + ReviewItem(s) for a manual entry."""
         import uuid as _uuid
+
+        _status = review_status or "needs_user_review"
+        _risk = "high" if review_status == "needs_agent_review" else "low"
 
         group_id = str(_uuid.uuid4()) if frequency == "monthly" and periods else None
 
@@ -160,6 +166,10 @@ class ReviewEngine:
                     group_display=group_display,
                     is_recurring=True,
                     recurrence_index=idx,
+                    event_metadata=metadata,
+                    status=_status,
+                    risk_level=_risk,
+                    possible_duplicate=possible_duplicate,
                 )
                 created_events.append(event)
         else:
@@ -178,6 +188,10 @@ class ReviewEngine:
                 group_display=None,
                 is_recurring=False,
                 recurrence_index=None,
+                event_metadata=metadata,
+                status=_status,
+                risk_level=_risk,
+                possible_duplicate=possible_duplicate,
             )
             created_events = [event]
 
