@@ -23,6 +23,8 @@ export interface SessionData {
   is_unlocked: boolean
   user_lodger_type?: string | null
   setup_confirmed?: boolean
+  setup_required?: boolean
+  authenticated?: boolean
 }
 
 export interface LoginData extends SessionData {
@@ -79,6 +81,7 @@ export interface InterviewQuestion {
   required: boolean
   why: string | null
   hint: string | null
+  currency?: boolean
 }
 
 export interface InterviewProgress {
@@ -275,6 +278,7 @@ export interface ManualEventPeriod {
 
 export type ManualEventFrequency = 'one_off' | 'annual' | 'monthly'
 export type ManualEventType = 'income' | 'deduction' | 'investment' | 'wfh' | 'other'
+export type InvestmentSubType = 'shares' | 'crypto' | 'bank_interest' | 'managed_fund' | 'foreign_income' | 'other'
 
 export interface ManualEventPayload {
   event_type: ManualEventType
@@ -285,6 +289,9 @@ export interface ManualEventPayload {
   frequency: ManualEventFrequency
   note: string | null
   periods: ManualEventPeriod[] | null
+  metadata?: Record<string, unknown>
+  review_status?: string
+  possible_duplicate?: boolean
 }
 
 export interface ManualEventItem {
