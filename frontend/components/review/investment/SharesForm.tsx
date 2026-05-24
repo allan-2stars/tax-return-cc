@@ -154,7 +154,7 @@ function SharesBuySubForm({ onSuccess, onBack }: InvestmentFormProps) {
           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-ui"
           {...register('note')} />
       </div>
-      {error && <p className="text-sm font-ui text-risk-high">{error}</p>}
+      {error && <p role="alert" className="text-sm font-ui text-risk-high">{error}</p>}
       <div className="flex gap-3">
         <button type="submit" disabled={pending}
           className="min-h-11 px-5 rounded-md bg-accent text-white text-sm font-ui font-semibold disabled:opacity-50">
@@ -298,7 +298,7 @@ function SharesSellSubForm({ onSuccess, onBack }: InvestmentFormProps) {
           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-ui"
           {...register('note')} />
       </div>
-      {error && <p className="text-sm font-ui text-risk-high">{error}</p>}
+      {error && <p role="alert" className="text-sm font-ui text-risk-high">{error}</p>}
       <div className="flex gap-3">
         <button type="submit" disabled={pending}
           className="min-h-11 px-5 rounded-md bg-accent text-white text-sm font-ui font-semibold disabled:opacity-50">
@@ -388,7 +388,7 @@ function SharesDividendSubForm({ onSuccess, onBack }: InvestmentFormProps) {
           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-ui"
           {...register('note')} />
       </div>
-      {error && <p className="text-sm font-ui text-risk-high">{error}</p>}
+      {error && <p role="alert" className="text-sm font-ui text-risk-high">{error}</p>}
       <div className="flex gap-3">
         <button type="submit" disabled={pending}
           className="min-h-11 px-5 rounded-md bg-accent text-white text-sm font-ui font-semibold disabled:opacity-50">

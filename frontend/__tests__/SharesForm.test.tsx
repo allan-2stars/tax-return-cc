@@ -23,7 +23,7 @@ test('buy form: total cost auto-calculates (units × price + brokerage)', async 
   await user.type(screen.getByLabelText(/price per unit/i), '82.50')
   await user.type(screen.getByLabelText(/brokerage fee/i), '9.95')
 
-  expect(screen.getByText('$8259.95')).toBeInTheDocument()
+  await waitFor(() => expect(screen.getByText('$8259.95')).toBeInTheDocument())
 })
 
 test('sell form: CGT discount shown for holdings >= 365 days', async () => {
