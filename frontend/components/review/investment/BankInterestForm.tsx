@@ -1,0 +1,91 @@
+'use client'
+import { useForm } from 'react-hook-form'
+import { useState } from 'react'
+import { createManualEvent } from '@/lib/api/events'
+
+interface InvestmentFormProps { onSuccess: () => void; onBack: () => void }
+
+interface BankInterestFields {
+  bank_name: string; account_type: string
+  interest_amount: string; in_payg: boolean; note: string
+}
+
+export default function BankInterestForm({ onSuccess, onBack }: InvestmentFormProps) {
+  const { register, handleSubmit, formState: { errors } } = useForm<BankInterestFields>()
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function onSubmit(data: BankInterestFields) {
+    const amt = parseFloat(data.interest_amount)
+    setPending(true); setError(null)
+    try {
+      await createManualEvent({
+        event_type: 'investment', category: 'bank_interest',
+        description: `Bank Interest: ${data.bank_name} (${data.account_type})`,
+        amount: amt, date: new Date().toISOString().slice(0, 10),
+        frequency: 'annual', note: data.note?.trim() || null, periods: null,
+        possible_duplicate: data.in_payg,
+        metadata: {
+          investment_sub_type: 'bank_interest',
+          bank_name: data.bank_name, account_type: data.account_type,
+          interest_amount: amt, in_payg: data.in_payg,
+        },
+      })
+      onSuccess()
+    } catch { setError('Something went wrong. Please try again.') }
+    finally { setPending(false) }
+  }
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+      <button type="button" onClick={onBack} className="text-sm font-ui text-text-muted">← Back</button>
+      <div>
+        <label htmlFor="bi-bank" className="text-sm font-ui text-text-body block mb-1">Bank name</label>
+        <input id="bi-bank" type="text" placeholder="Commonwealth Bank, ANZ…"
+          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-ui"
+          {...register('bank_name', { required: 'Bank name is required.' })} />
+        {errors.bank_name && <p role="alert" className="text-sm font-ui text-risk-high mt-1">{errors.bank_name.message}</p>}
+      </div>
+      <div>
+        <label htmlFor="bi-type" className="text-sm font-ui text-text-body block mb-1">Account type</label>
+        <select id="bi-type" className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-ui"
+          {...register('account_type', { required: 'Account type is required.' })}>
+          <option value="">Select type</option>
+          <option value="Savings">Savings</option>
+          <option value="Term Deposit">Term Deposit</option>
+          <option value="Offset">Offset</option>
+          <option value="Other">Other</option>
+        </select>
+        {errors.account_type && <p role="alert" className="text-sm font-ui text-risk-high mt-1">{errors.account_type.message}</p>}
+      </div>
+      <div>
+        <label htmlFor="bi-amount" className="text-sm font-ui text-text-body block mb-1">Interest amount (AUD)</label>
+        <div className="relative flex items-center">
+          <span className="absolute left-3 text-text-muted font-ui text-sm select-none">$</span>
+          <input id="bi-amount" type="number" min="0" step="0.01" placeholder="0.00"
+            className="w-full pl-7 pr-4 py-2 rounded-md border border-border bg-surface font-mono text-sm focus:outline-none focus:border-accent"
+            {...register('interest_amount', { required: 'Interest amount is required.' })} />
+        </div>
+        {errors.interest_amount && <p role="alert" className="text-sm font-ui text-risk-high mt-1">{errors.interest_amount.message}</p>}
+      </div>
+      <label className="flex items-start gap-2 cursor-pointer">
+        <input type="checkbox" className="mt-0.5" {...register('in_payg')} />
+        <span className="text-sm font-ui text-text-body">This interest is already in my PAYG summary</span>
+      </label>
+      <div>
+        <label htmlFor="bi-note" className="text-sm font-ui text-text-body block mb-1">Note (optional)</label>
+        <input id="bi-note" type="text"
+          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-ui"
+          {...register('note')} />
+      </div>
+      {error && <p role="alert" className="text-sm font-ui text-risk-high">{error}</p>}
+      <div className="flex gap-3">
+        <button type="submit" disabled={pending}
+          className="min-h-11 px-5 rounded-md bg-accent text-white text-sm font-ui font-semibold disabled:opacity-50">
+          {pending ? 'Saving…' : 'Add item'}
+        </button>
+        <button type="button" onClick={onBack} className="min-h-11 px-4 text-sm font-ui text-text-muted">Cancel</button>
+      </div>
+    </form>
+  )
+}
