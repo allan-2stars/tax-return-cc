@@ -233,6 +233,7 @@ async def test_create_manual_event_needs_agent_review_sets_status_on_event_and_r
 
     assert events[0].status == "needs_agent_review"
     assert events[0].risk_level == "high"
+    assert events[0].possible_duplicate is False
 
     result = await db_session.execute(
         select(ReviewItemModel).where(ReviewItemModel.tax_event_id == events[0].id)

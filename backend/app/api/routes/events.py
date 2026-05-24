@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,7 +32,7 @@ class ManualEventRequest(BaseModel):
     note: str | None = None
     periods: list[_Period] | None = None
     metadata: dict | None = None
-    review_status: str | None = None
+    review_status: Literal["needs_user_review", "needs_agent_review"] | None = None
     possible_duplicate: bool = False
 
 
