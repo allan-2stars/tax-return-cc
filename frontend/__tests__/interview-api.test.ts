@@ -7,6 +7,7 @@ import client from '@/lib/api/client'
 import {
   getSession, startInterview, answerQuestion,
   goBack, skipQuestion, getYoySuggestions, actOnSuggestion,
+  getInterviewSummary, jumpToQuestion,
 } from '@/lib/api/interview'
 
 const mockGet = client.get as jest.Mock
@@ -33,6 +34,16 @@ describe('interview API', () => {
     expect(mockPost).toHaveBeenCalledWith('/api/v1/interview/answer', { question_id: 'q1', answer: 'yes' })
   })
 
+  it('answerQuestion coerces numeric answer to string', async () => {
+    mockPost.mockResolvedValue({ data: { data: {} } })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await answerQuestion('dependent_count', 3 as any)
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/interview/answer', {
+      question_id: 'dependent_count',
+      answer: '3',
+    })
+  })
+
   it('goBack calls POST /api/v1/interview/back', async () => {
     mockPost.mockResolvedValue({ data: { data: {} } })
     await goBack()
@@ -55,5 +66,21 @@ describe('interview API', () => {
     mockPost.mockResolvedValue({ data: { data: {} } })
     await actOnSuggestion('sug-1', 'confirmed')
     expect(mockPost).toHaveBeenCalledWith('/api/v1/yoy/sug-1/action', { action: 'confirmed' })
+  })
+
+  it('getInterviewSummary calls GET /api/v1/interview/summary', async () => {
+    const mockData = { sections: [] }
+    mockGet.mockResolvedValueOnce({ data: { data: mockData } })
+    const result = await getInterviewSummary()
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/interview/summary')
+    expect(result.data.data).toEqual(mockData)
+  })
+
+  it('jumpToQuestion calls POST /api/v1/interview/jump with question_id', async () => {
+    const mockData = { state: 'in_progress', current_question: null, progress: { completed: 0, total: 0 } }
+    mockPost.mockResolvedValueOnce({ data: { data: mockData } })
+    const result = await jumpToQuestion('residency')
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/interview/jump', { question_id: 'residency' })
+    expect(result.data.data).toEqual(mockData)
   })
 })

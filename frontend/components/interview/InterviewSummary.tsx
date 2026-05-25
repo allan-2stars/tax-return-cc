@@ -1,4 +1,5 @@
 'use client'
+import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getInterviewSummary, jumpToQuestion } from '@/lib/api/interview'
 
@@ -26,13 +27,21 @@ export default function InterviewSummary({ onEdit }: InterviewSummaryProps) {
     return null
   }
 
+  const [jumping, setJumping] = useState<string | null>(null)
+  const [editError, setEditError] = useState<string | null>(null)
+
   async function handleEdit(questionId: string) {
+    if (jumping) return
+    setJumping(questionId)
+    setEditError(null)
     try {
       await jumpToQuestion(questionId)
       queryClient.invalidateQueries({ queryKey: ['interview', 'session'] })
       onEdit()
-    } catch (err) {
-      console.error('Failed to jump to question', err)
+    } catch {
+      setEditError('Unable to edit that answer. Please try again.')
+    } finally {
+      setJumping(null)
     }
   }
 
@@ -60,6 +69,7 @@ export default function InterviewSummary({ onEdit }: InterviewSummaryProps) {
                   <button
                     type="button"
                     onClick={() => handleEdit(answer.question_id)}
+                    disabled={jumping !== null}
                     className="text-accent font-ui text-sm hover:text-accent-hover transition-colors"
                   >
                     Edit
@@ -70,6 +80,9 @@ export default function InterviewSummary({ onEdit }: InterviewSummaryProps) {
           </div>
         </div>
       ))}
+      {editError && (
+        <p role="alert" className="text-sm font-ui text-risk-high mt-2">{editError}</p>
+      )}
     </div>
   )
 }
