@@ -44,7 +44,7 @@ const SKILL_NEXT_STEPS: Record<string, SkillStep> = {
   },
 }
 
-export default function NextStepsList({ activatedSkills }: NextStepsListProps) {
+export default function NextStepsList({ activatedSkills = [] }: NextStepsListProps) {
   const steps = activatedSkills
     .filter((skill) => skill in SKILL_NEXT_STEPS)
     .map((skill) => ({ skill, ...SKILL_NEXT_STEPS[skill] }))
@@ -66,6 +66,7 @@ export default function NextStepsList({ activatedSkills }: NextStepsListProps) {
             <p className="font-body text-text-muted text-sm">{hint}</p>
             <Link
               href={link}
+              aria-label={`Upload — ${title}`}
               className="text-accent font-ui text-sm hover:text-accent-hover transition-colors"
             >
               Upload →
