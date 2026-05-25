@@ -1,8 +1,8 @@
 'use client'
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  startInterview, answerQuestion,
+  startInterview, answerQuestion, completeInterview,
   goBack, skipQuestion, getYoySuggestions, actOnSuggestion,
 } from '@/lib/api/interview'
 import type { InterviewSessionData, YoYSuggestion } from '@/lib/api/types'
@@ -12,27 +12,11 @@ import YoYSuggestionCard from '@/components/interview/YoYSuggestionCard'
 import useInterviewStore from '@/lib/stores/interview.store'
 import { useInterview } from '@/lib/hooks/useInterview'
 import Disclaimer from '@/components/shared/Disclaimer'
-
-const NEXT_STEPS: Record<string, { label: string; hint: string }> = {
-  employee_tax_au: {
-    label: 'Upload your PAYG Payment Summary',
-    hint: 'Download from myGov → ATO online services',
-  },
-  wfh_skill: {
-    label: 'Gather your WFH records',
-    hint: 'Timesheets, diary, or ATO app records',
-  },
-  investment_skill: {
-    label: 'Export your investment statement',
-    hint: 'Download from your broker or share registry',
-  },
-  crypto_skill_au: {
-    label: 'Export your crypto transaction history',
-    hint: 'Download CSV from CoinSpot or your exchange',
-  },
-}
+import NextStepsList from '@/components/interview/NextStepsList'
+import InterviewSummary from '@/components/interview/InterviewSummary'
 
 export default function JourneyPage() {
+  const router = useRouter()
   const queryClient = useQueryClient()
   const { newSkillPending, setNewSkillPending } = useInterviewStore()
 
@@ -58,11 +42,23 @@ export default function JourneyPage() {
   const answerMutation = useMutation({
     mutationFn: ({ question_id, answer }: { question_id: string; answer: string }) =>
       answerQuestion(question_id, answer),
-    onSuccess: (res) => {
+    onSuccess: async (res) => {
       const d = res.data.data
       const prev = data?.activated_skills ?? []
       const newSkill = d.activated_skills.find((s) => !prev.includes(s))
       if (newSkill) setNewSkillPending(newSkill)
+
+      if (d.next_question === null) {
+        const completeRes = await completeInterview()
+        patch({
+          state: completeRes.data.data.state,
+          current_question: null,
+          activated_skills: d.activated_skills,
+          progress: d.progress,
+        })
+        return
+      }
+
       patch({
         state: d.state,
         current_question: d.next_question, // answer response uses next_question; cache uses current_question
@@ -147,24 +143,15 @@ export default function JourneyPage() {
         </div>
       )}
 
-      {data.state === 'awaiting_evidence' && (
-        <div className="space-y-8">
-          <div className="space-y-3">
+      {(data.state === 'awaiting_evidence' || data.state === 'complete') && (
+        <div className="space-y-10">
+          {/* Heading */}
+          <div className="space-y-2">
             <h1 className="font-display text-3xl text-text-primary">You're all set up</h1>
-            <p className="font-body text-text-muted">Here's what to gather next based on your profile:</p>
+            <p className="font-body text-lg text-text-muted">Here's what to do next</p>
           </div>
-          <ul className="space-y-3">
-            {(data.activated_skills ?? []).slice(0, 3).map((skillId) => {
-              const step = NEXT_STEPS[skillId]
-              if (!step) return null
-              return (
-                <li key={skillId} className="bg-surface border border-border rounded-md p-4 space-y-1">
-                  <p className="font-ui font-medium text-text-body">{step.label}</p>
-                  <p className="text-sm font-body text-text-muted">{step.hint}</p>
-                </li>
-              )
-            })}
-          </ul>
+
+          {/* YoY suggestions (keep existing) */}
           {yoy && yoy.length > 0 && (
             <div className="space-y-3">
               <h2 className="text-sm font-ui font-medium text-text-muted uppercase tracking-wide">From last year</h2>
@@ -177,31 +164,33 @@ export default function JourneyPage() {
               ))}
             </div>
           )}
-          <Link
-            href="/readiness"
-            className="inline-block px-6 py-3 rounded-md bg-ready text-surface font-ui font-medium hover:opacity-90 transition-opacity"
-          >
-            View your readiness →
-          </Link>
-          <Disclaimer />
-        </div>
-      )}
 
-      {data.state === 'complete' && (
-        <div className="space-y-6 pt-8">
-          <div className="space-y-3">
-            <h1 className="font-display text-3xl text-text-primary">Interview complete</h1>
-            <p className="font-body text-text-muted">
-              Your tax profile is set up. Check your readiness score to see what's next.
-            </p>
+          {/* Personalised next steps */}
+          <NextStepsList activatedSkills={data.activated_skills ?? []} />
+
+          {/* Answer summary + edit flow */}
+          <InterviewSummary
+            onEdit={() => queryClient.invalidateQueries({ queryKey: ['interview', 'session'] })}
+          />
+
+          {/* CTAs */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button
+              type="button"
+              onClick={() => router.push('/readiness')}
+              className="px-6 py-3 rounded-md bg-accent text-surface font-ui font-medium hover:bg-accent-hover transition-colors"
+            >
+              Go to Tax Readiness →
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push('/evidence')}
+              className="px-6 py-3 font-ui font-medium text-text-muted hover:text-text-body transition-colors"
+            >
+              Upload documents →
+            </button>
           </div>
-          <Link
-            href="/readiness"
-            className="inline-block text-accent font-ui font-medium hover:text-accent-hover transition-colors"
-            aria-label="View your tax readiness"
-          >
-            View your tax readiness →
-          </Link>
+
           <Disclaimer />
         </div>
       )}
