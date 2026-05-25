@@ -25,6 +25,8 @@ PLATFORM_QUESTIONS: list[Question] = [
         ask="What is your residency status for tax purposes?",
         type="single_choice",
         options=["resident", "non_resident", "part_year"],
+        hint="This is your tax residency, not your visa status.",
+        why="Your residency status determines which tax rates and offsets apply to you. Most people who live in Australia are Australian residents for tax purposes.",
     ),
     Question(
         id="employment_type",
@@ -49,6 +51,8 @@ PLATFORM_QUESTIONS: list[Question] = [
         ask="How are you planning to lodge your return?",
         type="single_choice",
         options=["self", "agent", "unknown"],
+        hint="Self-lodgers have an October 31 deadline. Tax agents have until May 15.",
+        why="This helps us show you the right deadline reminders. If you use a registered tax agent, you usually get more time to lodge.",
     ),
 ]
 
@@ -58,6 +62,8 @@ BRANCH_QUESTIONS: list[Question] = [
         ask="What is your spouse's approximate income range?",
         type="single_choice",
         options=["under_18200", "18200_45000", "45000_120000", "over_120000"],
+        hint="Include salary, wages, and investment income. An estimate is fine.",
+        why="Your spouse's income affects your Medicare Levy Surcharge threshold and Private Health Insurance rebate. We only need an approximate range.",
     ),
     Question(
         id="spouse_novated_lease",
@@ -72,8 +78,12 @@ BRANCH_QUESTIONS: list[Question] = [
     ),
     Question(
         id="spouse_rfba_amount",
-        ask="What is your spouse's reportable fringe benefits amount?",
+        ask="What is your spouse's Reportable Fringe Benefits Amount?",
         type="number",
+        hint="This appears on your spouse's PAYG Payment Summary from their employer.",
+        why="Reportable Fringe Benefits count toward your combined family income. This affects your Medicare Levy Surcharge and Private Health Insurance rebate calculations.",
+        currency=True,
+        required=False,
     ),
     Question(
         id="dependent_count",
@@ -108,6 +118,12 @@ def _build_profile_updates(question_id: str, answer: Any) -> dict:
             "has_spouse":     answer in ("has_spouse", "both"),
             "has_dependents": answer in ("has_dependents", "both"),
         }
+    if question_id == "spouse_novated_lease":
+        return {"spouse_has_novated_lease": answer == "yes"}
+    if question_id == "spouse_rfba_amount":
+        return {"spouse_rfba_amount": float(answer) if answer else None}
+    if question_id == "dependent_count":
+        return {"dependent_count": int(answer) if answer else None}
     field = _PROFILE_FIELD_MAP.get(question_id)
     if field:
         return {field: answer}
@@ -366,6 +382,25 @@ class InterviewEngine:
         session = await interview_repo.save(db, session)
         asyncio.create_task(self._readiness_engine.recalculate(session.workspace_id))
         return session
+
+    async def jump(
+        self,
+        session_id: str,
+        question_id: str,
+        db: AsyncSession,
+    ) -> tuple[InterviewSession, Question]:
+        session = await interview_repo.get_by_id(db, session_id)
+
+        if question_id not in (session.completed_steps or []):
+            raise ValueError(f"Question {question_id!r} not in completed steps")
+
+        # Iteratively call go_back until current_step == question_id
+        while (session.current_step or {}).get("id") != question_id:
+            session, _ = await self.go_back(session_id, db)
+
+        session.state = "in_progress"
+        session = await interview_repo.save(db, session)
+        return session, _QUESTION_BY_ID[question_id]
 
     async def check_inline_questions(
         self,

@@ -16,6 +16,68 @@ router = APIRouter()
 _engine = InterviewEngine()
 
 
+# ── Summary constants ─────────────────────────────────────────────────────────
+
+_PLATFORM_AND_BRANCH_IDS: frozenset[str] = frozenset({
+    "fy_confirm", "residency", "employment_type", "family_situation", "lodger_type",
+    "spouse_income_range", "spouse_novated_lease", "spouse_rfba_amount", "dependent_count",
+})
+
+_QUESTION_DISPLAY_LABELS: dict[str, str] = {
+    "fy_confirm":           "Financial year",
+    "residency":            "Residency status",
+    "employment_type":      "Work situation",
+    "family_situation":     "Family situation",
+    "lodger_type":          "Lodging method",
+    "spouse_income_range":  "Spouse income range",
+    "spouse_novated_lease": "Spouse novated lease",
+    "spouse_rfba_amount":   "Spouse's reportable fringe benefits",
+    "dependent_count":      "Number of dependents",
+}
+
+_ANSWER_DISPLAY_LABELS: dict[str, dict[str, str]] = {
+    "residency": {
+        "resident":     "Australian resident",
+        "non_resident": "Non-resident",
+        "part_year":    "Part-year resident",
+    },
+    "employment_type": {
+        "employee":    "Employee (PAYG)",
+        "sole_trader": "Sole trader",
+        "both":        "Both",
+    },
+    "family_situation": {
+        "single_no_dependents": "Single, no dependents",
+        "has_spouse":           "Have a spouse",
+        "has_dependents":       "Have dependents",
+        "both":                 "Spouse and dependents",
+    },
+    "lodger_type": {
+        "self":    "Self-lodging",
+        "agent":   "Tax agent",
+        "unknown": "Not sure yet",
+    },
+    "spouse_income_range": {
+        "under_18200":  "Under $18,200",
+        "18200_45000":  "$18,200 – $45,000",
+        "45000_120000": "$45,000 – $120,000",
+        "over_120000":  "Over $120,000",
+    },
+    "spouse_novated_lease": {
+        "yes":      "Yes",
+        "no":       "No",
+        "not_sure": "Not sure",
+    },
+}
+
+_SKILL_SECTION_TITLES: dict[str, str] = {
+    "employee_tax_au": "Your employment",
+    "wfh_skill":       "Work from home",
+    "crypto_skill_au": "Cryptocurrency",
+    "investment_skill": "Investments",
+}
+
+
 # ── Request bodies ────────────────────────────────────────────────────────────
 
 class AnswerRequest(BaseModel):
@@ -28,7 +90,16 @@ class SkipRequest(BaseModel):
     reason: str = ""
 
 
+class JumpRequest(BaseModel):
+    question_id: str
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _format_answer(question_id: str, answer_value: str) -> str:
+    labels = _ANSWER_DISPLAY_LABELS.get(question_id, {})
+    return labels.get(answer_value, answer_value)
+
 
 def _q_dict(q: Question | None) -> dict | None:
     if q is None:
@@ -42,6 +113,7 @@ def _q_dict(q: Question | None) -> dict | None:
         "required": q.required,
         "why": q.why,
         "hint": q.hint,
+        "currency": q.currency,
     }
 
 
@@ -253,5 +325,84 @@ async def pause_interview(
         "data": {
             "session_id": session.id,
             "state": session.state,
+        }
+    }
+
+
+# ── GET /interview/summary ────────────────────────────────────────────────────
+
+@router.get("/interview/summary")
+async def get_summary(
+    workspace_id: str = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    session = await interview_repo.get_active_by_workspace(db, workspace_id)
+    if not session:
+        raise _no_session_error()
+
+    answers = session.answers or {}
+    sections = []
+
+    # "Your situation" section: platform + branch questions that were answered
+    situation_answers = []
+    for qid, val in answers.items():
+        if qid in _PLATFORM_AND_BRANCH_IDS:
+            situation_answers.append({
+                "question_id":    qid,
+                "question_label": _QUESTION_DISPLAY_LABELS.get(qid, qid),
+                "answer_value":   val,
+                "answer_label":   _format_answer(qid, val),
+                "editable":       True,
+            })
+    if situation_answers:
+        sections.append({"title": "Your situation", "answers": situation_answers})
+
+    # One section per activated skill
+    for skill_id in (session.activated_skills or []):
+        skill_answers = []
+        for qid, val in answers.items():
+            if qid not in _PLATFORM_AND_BRANCH_IDS:
+                q = _QUESTION_BY_ID.get(qid)
+                if q:
+                    skill_answers.append({
+                        "question_id":    qid,
+                        "question_label": q.ask,
+                        "answer_value":   val,
+                        "answer_label":   val,
+                        "editable":       True,
+                    })
+        if skill_answers:
+            title = _SKILL_SECTION_TITLES.get(skill_id, skill_id)
+            sections.append({"title": title, "answers": skill_answers})
+
+    return {"data": {"sections": sections}}
+
+
+# ── POST /interview/jump ──────────────────────────────────────────────────────
+
+@router.post("/interview/jump")
+async def jump_to_question(
+    body: JumpRequest,
+    workspace_id: str = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    session = await interview_repo.get_active_by_workspace(db, workspace_id)
+    if not session:
+        raise _no_session_error()
+
+    try:
+        session, q = await _engine.jump(session.id, body.question_id, db)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=error_response("question_not_found", str(e), retryable=False),
+        )
+
+    return {
+        "data": {
+            "session_id":       session.id,
+            "state":            session.state,
+            "current_question": _q_dict(q),
+            "progress":         _progress(session),
         }
     }
