@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import JourneyPage from '@/app/(dashboard)/journey/page'
 import * as interviewApi from '@/lib/api/interview'
@@ -8,6 +9,9 @@ jest.mock('@/lib/api/interview')
 jest.mock('@/lib/stores/interview.store', () => ({
   __esModule: true,
   default: jest.fn(),
+}))
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: jest.fn() }),
 }))
 
 const mockGetSession = interviewApi.getSession as jest.Mock
@@ -69,10 +73,10 @@ test('shows completion screen when state is awaiting_evidence', async () => {
   await waitFor(() => expect(screen.getByText(/you're all set up/i)).toBeInTheDocument())
 })
 
-test('shows link to readiness when state is complete', async () => {
+test('renders completion screen when state is complete', async () => {
   mockGetSession.mockResolvedValue(SESSION('complete'))
   wrap(<JourneyPage />)
-  await waitFor(() => expect(screen.getByRole('link', { name: /readiness/i })).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByRole('button', { name: /tax readiness/i })).toBeInTheDocument())
 })
 
 test('shows error state on API failure', async () => {
@@ -95,4 +99,31 @@ test('shows personalised next step for active skill on awaiting_evidence', async
   mockGetSession.mockResolvedValue(SESSION('awaiting_evidence'))
   wrap(<JourneyPage />)
   await waitFor(() => expect(screen.getByText(/PAYG Payment Summary/i)).toBeInTheDocument())
+})
+
+test('calls completeInterview and shows completion screen when last answer exhausts queue', async () => {
+  const mockAnswerQuestion = interviewApi.answerQuestion as jest.Mock
+  const mockCompleteInterview = interviewApi.completeInterview as jest.Mock
+
+  mockGetSession.mockResolvedValue(SESSION('in_progress', QUESTION))
+  mockAnswerQuestion.mockResolvedValue({
+    data: { data: {
+      state: 'in_progress',
+      next_question: null,
+      activated_skills: ['employee_tax_au'],
+      progress: { completed: 5, total: 5 },
+    } },
+  })
+  mockCompleteInterview.mockResolvedValue({
+    data: { data: { session_id: 'abc', state: 'awaiting_evidence' } },
+  })
+
+  const user = userEvent.setup()
+  wrap(<JourneyPage />)
+  await waitFor(() => expect(screen.getByText('Did you work from home?')).toBeInTheDocument())
+
+  await user.click(screen.getByRole('button', { name: 'Yes' }))
+
+  await waitFor(() => expect(mockCompleteInterview).toHaveBeenCalled())
+  await waitFor(() => expect(screen.getByText(/you're all set up/i)).toBeInTheDocument())
 })

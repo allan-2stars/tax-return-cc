@@ -9,6 +9,8 @@ interface InterviewSummaryProps {
 
 export default function InterviewSummary({ onEdit }: InterviewSummaryProps) {
   const queryClient = useQueryClient()
+  const [jumping, setJumping] = useState<string | null>(null)
+  const [editError, setEditError] = useState<string | null>(null)
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['interview', 'summary'],
@@ -26,9 +28,6 @@ export default function InterviewSummary({ onEdit }: InterviewSummaryProps) {
   if (!data || data.sections.length === 0) {
     return null
   }
-
-  const [jumping, setJumping] = useState<string | null>(null)
-  const [editError, setEditError] = useState<string | null>(null)
 
   async function handleEdit(questionId: string) {
     if (jumping) return

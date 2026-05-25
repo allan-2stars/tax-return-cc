@@ -170,7 +170,7 @@ export default function JourneyPage() {
 
           {/* Answer summary + edit flow */}
           <InterviewSummary
-            onEdit={() => queryClient.invalidateQueries({ queryKey: ['interview', 'session'] })}
+            onEdit={() => {}}
           />
 
           {/* CTAs */}
