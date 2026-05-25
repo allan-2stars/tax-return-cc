@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { bulkAction, getReviewQueue, submitInlineAnswer, takeAction } from '@/lib/api/review'
@@ -42,7 +42,7 @@ function findGroups(items: ReviewItem[]): Map<string, { ids: string[]; label: st
   return new Map([...groups.entries()].filter(([, { ids }]) => ids.length >= 2))
 }
 
-export default function ReviewPage() {
+function ReviewContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const queryClient = useQueryClient()
@@ -286,5 +286,17 @@ export default function ReviewPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function ReviewPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ padding: 'var(--space-8)', color: 'var(--color-text-muted)' }}>
+        Loading...
+      </div>
+    }>
+      <ReviewContent />
+    </Suspense>
   )
 }
