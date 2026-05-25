@@ -7,7 +7,7 @@ from app.db.base import get_db
 from app.db.models import InterviewSession
 from app.engines.interview import (
     InterviewEngine, InlineQuestion, _QUESTION_BY_ID,
-    _PLATFORM_ID_SET, BRANCH_QUESTIONS, PLATFORM_QUESTIONS,
+    BRANCH_QUESTIONS, PLATFORM_QUESTIONS,
 )
 from app.errors import error_response
 from app.repositories import auth as auth_repo
@@ -20,10 +20,6 @@ _engine = InterviewEngine()
 
 
 # ── Summary constants ─────────────────────────────────────────────────────────
-
-_PLATFORM_AND_BRANCH_IDS: frozenset[str] = _PLATFORM_ID_SET | frozenset(
-    q.id for q in BRANCH_QUESTIONS
-)
 
 # Canonical order for "Your situation" answers: platform questions then branch questions
 _ORDERED_PLATFORM_IDS: list[str] = (
