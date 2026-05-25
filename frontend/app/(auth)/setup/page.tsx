@@ -1,9 +1,9 @@
-// frontend/app/(auth)/setup/page.tsx
 'use client'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
+import axios from 'axios'
 import { Eye, EyeOff, Copy, Download, Check } from 'lucide-react'
 import { setup, setupConfirm } from '@/lib/api/auth'
 import useWorkspaceStore from '@/lib/stores/workspace.store'
@@ -19,23 +19,34 @@ interface ConfirmForm {
   confirmation: string
 }
 
-function passwordStrength(pw: string): { label: string; level: 0 | 1 | 2 | 3 } {
+type StrengthLevel = 0 | 1 | 2 | 3 | 4
+
+function passwordStrength(pw: string): { label: string; level: StrengthLevel } {
   if (!pw) return { label: '', level: 0 }
-  let score = 0
-  if (pw.length >= 8) score++
-  if (/[A-Z]/.test(pw)) score++
-  if (/[0-9]/.test(pw)) score++
-  if (/[^A-Za-z0-9]/.test(pw)) score++
-  if (score <= 1) return { label: 'Weak', level: 1 }
-  if (score <= 2) return { label: 'Fair', level: 2 }
-  return { label: 'Strong', level: 3 }
+  const hasLetter = /[A-Za-z]/.test(pw)
+  const hasNumber = /[0-9]/.test(pw)
+  const isMixed = hasLetter && hasNumber
+  if (pw.length >= 16 && isMixed) return { label: 'Strong', level: 4 }
+  if (pw.length >= 12 && isMixed) return { label: 'Good', level: 3 }
+  if (pw.length >= 8) return { label: 'Fair', level: 2 }
+  return { label: 'Weak', level: 1 }
 }
 
-const strengthColor: Record<number, string> = {
+const strengthBarColor: Record<number, string> = {
   1: 'bg-risk-high',
   2: 'bg-review',
   3: 'bg-ready',
+  4: 'bg-ready',
 }
+
+const strengthTextColor: Record<number, string> = {
+  1: 'text-risk-high',
+  2: 'text-review',
+  3: 'text-ready',
+  4: 'text-ready',
+}
+
+const CONFIRM_FORMAT_RE = /^[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}$/i
 
 function getCurrentFY(): string {
   const now = new Date()
@@ -68,23 +79,34 @@ export default function SetupPage() {
     register: registerPw,
     handleSubmit: handlePwSubmit,
     watch,
-    formState: { isSubmitting: isPwSubmitting },
-  } = useForm<PasswordForm>()
+    formState: {
+      isSubmitting: isPwSubmitting,
+      errors: pwErrors,
+      touchedFields: pwTouched,
+      isSubmitted: pwIsSubmitted,
+    },
+  } = useForm<PasswordForm>({ mode: 'onTouched' })
 
   const {
     register: registerConfirm,
     handleSubmit: handleConfirmSubmit,
-    formState: { isSubmitting: isConfirmSubmitting },
-  } = useForm<ConfirmForm>()
+    watch: watchConfirm,
+    formState: { isSubmitting: isConfirmSubmitting, errors: confirmErrors },
+  } = useForm<ConfirmForm>({ mode: 'onTouched' })
 
   const passwordValue = watch('password', '')
+  const confirmValue = watchConfirm('confirmation', '')
   const strength = passwordStrength(passwordValue)
 
-  async function onPasswordSubmit({ password, confirmPassword }: PasswordForm) {
-    if (password !== confirmPassword) {
-      setServerError('Passwords do not match.')
-      return
-    }
+  const hasInteracted =
+    (pwTouched.password ?? false) ||
+    (pwTouched.confirmPassword ?? false) ||
+    pwIsSubmitted
+  const continueDisabled =
+    isPwSubmitting ||
+    (hasInteracted && (!!pwErrors.password || !!pwErrors.confirmPassword))
+
+  async function onPasswordSubmit({ password }: PasswordForm) {
     setServerError(null)
     try {
       const res = await setup(password, selectedFY)
@@ -92,10 +114,18 @@ export default function SetupPage() {
       setRecoveryKey(res.data.data.recovery_key)
       setStep(2)
     } catch (err: unknown) {
-      const msg = (
-        err as { response?: { data?: { detail?: { message?: string } } } }
-      )?.response?.data?.detail?.message
-      setServerError(msg ?? 'Setup failed. Please try again.')
+      console.error(err)
+      if (axios.isAxiosError(err)) {
+        const errorCode = err.response?.data?.detail?.error_code
+        const message = err.response?.data?.detail?.message
+        if (errorCode === 'already_setup') {
+          router.push('/login')
+          return
+        }
+        setServerError(message ?? 'Setup failed. Please try again.')
+      } else {
+        setServerError('Connection error. Please check your network.')
+      }
     }
   }
 
@@ -106,20 +136,26 @@ export default function SetupPage() {
       setWorkspace(setupWorkspaceId, selectedFY)
       router.push('/journey')
     } catch (err: unknown) {
-      const msg = (
-        err as { response?: { data?: { detail?: { message?: string } } } }
-      )?.response?.data?.detail?.message
-      setServerError(msg ?? 'Confirmation failed. Check the last key segment.')
+      console.error(err)
+      if (axios.isAxiosError(err)) {
+        const message = err.response?.data?.detail?.message
+        setServerError(message ?? 'Confirmation failed. Check the last key segment.')
+      } else {
+        setServerError('Connection error. Please check your network.')
+      }
     }
   }
 
   function copyKey() {
-    navigator.clipboard.writeText(recoveryKey).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }).catch(() => {
-      setServerError('Failed to copy to clipboard. Please copy the key manually.')
-    })
+    navigator.clipboard
+      .writeText(recoveryKey)
+      .then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      })
+      .catch(() => {
+        setServerError('Failed to copy to clipboard. Please copy the key manually.')
+      })
   }
 
   function downloadKey() {
@@ -139,15 +175,12 @@ export default function SetupPage() {
           Tax Return AI
         </h1>
 
-        {/* Step progress bar — steps 1-3 shown, step 0 is pre-flow */}
         {step > 0 && (
           <div className="flex gap-2 mb-8">
             {([1, 2, 3] as const).map((s) => (
               <div
                 key={s}
-                className={`h-1 flex-1 rounded-full ${
-                  s <= step ? 'bg-accent' : 'bg-border'
-                }`}
+                className={`h-1 flex-1 rounded-full ${s <= step ? 'bg-accent' : 'bg-border'}`}
               />
             ))}
           </div>
@@ -164,7 +197,10 @@ export default function SetupPage() {
                 <button
                   key={fy}
                   type="button"
-                  onClick={() => { setSelectedFY(fy); setStep(1) }}
+                  onClick={() => {
+                    setSelectedFY(fy)
+                    setStep(1)
+                  }}
                   className={`w-full text-left px-4 py-3 rounded-md border font-ui text-sm font-medium transition-colors ${
                     selectedFY === fy
                       ? 'border-accent text-accent'
@@ -202,7 +238,19 @@ export default function SetupPage() {
                   autoFocus
                   autoComplete="new-password"
                   className="w-full px-4 py-3 rounded-md border border-border bg-surface font-ui text-base text-text-primary focus:outline-none focus:shadow-focus"
-                  {...registerPw('password', { required: true })}
+                  {...registerPw('password', {
+                    required: 'Password is required',
+                    minLength: {
+                      value: 12,
+                      message: 'Password must be at least 12 characters',
+                    },
+                    validate: {
+                      hasLetter: (v) =>
+                        /[A-Za-z]/.test(v) || 'Password must contain at least one letter',
+                      hasNumber: (v) =>
+                        /[0-9]/.test(v) || 'Password must contain at least one number',
+                    },
+                  })}
                 />
                 <button
                   type="button"
@@ -221,14 +269,25 @@ export default function SetupPage() {
                         key={level}
                         className={`h-1 flex-1 rounded-full ${
                           strength.level >= level
-                            ? strengthColor[strength.level]
+                            ? strengthBarColor[strength.level]
                             : 'bg-border'
                         }`}
                       />
                     ))}
                   </div>
-                  <p className="font-ui text-xs text-text-muted">{strength.label}</p>
+                  <p
+                    className={`font-ui text-xs ${
+                      strengthTextColor[strength.level] ?? 'text-text-muted'
+                    }`}
+                  >
+                    {strength.label}
+                  </p>
                 </div>
+              )}
+              {pwErrors.password && (
+                <p role="alert" className="font-ui text-sm text-risk-high mt-1">
+                  {pwErrors.password.message}
+                </p>
               )}
             </div>
 
@@ -244,8 +303,17 @@ export default function SetupPage() {
                 type="password"
                 autoComplete="new-password"
                 className="w-full px-4 py-3 rounded-md border border-border bg-surface font-ui text-base text-text-primary focus:outline-none focus:shadow-focus"
-                {...registerPw('confirmPassword', { required: true })}
+                {...registerPw('confirmPassword', {
+                  required: 'Please confirm your password',
+                  validate: (v) =>
+                    v === watch('password') || 'Passwords do not match.',
+                })}
               />
+              {pwErrors.confirmPassword && (
+                <p role="alert" className="font-ui text-sm text-risk-high mt-1">
+                  {pwErrors.confirmPassword.message}
+                </p>
+              )}
             </div>
 
             {serverError && (
@@ -256,7 +324,7 @@ export default function SetupPage() {
 
             <button
               type="submit"
-              disabled={isPwSubmitting}
+              disabled={continueDisabled}
               className="w-full py-3 rounded-md bg-accent hover:bg-accent-hover text-white font-ui font-medium text-base disabled:opacity-50 transition-colors"
             >
               {isPwSubmitting ? 'Setting up…' : 'Continue'}
@@ -276,9 +344,7 @@ export default function SetupPage() {
             </p>
 
             <div className="bg-surface-raised border border-border rounded-md p-4">
-              <p className="font-mono text-sm text-text-primary break-all">
-                {recoveryKey}
-              </p>
+              <p className="font-mono text-sm text-text-primary break-all">{recoveryKey}</p>
             </div>
 
             <div className="flex gap-3">
@@ -308,7 +374,10 @@ export default function SetupPage() {
 
             <button
               type="button"
-              onClick={() => { setServerError(null); setStep(3) }}
+              onClick={() => {
+                setServerError(null)
+                setStep(3)
+              }}
               className="w-full py-3 rounded-md bg-accent hover:bg-accent-hover text-white font-ui font-medium text-base transition-colors"
             >
               I&apos;ve saved it
@@ -323,8 +392,8 @@ export default function SetupPage() {
               Confirm your recovery key
             </h2>
             <p className="font-ui text-sm text-text-muted">
-              Enter the last segment of your recovery key to confirm
-              you&apos;ve saved it correctly.
+              Enter the last segment of your recovery key to confirm you&apos;ve saved it
+              correctly.
             </p>
 
             <div>
@@ -340,8 +409,20 @@ export default function SetupPage() {
                 autoFocus
                 placeholder="XXXX-XXXX"
                 className="w-full px-4 py-3 rounded-md border border-border bg-surface font-mono text-base text-text-primary focus:outline-none focus:shadow-focus"
-                {...registerConfirm('confirmation', { required: true })}
+                {...registerConfirm('confirmation', {
+                  required:
+                    'Please enter the last 8 characters of your recovery key',
+                  pattern: {
+                    value: CONFIRM_FORMAT_RE,
+                    message: 'Format should be XXXX-XXXX',
+                  },
+                })}
               />
+              {confirmErrors.confirmation && (
+                <p role="alert" className="font-ui text-sm text-risk-high mt-1">
+                  {confirmErrors.confirmation.message}
+                </p>
+              )}
             </div>
 
             {serverError && (
@@ -352,7 +433,7 @@ export default function SetupPage() {
 
             <button
               type="submit"
-              disabled={isConfirmSubmitting}
+              disabled={isConfirmSubmitting || !CONFIRM_FORMAT_RE.test(confirmValue)}
               className="w-full py-3 rounded-md bg-accent hover:bg-accent-hover text-white font-ui font-medium text-base disabled:opacity-50 transition-colors"
             >
               {isConfirmSubmitting ? 'Confirming…' : 'Confirm'}

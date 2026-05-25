@@ -367,3 +367,16 @@ async def test_question_dict_includes_required_why_hint(auth_client):
     assert "why" in q
     assert "hint" in q
     assert isinstance(q["required"], bool)
+
+
+# ── 14. spouse_rfba_amount is currency=True, required=False ──────────────────
+
+@pytest.mark.asyncio
+async def test_spouse_rfba_amount_is_currency_and_optional(auth_client):
+    """spouse_rfba_amount must be currency=True, required=False so the
+    frontend renders the $ input and shows a Skip button."""
+    from app.engines.interview import BRANCH_QUESTIONS
+    q = next((q for q in BRANCH_QUESTIONS if q.id == "spouse_rfba_amount"), None)
+    assert q is not None
+    assert q.currency is True
+    assert q.required is False

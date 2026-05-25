@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import EncryptedDraft, Workspace, WorkspaceSecurity
@@ -34,6 +34,11 @@ async def create_security(
     await db.commit()
     await db.refresh(ws)
     return ws
+
+
+async def delete_security(db: AsyncSession, workspace_id: str) -> None:
+    await db.execute(delete(WorkspaceSecurity).where(WorkspaceSecurity.workspace_id == workspace_id))
+    await db.commit()
 
 
 async def update_security(db: AsyncSession, ws: WorkspaceSecurity, **fields) -> None:

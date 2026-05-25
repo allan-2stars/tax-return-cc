@@ -1,8 +1,14 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ReviewPage from '@/app/(dashboard)/review/page'
 import * as reviewApi from '@/lib/api/review'
 import type { ReviewQueue } from '@/lib/api/types'
+
+const mockRouterPush = jest.fn()
+jest.mock('next/navigation', () => ({
+  useSearchParams: jest.fn(() => new URLSearchParams()),
+  useRouter: () => ({ push: mockRouterPush }),
+}))
 
 jest.mock('@/lib/api/review')
 jest.mock('@/components/review/ReviewCard', () => ({
@@ -32,7 +38,10 @@ function wrap(ui: React.ReactElement) {
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>)
 }
 
-beforeEach(() => jest.clearAllMocks())
+beforeEach(() => {
+  jest.clearAllMocks()
+  mockRouterPush.mockReset()
+})
 
 describe('ReviewPage', () => {
   it('shows loading state initially', () => {
@@ -114,6 +123,57 @@ describe('ReviewPage', () => {
     await waitFor(() =>
       expect(screen.getByText(/3 items? to review/i)).toBeInTheDocument()
     )
+  })
+})
+
+describe('ReviewPage — filter tabs', () => {
+  it('renders all filter tabs with All active by default', async () => {
+    mockGetReviewQueue.mockResolvedValue({ data: { data: emptyQueue } })
+    wrap(<ReviewPage />)
+    await waitFor(() => screen.getByRole('tab', { name: /^all$/i }))
+    expect(screen.getByRole('tab', { name: /^all$/i })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: /^income$/i })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^deductions$/i })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^wfh$/i })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^confirmed$/i })).toBeInTheDocument()
+  })
+
+  it('shows only income items when Income filter is active', async () => {
+    const queue: ReviewQueue = {
+      ...emptyQueue,
+      needs_review: {
+        count: 2,
+        items: [
+          { ...makeItem('item-income', 'PAYG Income'), category: 'payg_income', status: 'needs_user_review' },
+          { ...makeItem('item-expense', 'Work Laptop'), category: 'work_expense', status: 'needs_user_review' },
+        ],
+      },
+      total: 2,
+      pending: 2,
+    }
+    mockGetReviewQueue.mockResolvedValue({ data: { data: queue } })
+    wrap(<ReviewPage />)
+    await waitFor(() => screen.getByRole('tab', { name: /^income$/i }))
+    fireEvent.click(screen.getByRole('tab', { name: /^income$/i }))
+    await waitFor(() => expect(screen.getByText('PAYG Income')).toBeInTheDocument())
+    expect(screen.queryByText('Work Laptop')).not.toBeInTheDocument()
+  })
+
+  it('pushes URL with filter param when tab is clicked', async () => {
+    mockGetReviewQueue.mockResolvedValue({ data: { data: emptyQueue } })
+    wrap(<ReviewPage />)
+    await waitFor(() => screen.getByRole('tab', { name: /^income$/i }))
+    fireEvent.click(screen.getByRole('tab', { name: /^income$/i }))
+    expect(mockRouterPush).toHaveBeenCalledWith('/review?filter=income', { scroll: false })
+  })
+
+  it('pushes /review with no params when All tab is clicked after another filter', async () => {
+    mockGetReviewQueue.mockResolvedValue({ data: { data: emptyQueue } })
+    wrap(<ReviewPage />)
+    await waitFor(() => screen.getByRole('tab', { name: /^deductions$/i }))
+    fireEvent.click(screen.getByRole('tab', { name: /^deductions$/i }))
+    fireEvent.click(screen.getByRole('tab', { name: /^all$/i }))
+    expect(mockRouterPush).toHaveBeenLastCalledWith('/review', { scroll: false })
   })
 })
 

@@ -41,6 +41,16 @@ describe('useAuth', () => {
     })
   })
 
+  it('redirects to /setup when setup_required is true in response data', async () => {
+    mockGetSession.mockResolvedValue({
+      data: { data: { setup_required: true, authenticated: false } },
+    })
+    renderHook(() => useAuth())
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith('/setup')
+    })
+  })
+
   it('does not redirect when session exists', async () => {
     mockGetSession.mockResolvedValue({
       data: {

@@ -146,13 +146,6 @@ def _no_session_error() -> HTTPException:
     )
 
 
-def _skill_question_ids(skill_id: str) -> frozenset[str]:
-    """Return the set of question IDs owned by this skill."""
-    skill = _engine._registry.get_skill(skill_id)
-    if skill is None:
-        return frozenset()
-    return frozenset(q.id for q in skill.get_questions(None))
-
 
 # ── GET /interview/session ────────────────────────────────────────────────────
 
@@ -369,21 +362,25 @@ async def get_summary(
     if situation_answers:
         sections.append({"title": "Your situation", "answers": situation_answers})
 
-    # One section per activated skill — only questions owned by that skill
+    # One section per activated skill — use skill registry directly so skill
+    # questions are always available even after a server restart (they are not
+    # pre-loaded into _QUESTION_BY_ID; they're added lazily during process_answer).
     for skill_id in (session.activated_skills or []):
-        q_ids = _skill_question_ids(skill_id)
+        skill = _engine._registry.get_skill(skill_id)
+        if not skill:
+            continue
+        skill_q_map = {q.id: q for q in skill.get_questions(None)}
         skill_answers = []
         for qid, val in answers.items():
-            if qid in q_ids:
-                q = _QUESTION_BY_ID.get(qid)
-                if q:
-                    skill_answers.append({
-                        "question_id":    qid,
-                        "question_label": q.ask,
-                        "answer_value":   val,
-                        "answer_label":   val,
-                        "editable":       True,
-                    })
+            if qid in skill_q_map:
+                q = skill_q_map[qid]
+                skill_answers.append({
+                    "question_id":    qid,
+                    "question_label": q.ask,
+                    "answer_value":   val,
+                    "answer_label":   val,
+                    "editable":       True,
+                })
         if skill_answers:
             title = _SKILL_SECTION_TITLES.get(skill_id, skill_id)
             sections.append({"title": title, "answers": skill_answers})

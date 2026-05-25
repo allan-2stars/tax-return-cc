@@ -29,7 +29,8 @@ questions:
     type: single_choice
     options: [yes_regular, yes_sometimes, no]
     required: false
-    why: "This helps us determine if you can claim a work-from-home deduction."
+    hint: "Even occasional home working counts."
+    why: "Working from home may entitle you to deductions for internet, electricity, and equipment. The ATO requires records to support these claims."
     branches:
       yes_regular:   [wfh_method, wfh_days]
       yes_sometimes: [wfh_method]

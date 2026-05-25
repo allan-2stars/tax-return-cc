@@ -137,7 +137,23 @@ async def test_session_endpoint_authenticated(auth_client):
 
 
 @pytest.mark.asyncio
-async def test_session_endpoint_unauthenticated(client):
+async def test_session_endpoint_no_workspace_returns_setup_required(client):
+    # Fresh DB with no workspace → first-run signal
+    resp = await client.get("/api/v1/auth/session")
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert data["setup_required"] is True
+    assert data["authenticated"] is False
+
+
+@pytest.mark.asyncio
+async def test_session_endpoint_unauthenticated_with_workspace_returns_401(client):
+    # Workspace exists but no session cookie → 401
+    await client.post(
+        "/api/v1/auth/setup",
+        json={"password": TEST_PASSWORD, "financial_year": "2024-25"},
+    )
+    client.cookies.clear()
     resp = await client.get("/api/v1/auth/session")
     assert resp.status_code == 401
 
@@ -146,15 +162,12 @@ async def test_session_endpoint_unauthenticated(client):
 
 @pytest.mark.asyncio
 async def test_setup_creates_workspace_security(client, patch_password):
-    login = await client.post("/api/v1/auth/login", json={"password": TEST_PASSWORD})
-    assert login.status_code == 200
-
     resp = await client.post(
         "/api/v1/auth/setup",
         json={"password": TEST_PASSWORD, "financial_year": "2024-25"},
     )
     assert resp.status_code == 200
-    body = resp.json()
+    body = resp.json()["data"]
     assert "recovery_key" in body
     assert "workspace_id" in body
     assert " / " in body["recovery_key"]
@@ -165,14 +178,11 @@ async def test_setup_populates_dek_fields(client, patch_password):
     from sqlalchemy import select
     from app.db.models import WorkspaceSecurity
 
-    login = await client.post("/api/v1/auth/login", json={"password": TEST_PASSWORD})
-    assert login.status_code == 200
-
     setup = await client.post(
         "/api/v1/auth/setup",
         json={"password": TEST_PASSWORD, "financial_year": "2024-25"},
     )
-    workspace_id = setup.json()["workspace_id"]
+    workspace_id = setup.json()["data"]["workspace_id"]
 
     from app.db.base import get_db
     db_override = client.app.dependency_overrides[get_db]
@@ -192,19 +202,46 @@ async def test_setup_populates_dek_fields(client, patch_password):
 
 
 @pytest.mark.asyncio
-async def test_setup_twice_returns_409(client, patch_password):
+async def test_setup_reentry_when_unconfirmed_returns_200(client, patch_password):
+    # First setup — workspace created, setup_confirmed=False
     resp1 = await client.post(
         "/api/v1/auth/setup",
         json={"password": TEST_PASSWORD, "financial_year": "2024-25"},
     )
     assert resp1.status_code == 200
 
+    # Second setup without confirming — allowed (incomplete first-run)
     resp2 = await client.post(
         "/api/v1/auth/setup",
         json={"password": TEST_PASSWORD, "financial_year": "2024-25"},
     )
-    assert resp2.status_code == 409
-    assert resp2.json()["detail"]["error_code"] == "already_setup"
+    assert resp2.status_code == 200
+    assert "recovery_key" in resp2.json()["data"]
+
+
+@pytest.mark.asyncio
+async def test_setup_after_confirmed_returns_409(client, patch_password):
+    from app.security import normalize_recovery_key
+
+    # Setup and fully confirm
+    setup = await client.post(
+        "/api/v1/auth/setup",
+        json={"password": TEST_PASSWORD, "financial_year": "2024-25"},
+    )
+    assert setup.status_code == 200
+    last_8 = normalize_recovery_key(setup.json()["data"]["recovery_key"])[-8:]
+    await client.post(
+        "/api/v1/auth/setup/confirm",
+        json={"confirmation": f"{last_8[:4]}-{last_8[4:]}"},
+    )
+
+    # Now re-setup must be blocked
+    resp = await client.post(
+        "/api/v1/auth/setup",
+        json={"password": TEST_PASSWORD, "financial_year": "2024-25"},
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["error_code"] == "already_setup"
 
 
 # ── recover ──────────────────────────────────────────────────────────────────
@@ -322,7 +359,7 @@ async def test_setup_confirm_correct_chars(client, patch_password):
         json={"password": TEST_PASSWORD, "financial_year": "2024-25"},
     )
     assert setup.status_code == 200
-    recovery_key = setup.json()["recovery_key"]
+    recovery_key = setup.json()["data"]["recovery_key"]
 
     last_8 = normalize_recovery_key(recovery_key)[-8:]
     resp = await client.post(

@@ -1,11 +1,34 @@
 'use client'
 import { useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { bulkAction, getReviewQueue, submitInlineAnswer, takeAction } from '@/lib/api/review'
 import type { ReviewItem, ReviewQueue } from '@/lib/api/types'
 import ReviewCard from '@/components/review/ReviewCard'
 import BulkActionBar from '@/components/review/BulkActionBar'
 import ManualEntryForm from '@/components/review/ManualEntryForm'
+
+const INCOME_CATEGORIES = new Set([
+  'payg_income', 'allowance', 'lump_sum', 'bank_interest', 'investment_income_basic',
+])
+const DEDUCTION_CATEGORIES = new Set([
+  'work_expense', 'work_subscription', 'work_equipment', 'vehicle', 'travel',
+  'uniform', 'self_education', 'other_deduction', 'donation', 'private_health_rebate',
+])
+const INVESTMENT_CATEGORIES = new Set([
+  'crypto_income', 'capital_gain', 'investment_income',
+])
+
+const FILTER_TABS = ['All', 'Income', 'Deductions', 'Investments', 'WFH', 'Confirmed']
+
+function applyFilter(items: ReviewItem[], filter: string): ReviewItem[] {
+  if (filter === 'income') return items.filter((i) => INCOME_CATEGORIES.has(i.category ?? ''))
+  if (filter === 'deductions') return items.filter((i) => DEDUCTION_CATEGORIES.has(i.category ?? ''))
+  if (filter === 'investments') return items.filter((i) => INVESTMENT_CATEGORIES.has(i.category ?? ''))
+  if (filter === 'wfh') return items.filter((i) => i.category?.includes('wfh') ?? false)
+  if (filter === 'confirmed') return items.filter((i) => i.status === 'confirmed')
+  return items
+}
 
 function findGroups(items: ReviewItem[]): Map<string, { ids: string[]; label: string }> {
   const groups = new Map<string, { ids: string[]; label: string }>()
@@ -20,8 +43,20 @@ function findGroups(items: ReviewItem[]): Map<string, { ids: string[]; label: st
 }
 
 export default function ReviewPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const queryClient = useQueryClient()
   const [showManualEntry, setShowManualEntry] = useState(false)
+  const [activeFilter, setActiveFilter] = useState(() => searchParams.get('filter') ?? 'all')
+
+  function handleFilterChange(filter: string) {
+    setActiveFilter(filter)
+    if (filter === 'all') {
+      router.push('/review', { scroll: false })
+    } else {
+      router.push(`/review?filter=${filter}`, { scroll: false })
+    }
+  }
 
   const { data: queue, isLoading, isError } = useQuery<ReviewQueue>({
     queryKey: ['review-queue'],
@@ -79,6 +114,14 @@ export default function ReviewPage() {
   const allNeedsReview = queue.needs_review.items
   const groups = findGroups(allNeedsReview)
 
+  const allItems: ReviewItem[] = [
+    ...queue.agent_required.items,
+    ...queue.high_risk.items,
+    ...queue.needs_review.items,
+    ...queue.confirmed.items,
+  ]
+  const filteredItems = applyFilter(allItems, activeFilter)
+
   return (
     <div className="space-y-8">
       <div>
@@ -99,7 +142,50 @@ export default function ReviewPage() {
         </button>
       </div>
 
-      {queue.pending === 0 && queue.total === 0 && (
+      {/* Filter tabs */}
+      <div className="flex gap-1 flex-wrap border-b border-border" role="tablist" aria-label="Filter review items">
+        {FILTER_TABS.map((tab) => {
+          const key = tab.toLowerCase()
+          const active = activeFilter === key
+          return (
+            <button
+              key={key}
+              role="tab"
+              aria-selected={active}
+              type="button"
+              onClick={() => handleFilterChange(key)}
+              style={{
+                borderBottom: active ? '2px solid var(--color-accent)' : '2px solid transparent',
+                color: active ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                fontFamily: 'var(--font-ui)',
+                fontWeight: 500,
+                padding: 'var(--space-2) var(--space-4)',
+              }}
+            >
+              {tab}
+            </button>
+          )
+        })}
+      </div>
+
+      {activeFilter !== 'all' && (
+        <div className="space-y-3">
+          {filteredItems.length === 0 ? (
+            <p className="font-ui text-text-muted py-8 text-center">No items match this filter.</p>
+          ) : (
+            filteredItems.map((item) => (
+              <ReviewCard
+                key={item.id}
+                item={item}
+                onAction={(id, action, payload) => actionMutation.mutate({ id, action, payload })}
+                onInlineAnswer={handleInlineAnswer}
+              />
+            ))
+          )}
+        </div>
+      )}
+
+      {activeFilter === 'all' && queue.pending === 0 && queue.total === 0 && (
         <div className="py-16 text-center">
           <p className="font-ui text-text-muted">
             No items to review yet. Complete the interview to generate review items.
@@ -107,7 +193,7 @@ export default function ReviewPage() {
         </div>
       )}
 
-      {queue.agent_required.count > 0 && (
+      {activeFilter === 'all' && queue.agent_required.count > 0 && (
         <section>
           <h2 className="font-display text-base font-semibold text-agent mb-3">
             Agent review required ({queue.agent_required.count})
@@ -125,7 +211,7 @@ export default function ReviewPage() {
         </section>
       )}
 
-      {queue.high_risk.count > 0 && (
+      {activeFilter === 'all' && queue.high_risk.count > 0 && (
         <section>
           <h2 className="font-display text-base font-semibold text-risk-high mb-3">
             Flagged for review ({queue.high_risk.count})
@@ -143,7 +229,7 @@ export default function ReviewPage() {
         </section>
       )}
 
-      {queue.needs_review.count > 0 && (
+      {activeFilter === 'all' && queue.needs_review.count > 0 && (
         <section>
           <h2 className="font-display text-base font-semibold text-text-primary mb-3">
             Needs your review ({queue.needs_review.count})
@@ -169,7 +255,7 @@ export default function ReviewPage() {
         </section>
       )}
 
-      {queue.confirmed.count > 0 && (
+      {activeFilter === 'all' && queue.confirmed.count > 0 && (
         <section>
           <h2 className="font-display text-base font-semibold text-ready mb-3">
             Confirmed ({queue.confirmed.count})

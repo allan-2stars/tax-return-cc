@@ -1,10 +1,11 @@
 'use client'
-import { useState } from 'react'
+import { useForm } from 'react-hook-form'
 
 interface Props {
   title: string
   description?: string
   confirmLabel?: string
+  emptyMessage?: string
   pending?: boolean
   error?: string | null
   onConfirm: (password: string) => void
@@ -15,15 +16,19 @@ export default function PasswordModal({
   title,
   description,
   confirmLabel = 'Confirm',
+  emptyMessage = 'Password is required',
   pending,
   error,
   onConfirm,
   onCancel,
 }: Props) {
-  const [password, setPassword] = useState('')
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<{ password: string }>()
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  function onSubmit({ password }: { password: string }) {
     onConfirm(password)
   }
 
@@ -34,7 +39,7 @@ export default function PasswordModal({
         {description && (
           <p className="text-sm font-ui text-text-muted">{description}</p>
         )}
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div>
             <label
               htmlFor="modal-password"
@@ -45,13 +50,17 @@ export default function PasswordModal({
             <input
               id="modal-password"
               type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
               className="w-full rounded-md border border-border bg-canvas px-3 py-2 text-sm font-ui"
               aria-label="Password"
               autoFocus
-              required
+              {...register('password', { required: emptyMessage })}
             />
+            {errors.password && (
+              <p className="text-sm font-ui text-risk-high mt-1">
+                {errors.password.message}
+              </p>
+            )}
           </div>
           {error && <p className="text-sm font-ui text-risk-high">{error}</p>}
           <div className="flex gap-3">

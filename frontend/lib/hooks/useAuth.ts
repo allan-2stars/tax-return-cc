@@ -14,7 +14,12 @@ export function useAuth() {
   useEffect(() => {
     getSession()
       .then((res) => {
-        const { workspace_id, financial_year, is_unlocked, user_lodger_type } = res.data.data
+        const data = res.data.data
+        if (data.setup_required) {
+          router.replace('/setup')
+          return
+        }
+        const { workspace_id, financial_year, is_unlocked, user_lodger_type } = data
         setWorkspace(workspace_id, financial_year)
         setAuthenticated(true)
         setUnlocked(is_unlocked)

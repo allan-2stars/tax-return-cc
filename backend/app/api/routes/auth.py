@@ -1,13 +1,13 @@
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sqlalchemy import select
 
-from app.api.dependencies import require_auth, require_session, sign_session, sign_unlock_session
+from app.api.dependencies import decode_session_cookie, require_auth, require_session, sign_session, sign_unlock_session
 from app.config import settings
 from app.db.base import get_db
 from app.db.models import TaxProfile, Workspace
@@ -108,27 +108,10 @@ async def login(
             )
 
     if not password_ok:
-        if not settings.APP_PASSWORD_HASH:
-            raise HTTPException(
-                status_code=503,
-                detail=error_response(
-                    "not_configured",
-                    "No password configured. Run 'make shell-be' then: "
-                    "python -c \"import bcrypt; print(bcrypt.hashpw(b'yourpassword', bcrypt.gensalt()).decode())\" "
-                    "and set APP_PASSWORD_HASH in .env",
-                    retryable=False,
-                ),
-            )
-        if not bcrypt.checkpw(
-            body.password.encode(), settings.APP_PASSWORD_HASH.encode()
-        ):
-            raise HTTPException(
-                status_code=401,
-                detail=error_response(
-                    "invalid_password", "Incorrect password.", retryable=False
-                ),
-            )
-        password_ok = True
+        raise HTTPException(
+            status_code=401,
+            detail=error_response("invalid_password", "Incorrect password.", retryable=False),
+        )
 
     max_age = settings.SESSION_MAX_AGE_DAYS * 86400
     response.set_cookie(
@@ -153,9 +136,32 @@ async def logout(response: Response):
 
 @router.get("/auth/session")
 async def session_status(
-    workspace_id: str = Depends(require_auth),
+    session: str | None = Cookie(default=None),
     db: AsyncSession = Depends(get_db),
 ):
+    existing = await auth_repo.get_singleton_workspace(db)
+    if existing is None:
+        return {"status": "ok", "data": {"authenticated": False, "setup_required": True}}
+
+    if not session:
+        raise HTTPException(
+            status_code=401,
+            detail=error_response("not_authenticated", "Authentication required.", retryable=False),
+        )
+    workspace_id = decode_session_cookie(session, max_age=settings.SESSION_MAX_AGE_DAYS * 86400)
+
+    ws_sec = await auth_repo.get_security(db, workspace_id)
+    if ws_sec and not ws_sec.setup_confirmed:
+        raise HTTPException(
+            status_code=403,
+            detail=error_response(
+                "setup_not_confirmed",
+                "Please save your recovery key and confirm before continuing.",
+                action="confirm_setup",
+                retryable=False,
+            ),
+        )
+
     data = await _workspace_session_data(db, workspace_id)
     return {"data": data, "status": "ok"}
 
@@ -167,21 +173,17 @@ async def setup(
     db: AsyncSession = Depends(get_db),
 ):
     existing = await auth_repo.get_singleton_workspace(db)
-    if existing is not None:
-        raise HTTPException(
-            status_code=409,
-            detail=error_response(
-                "already_setup", "Workspace already configured.", retryable=False
-            ),
-        )
+    ws_sec = None
 
-    workspace = Workspace(
-        name="My Tax Return",
-        financial_year=body.financial_year,
-        status="active",
-    )
-    db.add(workspace)
-    await db.flush()
+    if existing is not None:
+        ws_sec = await auth_repo.get_security(db, existing.id)
+        if ws_sec is not None and ws_sec.setup_confirmed:
+            raise HTTPException(
+                status_code=409,
+                detail=error_response(
+                    "already_setup", "Workspace already configured.", retryable=False
+                ),
+            )
 
     dek = generate_dek()
     password_hash = bcrypt.hashpw(
@@ -197,15 +199,38 @@ async def setup(
     last_8 = normalized_rk[-8:]
     recovery_confirm_hash = bcrypt.hashpw(last_8.encode(), bcrypt.gensalt(rounds=12)).decode()
 
-    await auth_repo.create_security(
-        db,
-        workspace_id=workspace.id,
-        password_hash=password_hash,
-        password_encrypted_dek=password_encrypted_dek,
-        recovery_key_hash=recovery_key_hash,
-        recovery_encrypted_dek=recovery_encrypted_dek,
-        recovery_confirm_hash=recovery_confirm_hash,
-    )
+    if existing is None:
+        workspace = Workspace(
+            name="My Tax Return",
+            financial_year=body.financial_year,
+            status="active",
+        )
+        db.add(workspace)
+        await db.flush()
+        await auth_repo.create_security(
+            db,
+            workspace_id=workspace.id,
+            password_hash=password_hash,
+            password_encrypted_dek=password_encrypted_dek,
+            recovery_key_hash=recovery_key_hash,
+            recovery_encrypted_dek=recovery_encrypted_dek,
+            recovery_confirm_hash=recovery_confirm_hash,
+        )
+    else:
+        # Incomplete first-run — delete stale record, create fresh
+        workspace = existing
+        workspace.financial_year = body.financial_year
+        if ws_sec is not None:
+            await auth_repo.delete_security(db, workspace.id)
+        await auth_repo.create_security(
+            db,
+            workspace_id=workspace.id,
+            password_hash=password_hash,
+            password_encrypted_dek=password_encrypted_dek,
+            recovery_key_hash=recovery_key_hash,
+            recovery_encrypted_dek=recovery_encrypted_dek,
+            recovery_confirm_hash=recovery_confirm_hash,
+        )
 
     max_age = settings.SESSION_MAX_AGE_DAYS * 86400
     response.set_cookie(
@@ -217,7 +242,7 @@ async def setup(
         samesite="strict",
         path="/",
     )
-    return {"status": "ok", "workspace_id": workspace.id, "recovery_key": recovery_key}
+    return {"status": "ok", "data": {"workspace_id": workspace.id, "recovery_key": recovery_key}}
 
 
 @router.post("/auth/unlock")

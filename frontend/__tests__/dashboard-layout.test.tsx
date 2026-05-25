@@ -1,5 +1,5 @@
 // frontend/__tests__/dashboard-layout.test.tsx
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import DashboardLayout from '@/app/(dashboard)/layout'
 
 jest.mock('@/lib/api/client', () => ({
@@ -64,5 +64,18 @@ describe('DashboardLayout', () => {
     render(<DashboardLayout><div>x</div></DashboardLayout>)
     const bottomTabNav = screen.getByRole('navigation', { name: /mobile/i })
     expect(bottomTabNav).toBeInTheDocument()
+  })
+
+  it('does not show Income, Deductions, or Investments in sidebar nav', () => {
+    render(<DashboardLayout><div>content</div></DashboardLayout>)
+    expect(screen.queryByRole('link', { name: /^income$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /^deductions$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /^investments$/i })).not.toBeInTheDocument()
+  })
+
+  it('opens the More sheet when the More button is clicked', () => {
+    render(<DashboardLayout><div>content</div></DashboardLayout>)
+    fireEvent.click(screen.getByRole('button', { name: /more/i }))
+    expect(screen.getByRole('dialog', { name: /more options/i })).toBeInTheDocument()
   })
 })

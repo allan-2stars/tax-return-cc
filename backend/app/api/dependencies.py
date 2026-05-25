@@ -27,7 +27,7 @@ def sign_unlock_session(workspace_id: str) -> str:
     return _unlock_serializer().dumps({"w": workspace_id})
 
 
-def _decode_session_cookie(token: str, max_age: int) -> str:
+def decode_session_cookie(token: str, max_age: int) -> str:
     """Decode a signed session cookie, return workspace_id, raise 401 on any failure.
 
     The payload is signed (HMAC) but not encrypted — workspace_id is readable by
@@ -90,7 +90,7 @@ async def require_session(session: str | None = Cookie(default=None)) -> str:
                 "not_authenticated", "Authentication required.", retryable=False
             ),
         )
-    return _decode_session_cookie(session, max_age=settings.SESSION_MAX_AGE_DAYS * 86400)
+    return decode_session_cookie(session, max_age=settings.SESSION_MAX_AGE_DAYS * 86400)
 
 
 async def require_auth(

@@ -8,9 +8,6 @@ import {
   Map,
   BarChart2,
   SearchX,
-  Briefcase,
-  Scissors,
-  TrendingUp,
   FolderOpen,
   CheckSquare,
   Package,
@@ -22,6 +19,7 @@ import useWorkspaceStore from '@/lib/stores/workspace.store'
 import NewFYModal from '@/components/settings/NewFYModal'
 import DeadlineBanner from '@/components/shared/DeadlineBanner'
 import NetworkBanner from '@/components/shared/NetworkBanner'
+import MobileMoreSheet from '@/components/shared/MobileMoreSheet'
 import type { CreateWorkspaceResult } from '@/lib/api/types'
 
 interface NavItem {
@@ -34,11 +32,13 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Tax Journey', href: '/journey', icon: Map },
   { label: 'Tax Readiness', href: '/readiness', icon: BarChart2 },
   { label: 'Missing Evidence', href: '/readiness/missing', icon: SearchX },
-  { label: 'Income', href: '/review?filter=income', icon: Briefcase },
-  { label: 'Deductions', href: '/review?filter=deductions', icon: Scissors },
-  { label: 'Investments', href: '/review?filter=investments', icon: TrendingUp },
   { label: 'Supporting Evidence', href: '/evidence', icon: FolderOpen },
   { label: 'Review', href: '/review', icon: CheckSquare },
+  { label: 'Export Review Pack', href: '/export', icon: Package },
+  { label: 'Settings', href: '/settings', icon: Settings },
+]
+
+const MORE_SHEET_ITEMS: NavItem[] = [
   { label: 'Export Review Pack', href: '/export', icon: Package },
   { label: 'Settings', href: '/settings', icon: Settings },
 ]
@@ -81,6 +81,7 @@ export default function DashboardLayout({
   const router = useRouter()
   const { financialYear, setWorkspace } = useWorkspaceStore()
   const [showNewFY, setShowNewFY] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
 
   useAuth()
 
@@ -148,7 +149,12 @@ export default function DashboardLayout({
           }`
           if (item.href.startsWith('#')) {
             return (
-              <button key={item.href} type="button" className={tabClass}>
+              <button
+                key={item.href}
+                type="button"
+                className={tabClass}
+                onClick={() => setMoreOpen(true)}
+              >
                 <Icon size={20} />
                 {item.label}
               </button>
@@ -162,6 +168,13 @@ export default function DashboardLayout({
           )
         })}
       </nav>
+
+      {moreOpen && (
+        <MobileMoreSheet
+          onClose={() => setMoreOpen(false)}
+          items={MORE_SHEET_ITEMS}
+        />
+      )}
 
       {showNewFY && financialYear && (
         <NewFYModal

@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import QuestionCard from '@/components/interview/QuestionCard'
 import type { InterviewQuestion } from '@/lib/api/types'
 
@@ -24,22 +25,41 @@ const requiredQ: InterviewQuestion = {
   hint: 'For most Australians, this is "resident".',
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const currencyQ: InterviewQuestion = {
+  id: 'spouse_rfba_amount',
+  ask: "What is your spouse's RFBA?",
+  type: 'number',
+  options: null,
+  branches: null,
+  required: false,
+  why: null,
+  hint: 'This appears on the PAYG Summary.',
+  currency: true,
+} as any
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const requiredCurrencyQ: InterviewQuestion = {
+  ...currencyQ,
+  required: true,
+} as any
+
 test('renders question text', () => {
   render(<QuestionCard question={choiceQ} onAnswer={jest.fn()} onBack={jest.fn()} onSkip={jest.fn()} />)
   expect(screen.getByText('Did you work from home?')).toBeInTheDocument()
 })
 
-test('renders all options as buttons', () => {
+test('renders all options as buttons with formatted labels', () => {
   render(<QuestionCard question={choiceQ} onAnswer={jest.fn()} onBack={jest.fn()} onSkip={jest.fn()} />)
-  expect(screen.getByRole('button', { name: 'yes_regular' })).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: 'yes_sometimes' })).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: 'no' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Yes Regular' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Yes Sometimes' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'No' })).toBeInTheDocument()
 })
 
-test('calls onAnswer with question id and selected option', () => {
+test('calls onAnswer with question id and raw option value', () => {
   const onAnswer = jest.fn()
   render(<QuestionCard question={choiceQ} onAnswer={onAnswer} onBack={jest.fn()} onSkip={jest.fn()} />)
-  fireEvent.click(screen.getByRole('button', { name: 'yes_regular' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Yes Regular' }))
   expect(onAnswer).toHaveBeenCalledWith('wfh', 'yes_regular')
 })
 
@@ -86,6 +106,78 @@ test('why button absent when question.why is null', () => {
 test('all interactive buttons disabled when isSubmitting', () => {
   render(<QuestionCard question={choiceQ} onAnswer={jest.fn()} onBack={jest.fn()} onSkip={jest.fn()} isSubmitting />)
   expect(screen.getByRole('button', { name: /back/i })).toBeDisabled()
-  expect(screen.getByRole('button', { name: 'yes_regular' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Yes Regular' })).toBeDisabled()
   expect(screen.getByRole('button', { name: /skip/i })).toBeDisabled()
+})
+
+// ── New: info icon next to title ─────────────────────────────────────────────
+
+test('info icon button shown when question.why exists', () => {
+  render(<QuestionCard question={choiceQ} onAnswer={jest.fn()} onBack={jest.fn()} onSkip={jest.fn()} />)
+  expect(screen.getByRole('button', { name: /why do we ask/i })).toBeInTheDocument()
+})
+
+// ── New: numeric option guard ─────────────────────────────────────────────────
+
+test('renders numeric option value without crashing', () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const numQ: any = {
+    id: 'pick_count',
+    ask: 'How many?',
+    type: 'single_choice',
+    options: [1, 2, 3],  // numbers, not strings — as YAML might deliver them
+    branches: null,
+    required: false,
+    why: null,
+    hint: null,
+  }
+  expect(() =>
+    render(<QuestionCard question={numQ} onAnswer={jest.fn()} onBack={jest.fn()} onSkip={jest.fn()} />)
+  ).not.toThrow()
+  expect(screen.getByRole('button', { name: '1' })).toBeInTheDocument()
+})
+
+// ── New: currency input ───────────────────────────────────────────────────────
+
+test('currency input shows $ prefix', () => {
+  render(<QuestionCard question={currencyQ} onAnswer={jest.fn()} onBack={jest.fn()} onSkip={jest.fn()} />)
+  expect(screen.getByText('$')).toBeInTheDocument()
+})
+
+test('currency input hint shown below input', () => {
+  render(<QuestionCard question={currencyQ} onAnswer={jest.fn()} onBack={jest.fn()} onSkip={jest.fn()} />)
+  expect(screen.getByText('This appears on the PAYG Summary.')).toBeInTheDocument()
+})
+
+test('currency input skip button shown when not required', () => {
+  render(<QuestionCard question={currencyQ} onAnswer={jest.fn()} onBack={jest.fn()} onSkip={jest.fn()} />)
+  expect(screen.getByRole('button', { name: /skip/i })).toBeInTheDocument()
+})
+
+test('currency input shows custom error when submitted empty', async () => {
+  const user = userEvent.setup()
+  render(<QuestionCard question={requiredCurrencyQ} onAnswer={jest.fn()} onBack={jest.fn()} onSkip={jest.fn()} />)
+  await user.click(screen.getByRole('button', { name: /continue/i }))
+  expect(await screen.findByRole('alert')).toBeInTheDocument()
+})
+
+// ── New: required text/number input validation ────────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const requiredNumberQ: InterviewQuestion = {
+  id: 'dependent_count',
+  ask: 'How many dependent children do you have?',
+  type: 'number',
+  options: null,
+  branches: null,
+  required: true,
+  why: null,
+  hint: null,
+}
+
+test('required number input shows error when submitted empty', async () => {
+  const user = userEvent.setup()
+  render(<QuestionCard question={requiredNumberQ} onAnswer={jest.fn()} onBack={jest.fn()} onSkip={jest.fn()} />)
+  await user.click(screen.getByRole('button', { name: /continue/i }))
+  expect(await screen.findByRole('alert')).toBeInTheDocument()
 })

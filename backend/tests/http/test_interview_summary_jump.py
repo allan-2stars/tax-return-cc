@@ -142,3 +142,112 @@ async def test_jump_then_answer(auth_client):
     # After answering residency again, employment_type must be next
     # (residency has no branches for "resident"; employment_type follows deterministically)
     assert body["data"]["next_question"]["id"] == "employment_type"
+
+
+# ── Additional tests (Bug 1 + Bug 2 regression) ───────────────────────────────
+
+async def _complete_interview_with_spouse(client) -> None:
+    """Complete interview using has_spouse to activate spouse branch questions."""
+    resp = await client.post("/api/v1/interview/start")
+    assert resp.status_code == 200, resp.text
+
+    answers = [
+        ("fy_confirm",           "2024-25"),
+        ("residency",            "resident"),
+        ("employment_type",      "employee"),
+        ("family_situation",     "has_spouse"),
+        ("spouse_income_range",  "45000_120000"),
+        ("spouse_novated_lease", "no"),
+        ("lodger_type",          "self"),
+    ]
+    for qid, answer in answers:
+        resp = await client.post(
+            "/api/v1/interview/answer",
+            json={"question_id": qid, "answer": answer},
+        )
+        assert resp.status_code == 200, f"Answer failed for {qid}: {resp.text}"
+
+    # Answer remaining skill questions
+    body = resp.json()
+    next_q = body["data"].get("next_question")
+    while next_q is not None:
+        qid = next_q["id"]
+        options = next_q.get("options") or []
+        answer = str(options[0]) if options else ("3" if next_q.get("type") == "number" else "yes")
+        resp = await client.post(
+            "/api/v1/interview/answer",
+            json={"question_id": qid, "answer": answer},
+        )
+        assert resp.status_code == 200, f"Skill answer failed for {qid}: {resp.text}"
+        next_q = resp.json()["data"].get("next_question")
+
+    resp = await client.post("/api/v1/interview/complete")
+    assert resp.status_code == 200, resp.text
+
+
+@pytest.mark.asyncio
+async def test_jump_branch_question(auth_client):
+    """Jump to a branch question (spouse_income_range) succeeds."""
+    await _complete_interview_with_spouse(auth_client)
+
+    resp = await auth_client.post(
+        "/api/v1/interview/jump",
+        json={"question_id": "spouse_income_range"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["data"]["state"] == "in_progress"
+    assert body["data"]["current_question"]["id"] == "spouse_income_range"
+
+
+@pytest.mark.asyncio
+async def test_jump_skill_question(auth_client):
+    """Jump to a skill question (wfh from employee_tax_au) succeeds."""
+    await _complete_full_interview(auth_client)
+
+    resp = await auth_client.post(
+        "/api/v1/interview/jump",
+        json={"question_id": "wfh"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["data"]["state"] == "in_progress"
+    assert body["data"]["current_question"]["id"] == "wfh"
+
+
+@pytest.mark.asyncio
+async def test_summary_includes_skill_questions(auth_client):
+    """GET /interview/summary includes skill section with wfh answers."""
+    await _complete_full_interview(auth_client)
+
+    resp = await auth_client.get("/api/v1/interview/summary")
+    assert resp.status_code == 200, resp.text
+    sections = resp.json()["data"]["sections"]
+
+    titles = [s["title"] for s in sections]
+    assert "Your employment" in titles, f"Expected 'Your employment' section, got: {titles}"
+
+    emp_section = next(s for s in sections if s["title"] == "Your employment")
+    answer_ids = [a["question_id"] for a in emp_section["answers"]]
+    assert "wfh" in answer_ids, f"Expected 'wfh' in skill answers, got: {answer_ids}"
+
+    for ans in emp_section["answers"]:
+        assert ans["question_label"], (
+            f"Skill answer {ans['question_id']} has empty question_label"
+        )
+
+
+@pytest.mark.asyncio
+async def test_jump_safety_limit(auth_client):
+    """Jump to the very first question (fy_confirm) succeeds — tests the safety limit
+    allows traversing the full branch_path without hitting an artificial cap."""
+    await _complete_full_interview(auth_client)
+
+    resp = await auth_client.post(
+        "/api/v1/interview/jump",
+        json={"question_id": "fy_confirm"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["data"]["state"] == "in_progress"
+    assert body["data"]["current_question"]["id"] == "fy_confirm"

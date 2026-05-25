@@ -1,9 +1,18 @@
 'use client'
 import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import axios from 'axios'
+import { Copy, Check } from 'lucide-react'
 import { changePassword, regenerateRecoveryKey } from '@/lib/api/settings'
 import PasswordModal from './PasswordModal'
 
 type AutoLock = '15' | '30' | '60' | 'never'
+
+interface ChangePasswordForm {
+  currentPassword: string
+  newPassword: string
+  confirmPassword: string
+}
 
 const AUTO_LOCK_OPTIONS: { value: AutoLock; label: string }[] = [
   { value: '15', label: '15 min' },
@@ -13,38 +22,56 @@ const AUTO_LOCK_OPTIONS: { value: AutoLock; label: string }[] = [
 ]
 
 export default function SecurityTab() {
-  const [currentPw, setCurrentPw] = useState('')
-  const [newPw, setNewPw] = useState('')
-  const [confirmPw, setConfirmPw] = useState('')
-  const [pwError, setPwError] = useState<string | null>(null)
-  const [pwPending, setPwPending] = useState(false)
-  const [pwSuccess, setPwSuccess] = useState(false)
-
   const [autoLock, setAutoLock] = useState<AutoLock>('15')
+  const [pwSuccess, setPwSuccess] = useState(false)
+  const [pwFormError, setPwFormError] = useState<string | null>(null)
+
   const [showRegenModal, setShowRegenModal] = useState(false)
   const [regenKey, setRegenKey] = useState<string | null>(null)
   const [regenError, setRegenError] = useState<string | null>(null)
   const [regenPending, setRegenPending] = useState(false)
+  const [regenCopied, setRegenCopied] = useState(false)
 
-  async function handleChangePassword(e: React.FormEvent) {
-    e.preventDefault()
-    setPwError(null)
-    if (newPw !== confirmPw) {
-      setPwError('New passwords do not match.')
-      return
-    }
-    setPwPending(true)
+  const {
+    register,
+    handleSubmit,
+    watch,
+    reset,
+    formState: {
+      errors,
+      isSubmitting,
+      touchedFields,
+      isSubmitted,
+    },
+  } = useForm<ChangePasswordForm>({ mode: 'onTouched' })
+
+  const newPasswordValue = watch('newPassword', '')
+  const currentPasswordValue = watch('currentPassword', '')
+
+  const hasInteracted =
+    Object.keys(touchedFields).length > 0 || isSubmitted
+  const submitDisabled =
+    isSubmitting ||
+    (hasInteracted && (!!errors.currentPassword || !!errors.newPassword || !!errors.confirmPassword))
+
+  async function onChangePassword(data: ChangePasswordForm) {
+    setPwFormError(null)
     try {
-      await changePassword(currentPw, newPw)
+      await changePassword(data.currentPassword, data.newPassword)
       setPwSuccess(true)
-      setCurrentPw('')
-      setNewPw('')
-      setConfirmPw('')
-      setTimeout(() => setPwSuccess(false), 3000)
-    } catch {
-      setPwError('Incorrect current password.')
-    } finally {
-      setPwPending(false)
+      reset()
+    } catch (err: unknown) {
+      console.error(err)
+      const detail = (
+        err as { response?: { data?: { detail?: { error_code?: string; message?: string } } } }
+      )?.response?.data?.detail
+      if (detail?.error_code === 'invalid_password') {
+        setPwFormError('Current password is incorrect.')
+      } else if (detail?.message) {
+        setPwFormError(detail.message)
+      } else {
+        setPwFormError('Something went wrong. Please try again.')
+      }
     }
   }
 
@@ -55,11 +82,27 @@ export default function SecurityTab() {
       const res = await regenerateRecoveryKey(password)
       setRegenKey(res.data.data.recovery_key)
       setShowRegenModal(false)
-    } catch {
-      setRegenError('Incorrect password.')
+    } catch (err: unknown) {
+      console.error(err)
+      const detail = (
+        err as { response?: { data?: { detail?: { error_code?: string; message?: string } } } }
+      )?.response?.data?.detail
+      if (detail?.error_code === 'invalid_password') {
+        setRegenError('Incorrect password.')
+      } else {
+        setRegenError('Something went wrong. Please try again.')
+      }
     } finally {
       setRegenPending(false)
     }
+  }
+
+  function copyRegenKey() {
+    if (!regenKey) return
+    navigator.clipboard.writeText(regenKey).then(() => {
+      setRegenCopied(true)
+      setTimeout(() => setRegenCopied(false), 2000)
+    })
   }
 
   return (
@@ -68,7 +111,7 @@ export default function SecurityTab() {
         <h2 className="font-display text-base font-semibold text-text-primary">
           Change password
         </h2>
-        <form onSubmit={handleChangePassword} className="space-y-3">
+        <form onSubmit={handleSubmit(onChangePassword)} className="space-y-3">
           <div>
             <label htmlFor="current-pw" className="text-sm font-ui text-text-body block mb-1">
               Current password
@@ -76,13 +119,20 @@ export default function SecurityTab() {
             <input
               id="current-pw"
               type="password"
-              value={currentPw}
-              onChange={(e) => setCurrentPw(e.target.value)}
+              autoComplete="current-password"
               className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-ui"
               aria-label="Current password"
-              required
+              {...register('currentPassword', {
+                required: 'Current password is required',
+              })}
             />
+            {errors.currentPassword && (
+              <p className="text-sm font-ui text-risk-high mt-1">
+                {errors.currentPassword.message}
+              </p>
+            )}
           </div>
+
           <div>
             <label htmlFor="new-pw" className="text-sm font-ui text-text-body block mb-1">
               New password
@@ -90,13 +140,27 @@ export default function SecurityTab() {
             <input
               id="new-pw"
               type="password"
-              value={newPw}
-              onChange={(e) => setNewPw(e.target.value)}
+              autoComplete="new-password"
               className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-ui"
               aria-label="New password"
-              required
+              {...register('newPassword', {
+                required: 'New password is required',
+                minLength: {
+                  value: 12,
+                  message: 'Password must be at least 12 characters',
+                },
+                validate: (v) =>
+                  v !== currentPasswordValue ||
+                  'New password must be different from current password',
+              })}
             />
+            {errors.newPassword && (
+              <p className="text-sm font-ui text-risk-high mt-1">
+                {errors.newPassword.message}
+              </p>
+            )}
           </div>
+
           <div>
             <label htmlFor="confirm-pw" className="text-sm font-ui text-text-body block mb-1">
               Confirm new password
@@ -104,21 +168,51 @@ export default function SecurityTab() {
             <input
               id="confirm-pw"
               type="password"
-              value={confirmPw}
-              onChange={(e) => setConfirmPw(e.target.value)}
+              autoComplete="new-password"
               className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-ui"
               aria-label="Confirm new password"
-              required
+              {...register('confirmPassword', {
+                required: 'Please confirm your new password',
+                validate: (v) =>
+                  v === newPasswordValue || 'Passwords do not match.',
+              })}
             />
+            {errors.confirmPassword && (
+              <p className="text-sm font-ui text-risk-high mt-1">
+                {errors.confirmPassword.message}
+              </p>
+            )}
           </div>
-          {pwError && <p className="text-sm font-ui text-risk-high">{pwError}</p>}
-          {pwSuccess && <p className="text-sm font-ui text-ready">Password changed.</p>}
+
+          {pwFormError && (
+            <p className="text-sm font-ui text-risk-high">{pwFormError}</p>
+          )}
+          {pwSuccess && (
+            <p className="text-sm font-ui text-ready">Password changed successfully.</p>
+          )}
+
           <button
             type="submit"
-            disabled={pwPending}
-            className="min-h-11 px-5 rounded-md bg-accent text-white text-sm font-ui font-semibold disabled:opacity-50"
+            disabled={submitDisabled}
+            className="min-h-11 px-5 rounded-md bg-accent text-white text-sm font-ui font-semibold disabled:opacity-50 flex items-center gap-2"
           >
-            {pwPending ? 'Changing…' : 'Change password'}
+            {isSubmitting ? (
+              <>
+                <svg
+                  className="animate-spin h-4 w-4 text-white"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 22 6.477 22 12h-4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.384 3 6.846l3-2.647z" />
+                </svg>
+                Changing…
+              </>
+            ) : (
+              'Change password'
+            )}
           </button>
         </form>
       </section>
@@ -133,17 +227,27 @@ export default function SecurityTab() {
         </p>
         {regenKey && (
           <div className="rounded-md border border-border bg-surface p-3 space-y-2">
-            <p className="text-xs font-ui text-text-muted">
-              New recovery key — store this somewhere safe:
+            <p className="text-xs font-ui text-risk-high font-medium">
+              Save this now — it cannot be retrieved again.
             </p>
             <p className="font-mono text-sm text-text-primary break-all">{regenKey}</p>
-            <button
-              type="button"
-              className="text-xs font-ui text-text-muted underline"
-              onClick={() => setRegenKey(null)}
-            >
-              I&apos;ve saved it
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={copyRegenKey}
+                className="flex items-center gap-1 text-xs font-ui text-text-body border border-border rounded px-2 py-1 hover:bg-accent-soft transition-colors"
+              >
+                {regenCopied ? <Check size={12} /> : <Copy size={12} />}
+                {regenCopied ? 'Copied' : 'Copy'}
+              </button>
+              <button
+                type="button"
+                className="text-xs font-ui text-text-muted underline"
+                onClick={() => setRegenKey(null)}
+              >
+                I&apos;ve saved it
+              </button>
+            </div>
           </div>
         )}
         <button
@@ -190,6 +294,7 @@ export default function SecurityTab() {
           title="Generate new recovery key"
           description="Enter your password to confirm. Your current recovery key will be invalidated immediately."
           confirmLabel="Generate"
+          emptyMessage="Password is required to regenerate recovery key"
           pending={regenPending}
           error={regenError}
           onConfirm={handleRegenConfirm}

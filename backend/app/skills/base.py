@@ -13,6 +13,7 @@ class Question:
     required: bool = True                      # False → show skip button in UI
     why: str | None = None                     # shown in "Why do we ask?" tooltip
     hint: str | None = None                    # shown as sub-text below question
+    currency: bool = False                     # True → render $ prefix input in UI
 
 
 @dataclass

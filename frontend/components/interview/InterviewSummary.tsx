@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import axios from 'axios'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getInterviewSummary, jumpToQuestion } from '@/lib/api/interview'
 
@@ -37,8 +38,12 @@ export default function InterviewSummary({ onEdit }: InterviewSummaryProps) {
       await jumpToQuestion(questionId)
       queryClient.invalidateQueries({ queryKey: ['interview', 'session'] })
       onEdit()
-    } catch {
-      setEditError('Unable to edit that answer. Please try again.')
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        setEditError(error.response?.data?.message || 'Unable to edit that answer. Please try again.')
+      } else {
+        setEditError('Connection error. Please try again.')
+      }
     } finally {
       setJumping(null)
     }

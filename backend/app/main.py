@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -28,6 +29,13 @@ async def _run_alembic_upgrade() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if settings.ENVIRONMENT != "test":
+        # Ensure DB and storage directories exist before migrations
+        db_url = settings.DATABASE_URL
+        if db_url and "sqlite" in db_url:
+            db_path = db_url.split("///")[-1]
+            if db_path:
+                os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        os.makedirs(settings.STORAGE_PATH, exist_ok=True)
         await _run_alembic_upgrade()
         from app.db.base import AsyncSessionLocal
         from app.engines.export import ExportEngine

@@ -394,11 +394,27 @@ class InterviewEngine:
         if question_id not in (session.completed_steps or []):
             raise ValueError(f"Question {question_id!r} not in completed steps")
 
+        # Re-register skill questions that may be absent after a server restart.
+        # _QUESTION_BY_ID is only populated lazily during process_answer(); after
+        # restart it only contains platform + branch questions.
+        for skill_id in (session.activated_skills or []):
+            skill_obj = self._registry.get_skill(skill_id)
+            if skill_obj:
+                for q in skill_obj.get_questions(None):
+                    _QUESTION_BY_ID[q.id] = q
+
         # Iteratively call go_back until current_step == question_id
+        max_steps = len(session.branch_path or []) + 1
         try:
-            while (session.current_step or {}).get("id") != question_id:
+            for _ in range(max_steps):
+                if (session.current_step or {}).get("id") == question_id:
+                    break
                 session, _ = await self.go_back(session_id, db)
-        except ValueError as exc:
+            else:
+                raise ValueError(
+                    f"Could not reach {question_id!r} after {max_steps} steps"
+                )
+        except (ValueError, KeyError) as exc:
             raise ValueError(
                 f"Cannot reach question {question_id!r}: {exc}"
             ) from exc
