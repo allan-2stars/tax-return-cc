@@ -51,6 +51,9 @@ class SkillRegistry:
     def get(self, skill_id: str) -> TaxSkill | None:
         return self._skills.get(skill_id)
 
+    def get_skill(self, skill_id: str) -> TaxSkill | None:
+        return self._skills.get(skill_id)
+
     def get_owner(self, category: str) -> TaxSkill | None:
         for skill in self._skills.values():
             if category in (skill.owned_categories or []):

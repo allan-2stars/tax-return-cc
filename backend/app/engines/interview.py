@@ -395,12 +395,20 @@ class InterviewEngine:
             raise ValueError(f"Question {question_id!r} not in completed steps")
 
         # Iteratively call go_back until current_step == question_id
-        while (session.current_step or {}).get("id") != question_id:
-            session, _ = await self.go_back(session_id, db)
+        try:
+            while (session.current_step or {}).get("id") != question_id:
+                session, _ = await self.go_back(session_id, db)
+        except ValueError as exc:
+            raise ValueError(
+                f"Cannot reach question {question_id!r}: {exc}"
+            ) from exc
 
         session.state = "in_progress"
         session = await interview_repo.save(db, session)
-        return session, _QUESTION_BY_ID[question_id]
+        q = _QUESTION_BY_ID.get(question_id)
+        if q is None:
+            raise ValueError(f"Question {question_id!r} not found in question registry")
+        return session, q
 
     async def check_inline_questions(
         self,

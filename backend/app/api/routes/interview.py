@@ -5,7 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import require_auth
 from app.db.base import get_db
 from app.db.models import InterviewSession
-from app.engines.interview import InterviewEngine, InlineQuestion, _QUESTION_BY_ID
+from app.engines.interview import (
+    InterviewEngine, InlineQuestion, _QUESTION_BY_ID,
+    _PLATFORM_ID_SET, BRANCH_QUESTIONS, PLATFORM_QUESTIONS,
+)
 from app.errors import error_response
 from app.repositories import auth as auth_repo
 from app.repositories import interview as interview_repo
@@ -18,10 +21,14 @@ _engine = InterviewEngine()
 
 # ── Summary constants ─────────────────────────────────────────────────────────
 
-_PLATFORM_AND_BRANCH_IDS: frozenset[str] = frozenset({
-    "fy_confirm", "residency", "employment_type", "family_situation", "lodger_type",
-    "spouse_income_range", "spouse_novated_lease", "spouse_rfba_amount", "dependent_count",
-})
+_PLATFORM_AND_BRANCH_IDS: frozenset[str] = _PLATFORM_ID_SET | frozenset(
+    q.id for q in BRANCH_QUESTIONS
+)
+
+# Canonical order for "Your situation" answers: platform questions then branch questions
+_ORDERED_PLATFORM_IDS: list[str] = (
+    [q.id for q in PLATFORM_QUESTIONS] + [q.id for q in BRANCH_QUESTIONS]
+)
 
 _QUESTION_DISPLAY_LABELS: dict[str, str] = {
     "fy_confirm":           "Financial year",
@@ -141,6 +148,14 @@ def _no_session_error() -> HTTPException:
             retryable=False,
         ),
     )
+
+
+def _skill_question_ids(skill_id: str) -> frozenset[str]:
+    """Return the set of question IDs owned by this skill."""
+    skill = _engine._registry.get_skill(skill_id)
+    if skill is None:
+        return frozenset()
+    return frozenset(q.id for q in skill.get_questions(None))
 
 
 # ── GET /interview/session ────────────────────────────────────────────────────
@@ -343,10 +358,11 @@ async def get_summary(
     answers = session.answers or {}
     sections = []
 
-    # "Your situation" section: platform + branch questions that were answered
+    # "Your situation" section: platform + branch questions in canonical order
     situation_answers = []
-    for qid, val in answers.items():
-        if qid in _PLATFORM_AND_BRANCH_IDS:
+    for qid in _ORDERED_PLATFORM_IDS:
+        val = answers.get(qid)
+        if val is not None:
             situation_answers.append({
                 "question_id":    qid,
                 "question_label": _QUESTION_DISPLAY_LABELS.get(qid, qid),
@@ -357,11 +373,12 @@ async def get_summary(
     if situation_answers:
         sections.append({"title": "Your situation", "answers": situation_answers})
 
-    # One section per activated skill
+    # One section per activated skill — only questions owned by that skill
     for skill_id in (session.activated_skills or []):
+        q_ids = _skill_question_ids(skill_id)
         skill_answers = []
         for qid, val in answers.items():
-            if qid not in _PLATFORM_AND_BRANCH_IDS:
+            if qid in q_ids:
                 q = _QUESTION_BY_ID.get(qid)
                 if q:
                     skill_answers.append({
