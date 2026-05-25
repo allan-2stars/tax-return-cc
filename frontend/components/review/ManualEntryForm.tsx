@@ -2,6 +2,8 @@
 import { useState } from 'react'
 import { createManualEvent } from '@/lib/api/events'
 import type { ManualEventFrequency, ManualEventType, InvestmentSubType } from '@/lib/api/types'
+import { validateDate } from '@/lib/utils/fy'
+import useWorkspaceStore from '@/lib/stores/workspace.store'
 import SharesForm from './investment/SharesForm'
 import CryptoForm from './investment/CryptoForm'
 import BankInterestForm from './investment/BankInterestForm'
@@ -38,6 +40,7 @@ interface Props {
 }
 
 export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
+  const { financialYear } = useWorkspaceStore()
   const [step, setStep] = useState<1 | 2>(1)
   const [eventType, setEventType] = useState<ManualEventType | null>(null)
   const [investmentSubType, setInvestmentSubType] = useState<InvestmentSubType | null>(null)
@@ -62,9 +65,12 @@ export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
     })
   }
 
+  const dateValidation = validateDate(date, financialYear ?? null)
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!eventType) return
+    if (dateValidation.error) return
     setPending(true)
     setError(null)
     try {
@@ -332,10 +338,18 @@ export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
           type="date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
-          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono"
+          className={`w-full rounded-md border bg-surface px-3 py-2 text-sm font-mono ${
+            dateValidation.error ? 'border-risk-high' : 'border-border'
+          }`}
           aria-label="Date"
           required
         />
+        {dateValidation.error && (
+          <p role="alert" className="text-sm font-ui text-risk-high mt-1">{dateValidation.error}</p>
+        )}
+        {!dateValidation.error && dateValidation.warning && (
+          <p className="text-sm font-ui text-review mt-1">⚠ {dateValidation.warning}</p>
+        )}
       </div>
 
       <div>

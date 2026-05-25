@@ -28,3 +28,31 @@ export function deadlineState(fy: string): 'amber' | 'terracotta' | null {
   if (days <= 30) return 'amber'
   return null
 }
+
+export function validateDate(
+  value: string,
+  financialYear: string | null,
+): { error?: string; warning?: string } {
+  if (!value) return {}
+
+  const today = new Date()
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+  if (value > todayStr) {
+    return { error: 'Date cannot be in the future' }
+  }
+
+  if (!financialYear) return {}
+
+  const fyStartYear = parseInt(financialYear.split('-')[0], 10)
+  const fyEndYear = fyStartYear + 1
+  const fyStartStr = `${fyStartYear}-07-01`
+  const fyEndStr = `${fyEndYear}-06-30`
+
+  if (value < fyStartStr || value > fyEndStr) {
+    return {
+      warning: `This date is outside FY ${financialYear} (1 Jul ${fyStartYear} – 30 Jun ${fyEndYear}). If this item belongs to a different year, consider adding it to that year's workspace.`,
+    }
+  }
+
+  return {}
+}

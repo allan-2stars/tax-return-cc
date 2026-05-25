@@ -36,7 +36,7 @@ export default function JourneyPage() {
 
   const startMutation = useMutation({
     mutationFn: startInterview,
-    onSuccess: (res) => patch(res.data.data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['interview', 'session'] }),
   })
 
   const answerMutation = useMutation({
@@ -89,8 +89,8 @@ export default function JourneyPage() {
 
   const isBusy = answerMutation.isPending || backMutation.isPending || skipMutation.isPending
 
-  if (isLoading) return <div className="p-8 font-ui text-text-muted">Loading...</div>
-  if (isError || !data) return <div className="p-8 font-ui text-risk-high">Unable to load your tax journey.</div>
+  if (isLoading) return <div className="p-8 font-ui text-text-muted">Loading your tax journey...</div>
+  if (isError || !data) return <div className="p-8 font-ui text-risk-high">Unable to load your tax journey. Please refresh the page.</div>
 
   return (
     <div className="max-w-xl mx-auto px-4 py-8 space-y-6">

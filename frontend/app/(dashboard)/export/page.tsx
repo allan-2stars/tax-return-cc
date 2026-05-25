@@ -19,7 +19,7 @@ export default function ExportPage() {
   const [activeExportId, setActiveExportId] = useState<string | null>(null)
   const [showGenerateForm, setShowGenerateForm] = useState(false)
 
-  const { data: eligibility, isLoading: eligibilityLoading } = useQuery({
+  const { data: eligibility, isLoading: eligibilityLoading, isError: eligibilityError } = useQuery({
     queryKey: ['export-eligibility'],
     queryFn: () => getEligibility().then((r) => r.data.data),
   })
@@ -68,6 +68,14 @@ export default function ExportPage() {
     return (
       <div className="flex items-center justify-center py-20">
         <p className="text-sm font-ui text-text-muted">Loading…</p>
+      </div>
+    )
+  }
+
+  if (eligibilityError) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <p className="text-sm font-ui text-risk-high">Unable to load export eligibility. Please refresh the page.</p>
       </div>
     )
   }

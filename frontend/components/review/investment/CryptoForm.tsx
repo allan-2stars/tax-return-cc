@@ -3,6 +3,8 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { createManualEvent } from '@/lib/api/events'
 import { daysBetween, cgtDiscountEligible } from '@/lib/utils/investment'
+import { validateDate } from '@/lib/utils/fy'
+import useWorkspaceStore from '@/lib/stores/workspace.store'
 
 type CryptoSubType = 'buy' | 'sell' | 'staking'
 
@@ -37,9 +39,14 @@ function AutoCalcBox({ label, value, unit = '' }: { label: string; value: string
 }
 
 function CryptoBuySubForm({ onSuccess, onBack }: InvestmentFormProps) {
-  const { register, handleSubmit, formState: { errors } } = useForm<CryptoBuyFields>()
+  const { register, handleSubmit, watch, formState: { errors } } = useForm<CryptoBuyFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { financialYear } = useWorkspaceStore()
+
+  const purchaseDateValue = watch('purchase_date')
+  const purchaseDateWarning = !errors.purchase_date && purchaseDateValue
+    ? validateDate(purchaseDateValue, financialYear ?? null).warning : undefined
 
   async function onSubmit(data: CryptoBuyFields) {
     const price = parseFloat(data.purchase_price)
@@ -109,8 +116,12 @@ function CryptoBuySubForm({ onSuccess, onBack }: InvestmentFormProps) {
         <label htmlFor="cb-date" className="text-sm font-ui text-text-body block mb-1">Purchase date</label>
         <input id="cb-date" type="date"
           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono"
-          {...register('purchase_date', { required: 'Purchase date is required.' })} />
+          {...register('purchase_date', {
+            required: 'Purchase date is required.',
+            validate: { notFuture: (v) => { const e = validateDate(v, null).error; return e === undefined ? true : e } },
+          })} />
         {errors.purchase_date && <p role="alert" className="text-sm font-ui text-risk-high mt-1">{errors.purchase_date.message}</p>}
+        {purchaseDateWarning && <p className="text-sm font-ui text-review mt-1">⚠ {purchaseDateWarning}</p>}
       </div>
       <div>
         <label htmlFor="cb-note" className="text-sm font-ui text-text-body block mb-1">Note (optional)</label>
@@ -134,9 +145,14 @@ function CryptoSellSubForm({ onSuccess, onBack }: InvestmentFormProps) {
   const { register, handleSubmit, watch, formState: { errors } } = useForm<CryptoSellFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { financialYear } = useWorkspaceStore()
 
   const purchaseDate = watch('purchase_date')
   const saleDate = watch('sale_date')
+  const saleDateWarning = !errors.sale_date && saleDate
+    ? validateDate(saleDate, financialYear ?? null).warning : undefined
+  const purchaseDateWarning = !errors.purchase_date && purchaseDate
+    ? validateDate(purchaseDate, financialYear ?? null).warning : undefined
   const holdingDays = purchaseDate && saleDate ? daysBetween(purchaseDate, saleDate) : null
   const cgtEligible = holdingDays !== null ? cgtDiscountEligible(holdingDays) : null
 
@@ -229,15 +245,23 @@ function CryptoSellSubForm({ onSuccess, onBack }: InvestmentFormProps) {
         <label htmlFor="cs-sale-date" className="text-sm font-ui text-text-body block mb-1">Sale date</label>
         <input id="cs-sale-date" type="date"
           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono"
-          {...register('sale_date', { required: 'Sale date is required.' })} />
+          {...register('sale_date', {
+            required: 'Sale date is required.',
+            validate: { notFuture: (v) => { const e = validateDate(v, null).error; return e === undefined ? true : e } },
+          })} />
         {errors.sale_date && <p role="alert" className="text-sm font-ui text-risk-high mt-1">{errors.sale_date.message}</p>}
+        {saleDateWarning && <p className="text-sm font-ui text-review mt-1">⚠ {saleDateWarning}</p>}
       </div>
       <div>
         <label htmlFor="cs-purchase-date" className="text-sm font-ui text-text-body block mb-1">Purchase date</label>
         <input id="cs-purchase-date" type="date"
           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono"
-          {...register('purchase_date', { required: 'Purchase date is required.' })} />
+          {...register('purchase_date', {
+            required: 'Purchase date is required.',
+            validate: { notFuture: (v) => { const e = validateDate(v, null).error; return e === undefined ? true : e } },
+          })} />
         {errors.purchase_date && <p role="alert" className="text-sm font-ui text-risk-high mt-1">{errors.purchase_date.message}</p>}
+        {purchaseDateWarning && <p className="text-sm font-ui text-review mt-1">⚠ {purchaseDateWarning}</p>}
       </div>
       {holdingDays !== null && (
         <div className="space-y-2">
@@ -283,9 +307,14 @@ function CryptoSellSubForm({ onSuccess, onBack }: InvestmentFormProps) {
 }
 
 function CryptoStakingSubForm({ onSuccess, onBack }: InvestmentFormProps) {
-  const { register, handleSubmit, formState: { errors } } = useForm<CryptoStakingFields>()
+  const { register, handleSubmit, watch, formState: { errors } } = useForm<CryptoStakingFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { financialYear } = useWorkspaceStore()
+
+  const incomeDateValue = watch('income_date')
+  const incomeDateWarning = !errors.income_date && incomeDateValue
+    ? validateDate(incomeDateValue, financialYear ?? null).warning : undefined
 
   async function onSubmit(data: CryptoStakingFields) {
     const amt = parseFloat(data.income_amount)
@@ -344,8 +373,12 @@ function CryptoStakingSubForm({ onSuccess, onBack }: InvestmentFormProps) {
         <label htmlFor="cst-date" className="text-sm font-ui text-text-body block mb-1">Income date</label>
         <input id="cst-date" type="date"
           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono"
-          {...register('income_date', { required: 'Income date is required.' })} />
+          {...register('income_date', {
+            required: 'Income date is required.',
+            validate: { notFuture: (v) => { const e = validateDate(v, null).error; return e === undefined ? true : e } },
+          })} />
         {errors.income_date && <p role="alert" className="text-sm font-ui text-risk-high mt-1">{errors.income_date.message}</p>}
+        {incomeDateWarning && <p className="text-sm font-ui text-review mt-1">⚠ {incomeDateWarning}</p>}
       </div>
       <div>
         <label htmlFor="cst-note" className="text-sm font-ui text-text-body block mb-1">Note (optional)</label>

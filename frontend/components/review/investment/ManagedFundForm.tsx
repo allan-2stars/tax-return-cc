@@ -3,6 +3,8 @@ import { useForm } from 'react-hook-form'
 import { useState } from 'react'
 import { createManualEvent } from '@/lib/api/events'
 import { Info } from 'lucide-react'
+import { validateDate } from '@/lib/utils/fy'
+import useWorkspaceStore from '@/lib/stores/workspace.store'
 
 interface InvestmentFormProps { onSuccess: () => void; onBack: () => void }
 
@@ -17,8 +19,12 @@ export default function ManagedFundForm({ onSuccess, onBack }: InvestmentFormPro
   const { register, handleSubmit, watch, formState: { errors } } = useForm<ManagedFundFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { financialYear } = useWorkspaceStore()
 
   const capitalGains = parseFloat(watch('capital_gains_component') || '0') || 0
+  const distributionDateValue = watch('distribution_date')
+  const distributionDateWarning = !errors.distribution_date && distributionDateValue
+    ? validateDate(distributionDateValue, financialYear ?? null).warning : undefined
 
   async function onSubmit(data: ManagedFundFields) {
     const dist = parseFloat(data.distribution_amount)
@@ -112,8 +118,12 @@ export default function ManagedFundForm({ onSuccess, onBack }: InvestmentFormPro
         <label htmlFor="mf-date" className="text-sm font-ui text-text-body block mb-1">Distribution date</label>
         <input id="mf-date" type="date"
           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono"
-          {...register('distribution_date', { required: 'Distribution date is required.' })} />
+          {...register('distribution_date', {
+            required: 'Distribution date is required.',
+            validate: { notFuture: (v) => { const e = validateDate(v, null).error; return e === undefined ? true : e } },
+          })} />
         {errors.distribution_date && <p role="alert" className="text-sm font-ui text-risk-high mt-1">{errors.distribution_date.message}</p>}
+        {distributionDateWarning && <p className="text-sm font-ui text-review mt-1">⚠ {distributionDateWarning}</p>}
       </div>
       <div>
         <label htmlFor="mf-note" className="text-sm font-ui text-text-body block mb-1">Note (optional)</label>

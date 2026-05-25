@@ -4,6 +4,8 @@ import { useForm } from 'react-hook-form'
 import { Info } from 'lucide-react'
 import { createManualEvent } from '@/lib/api/events'
 import { daysBetween, cgtDiscountEligible } from '@/lib/utils/investment'
+import { validateDate } from '@/lib/utils/fy'
+import useWorkspaceStore from '@/lib/stores/workspace.store'
 
 type SharesSubType = 'buy' | 'sell' | 'dividend'
 
@@ -71,11 +73,15 @@ function SharesBuySubForm({ onSuccess, onBack }: InvestmentFormProps) {
   const { register, handleSubmit, watch, formState: { errors } } = useForm<BuyFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { financialYear } = useWorkspaceStore()
 
   const units = parseFloat(watch('units') || '0')
   const price = parseFloat(watch('price_per_unit') || '0')
   const brokerage = parseFloat(watch('brokerage_fee') || '0') || 0
   const totalCost = units > 0 && price > 0 ? units * price + brokerage : null
+  const purchaseDateValue = watch('purchase_date')
+  const purchaseDateWarning = !errors.purchase_date && purchaseDateValue
+    ? validateDate(purchaseDateValue, financialYear ?? null).warning : undefined
 
   async function onSubmit(data: BuyFields) {
     const u = parseFloat(data.units)
@@ -144,8 +150,12 @@ function SharesBuySubForm({ onSuccess, onBack }: InvestmentFormProps) {
         <label htmlFor="sb-date" className="text-sm font-ui text-text-body block mb-1">Purchase date</label>
         <input id="sb-date" type="date"
           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono"
-          {...register('purchase_date', { required: 'Purchase date is required.' })} />
+          {...register('purchase_date', {
+            required: 'Purchase date is required.',
+            validate: { notFuture: (v) => { const e = validateDate(v, null).error; return e === undefined ? true : e } },
+          })} />
         {errors.purchase_date && <p role="alert" className="text-sm font-ui text-risk-high mt-1">{errors.purchase_date.message}</p>}
+        {purchaseDateWarning && <p className="text-sm font-ui text-review mt-1">⚠ {purchaseDateWarning}</p>}
       </div>
       {totalCost !== null && <AutoCalcBox label="Total cost" value={totalCost.toFixed(2)} />}
       <div>
@@ -171,9 +181,14 @@ function SharesSellSubForm({ onSuccess, onBack }: InvestmentFormProps) {
   const { register, handleSubmit, watch, formState: { errors } } = useForm<SellFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { financialYear } = useWorkspaceStore()
 
   const purchaseDate = watch('purchase_date')
   const saleDate = watch('sale_date')
+  const saleDateWarning = !errors.sale_date && saleDate
+    ? validateDate(saleDate, financialYear ?? null).warning : undefined
+  const purchaseDateWarning = !errors.purchase_date && purchaseDate
+    ? validateDate(purchaseDate, financialYear ?? null).warning : undefined
   const holdingDays = purchaseDate && saleDate ? daysBetween(purchaseDate, saleDate) : null
   const cgtEligible = holdingDays !== null ? cgtDiscountEligible(holdingDays) : null
 
@@ -259,15 +274,23 @@ function SharesSellSubForm({ onSuccess, onBack }: InvestmentFormProps) {
         <label htmlFor="ss-sale-date" className="text-sm font-ui text-text-body block mb-1">Sale date</label>
         <input id="ss-sale-date" type="date"
           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono"
-          {...register('sale_date', { required: 'Sale date is required.' })} />
+          {...register('sale_date', {
+            required: 'Sale date is required.',
+            validate: { notFuture: (v) => { const e = validateDate(v, null).error; return e === undefined ? true : e } },
+          })} />
         {errors.sale_date && <p role="alert" className="text-sm font-ui text-risk-high mt-1">{errors.sale_date.message}</p>}
+        {saleDateWarning && <p className="text-sm font-ui text-review mt-1">⚠ {saleDateWarning}</p>}
       </div>
       <div>
         <label htmlFor="ss-purchase-date" className="text-sm font-ui text-text-body block mb-1">Purchase date</label>
         <input id="ss-purchase-date" type="date"
           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono"
-          {...register('purchase_date', { required: 'Purchase date is required.' })} />
+          {...register('purchase_date', {
+            required: 'Purchase date is required.',
+            validate: { notFuture: (v) => { const e = validateDate(v, null).error; return e === undefined ? true : e } },
+          })} />
         {errors.purchase_date && <p role="alert" className="text-sm font-ui text-risk-high mt-1">{errors.purchase_date.message}</p>}
+        {purchaseDateWarning && <p className="text-sm font-ui text-review mt-1">⚠ {purchaseDateWarning}</p>}
       </div>
       {holdingDays !== null && (
         <div className="space-y-2">
@@ -312,9 +335,14 @@ function SharesSellSubForm({ onSuccess, onBack }: InvestmentFormProps) {
 }
 
 function SharesDividendSubForm({ onSuccess, onBack }: InvestmentFormProps) {
-  const { register, handleSubmit, formState: { errors } } = useForm<DividendFields>()
+  const { register, handleSubmit, watch, formState: { errors } } = useForm<DividendFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { financialYear } = useWorkspaceStore()
+
+  const paymentDateValue = watch('payment_date')
+  const paymentDateWarning = !errors.payment_date && paymentDateValue
+    ? validateDate(paymentDateValue, financialYear ?? null).warning : undefined
 
   async function onSubmit(data: DividendFields) {
     const amt = parseFloat(data.dividend_amount)
@@ -375,8 +403,12 @@ function SharesDividendSubForm({ onSuccess, onBack }: InvestmentFormProps) {
         <label htmlFor="sd-date" className="text-sm font-ui text-text-body block mb-1">Payment date</label>
         <input id="sd-date" type="date"
           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono"
-          {...register('payment_date', { required: 'Payment date is required.' })} />
+          {...register('payment_date', {
+            required: 'Payment date is required.',
+            validate: { notFuture: (v) => { const e = validateDate(v, null).error; return e === undefined ? true : e } },
+          })} />
         {errors.payment_date && <p role="alert" className="text-sm font-ui text-risk-high mt-1">{errors.payment_date.message}</p>}
+        {paymentDateWarning && <p className="text-sm font-ui text-review mt-1">⚠ {paymentDateWarning}</p>}
       </div>
       <label className="flex items-start gap-2 cursor-pointer">
         <input type="checkbox" className="mt-0.5" {...register('in_payg')} />

@@ -3,6 +3,8 @@ import { useForm } from 'react-hook-form'
 import { useState } from 'react'
 import { createManualEvent } from '@/lib/api/events'
 import { Info } from 'lucide-react'
+import { validateDate } from '@/lib/utils/fy'
+import useWorkspaceStore from '@/lib/stores/workspace.store'
 
 interface InvestmentFormProps { onSuccess: () => void; onBack: () => void }
 
@@ -16,12 +18,16 @@ export default function ForeignIncomeForm({ onSuccess, onBack }: InvestmentFormP
   const { register, handleSubmit, watch, formState: { errors } } = useForm<ForeignIncomeFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { financialYear } = useWorkspaceStore()
 
   const foreignAmountValue = watch('foreign_amount') || ''
   const foreignAmount = parseFloat(foreignAmountValue || '0')
   const exchangeRate = parseFloat(watch('exchange_rate') || '0')
   const audAmount = foreignAmount > 0 && exchangeRate > 0 ? foreignAmount * exchangeRate : null
   const amountLabel = foreignAmountValue ? 'Foreign amount' : 'Amount (foreign currency)'
+  const incomeDateValue = watch('income_date')
+  const incomeDateWarning = !errors.income_date && incomeDateValue
+    ? validateDate(incomeDateValue, financialYear ?? null).warning : undefined
 
   async function onSubmit(data: ForeignIncomeFields) {
     const fa = parseFloat(data.foreign_amount)
@@ -113,8 +119,12 @@ export default function ForeignIncomeForm({ onSuccess, onBack }: InvestmentFormP
         <label htmlFor="fi-date" className="text-sm font-ui text-text-body block mb-1">Income date</label>
         <input id="fi-date" type="date"
           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono"
-          {...register('income_date', { required: 'Income date is required.' })} />
+          {...register('income_date', {
+            required: 'Income date is required.',
+            validate: { notFuture: (v) => { const e = validateDate(v, null).error; return e === undefined ? true : e } },
+          })} />
         {errors.income_date && <p role="alert" className="text-sm font-ui text-risk-high mt-1">{errors.income_date.message}</p>}
+        {incomeDateWarning && <p className="text-sm font-ui text-review mt-1">⚠ {incomeDateWarning}</p>}
       </div>
       <div>
         <div className="flex items-center gap-2 mb-1">

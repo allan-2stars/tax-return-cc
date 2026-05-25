@@ -163,6 +163,9 @@ async def get_session(
                 "progress": {"completed": 0, "total": 0},
             }
         }
+    # Auto-complete sessions that finished answering but never called /complete
+    if session.state == "in_progress" and not (session.current_step or {}).get("id"):
+        session = await _engine.complete(session.id, db)
     return {
         "data": {
             "state": session.state,
