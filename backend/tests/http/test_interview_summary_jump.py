@@ -81,6 +81,15 @@ async def test_get_summary(auth_client):
                 f"answer {answer['question_id']} has editable={answer['editable']}"
             )
 
+    # Skill sections (if any) should have non-null question_labels (q.ask text from skill)
+    for section in sections:
+        if section["title"] == "Your situation":
+            continue
+        for ans in section["answers"]:
+            assert ans["question_label"], (
+                f"Skill section '{section['title']}' answer {ans['question_id']} has empty question_label"
+            )
+
 
 @pytest.mark.asyncio
 async def test_jump_to_question(auth_client):
@@ -130,3 +139,6 @@ async def test_jump_then_answer(auth_client):
     body = resp.json()
     # More questions remain (we jumped mid-session)
     assert body["data"]["state"] == "in_progress"
+    # After answering residency again, employment_type must be next
+    # (residency has no branches for "resident"; employment_type follows deterministically)
+    assert body["data"]["next_question"]["id"] == "employment_type"
