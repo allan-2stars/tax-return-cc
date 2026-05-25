@@ -1,11 +1,11 @@
 'use client'
+import React from 'react'
 import Link from 'next/link'
-import type { LucideIcon } from 'lucide-react'
 
 interface SheetItem {
   href: string
   label: string
-  icon: LucideIcon
+  icon: React.ComponentType<{ size?: number | string; className?: string }>
 }
 
 interface MobileMoreSheetProps {
