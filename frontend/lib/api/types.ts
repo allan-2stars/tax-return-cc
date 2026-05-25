@@ -377,3 +377,22 @@ export interface TaxEstimateSummary {
   ato_calculator_url: string
   disclaimer: string
 }
+
+// ── Interview summary types ───────────────────────────────────────────────────
+
+export interface SummaryAnswer {
+  question_id: string
+  question_label: string
+  answer_value: string
+  answer_label: string
+  editable: boolean
+}
+
+export interface SummarySection {
+  title: string
+  answers: SummaryAnswer[]
+}
+
+export interface InterviewSummaryData {
+  sections: SummarySection[]
+}

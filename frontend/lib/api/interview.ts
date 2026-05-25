@@ -7,6 +7,7 @@ import type {
   PauseResponseData,
   CompleteResponseData,
   YoYSuggestion,
+  InterviewSummaryData,
 } from './types'
 
 export const getSession = () =>
@@ -15,8 +16,8 @@ export const getSession = () =>
 export const startInterview = () =>
   client.post<ApiResponse<InterviewSessionData>>('/api/v1/interview/start')
 
-export const answerQuestion = (question_id: string, answer: string) =>
-  client.post<ApiResponse<AnswerResponseData>>('/api/v1/interview/answer', { question_id, answer })
+export const answerQuestion = (question_id: string, answer: string | number) =>
+  client.post<ApiResponse<AnswerResponseData>>('/api/v1/interview/answer', { question_id, answer: String(answer) })
 
 export const goBack = () =>
   client.post<ApiResponse<InterviewSessionData>>('/api/v1/interview/back')
@@ -35,3 +36,9 @@ export const getYoySuggestions = () =>
 
 export const actOnSuggestion = (id: string, action: string) =>
   client.post<ApiResponse<YoYSuggestion>>(`/api/v1/yoy/${id}/action`, { action })
+
+export const getInterviewSummary = () =>
+  client.get<ApiResponse<InterviewSummaryData>>('/api/v1/interview/summary')
+
+export const jumpToQuestion = (question_id: string) =>
+  client.post<ApiResponse<InterviewSessionData>>('/api/v1/interview/jump', { question_id })
