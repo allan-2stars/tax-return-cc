@@ -7,6 +7,7 @@ from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_auth
+from app.config import settings
 from app.db.base import AsyncSessionLocal, get_db
 from app.engines.evidence import EvidenceEngine
 from app.errors import AppError, DuplicateDocumentError, error_response
@@ -24,7 +25,36 @@ async def _run_extraction(document_id: str) -> None:
     """Background task: creates its own DB session, independent of the request session."""
     storage = get_storage_backend()
     async with AsyncSessionLocal() as db:
-        engine = EvidenceEngine(db=db, storage=storage)
+        # Wire AI/review/readiness only when AI is configured. Otherwise preserve
+        # OCR-only fallback behavior (documents become ready but no TaxEvents).
+        ai_adapter = None
+        review_engine = None
+        readiness_engine = None
+
+        if settings.ANTHROPIC_API_KEY:
+            try:
+                from app.ai import get_ai_adapter
+                from app.engines.readiness import ReadinessEngine
+                from app.engines.review import ReviewEngine
+
+                doc = await doc_repo.get_by_id(db, document_id)
+                if doc:
+                    ai_adapter = get_ai_adapter(workspace_id=doc.workspace_id)
+                    readiness_engine = ReadinessEngine()
+                    review_engine = ReviewEngine(ai_adapter=ai_adapter)
+            except Exception:
+                # Never break extraction if AI wiring fails; OCR-only fallback is acceptable.
+                ai_adapter = None
+                review_engine = None
+                readiness_engine = None
+
+        engine = EvidenceEngine(
+            db=db,
+            storage=storage,
+            ai_adapter=ai_adapter,
+            readiness_engine=readiness_engine,
+            review_engine=review_engine,
+        )
         await engine.extract_and_finalize(document_id)
 
 
