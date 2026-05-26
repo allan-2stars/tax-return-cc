@@ -380,3 +380,43 @@ async def test_spouse_rfba_amount_is_currency_and_optional(auth_client):
     assert q is not None
     assert q.currency is True
     assert q.required is False
+
+
+# ── 15. process_answer survives server-restart (missing skill Q in _QUESTION_BY_ID) ──
+
+@pytest.mark.asyncio
+async def test_process_answer_reregisters_skill_questions_after_restart(db_session, workspace):
+    """Simulates a server restart: skill questions are removed from _QUESTION_BY_ID
+    after activation, then process_answer must re-register them and not raise KeyError."""
+    from app.engines.interview import InterviewEngine, _QUESTION_BY_ID
+
+    engine = InterviewEngine()
+    session, _ = await engine.start(workspace.id, workspace.financial_year, db_session)
+
+    # Answer up to employment_type=employee → activates employee_tax_au, adds wfh etc.
+    for qid, ans in [
+        ("fy_confirm", "2024-25"),
+        ("residency", "resident"),
+        ("employment_type", "employee"),
+        ("family_situation", "single_no_dependents"),
+    ]:
+        session, _ = await engine.process_answer(session.id, qid, ans, db_session)
+
+    # Simulate a server restart: wipe skill questions from _QUESTION_BY_ID
+    skill_ids_to_purge = [k for k in list(_QUESTION_BY_ID) if k not in {
+        "fy_confirm", "residency", "employment_type", "family_situation",
+        "lodger_type", "spouse_income_range", "spouse_novated_lease",
+        "spouse_rfba_amount", "dependent_count",
+    }]
+    for k in skill_ids_to_purge:
+        del _QUESTION_BY_ID[k]
+
+    assert "wfh" not in _QUESTION_BY_ID, "Setup: wfh must be missing to reproduce the bug"
+
+    # Now answer lodger_type — the next question (wfh) is missing from _QUESTION_BY_ID
+    session, next_q = await engine.process_answer(session.id, "lodger_type", "self", db_session)
+
+    # Must not raise KeyError; must return a valid Question
+    assert next_q is not None
+    assert next_q.id == "wfh"
+    assert next_q.ask  # has question text, not just an ID dict

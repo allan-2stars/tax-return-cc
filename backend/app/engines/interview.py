@@ -268,11 +268,22 @@ class InterviewEngine:
         # Advance
         if pending:
             next_id = pending.pop(0)
+            # Re-register skill questions if missing (handles server restart where
+            # _QUESTION_BY_ID is in-memory and does not survive process restarts)
+            if next_id not in _QUESTION_BY_ID:
+                for skill_id in (session.activated_skills or []):
+                    skill = self._registry.get_skill(skill_id)
+                    if skill:
+                        for sq in skill.get_questions(None):
+                            _QUESTION_BY_ID[sq.id] = sq
+            next_q = _QUESTION_BY_ID.get(next_id)
+            if next_q is None:
+                raise ValueError(f"Unknown question in queue: {next_id!r}")
             session.current_step = {"id": next_id}
             session.pending_queue = pending
             session = await interview_repo.save(db, session)
             await self._readiness_engine.mark_stale(session.workspace_id, db)
-            return session, _QUESTION_BY_ID[next_id]
+            return session, next_q
 
         session.current_step = None
         session.pending_queue = []

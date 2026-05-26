@@ -63,12 +63,20 @@ export default function InterviewSummary({ onEdit }: InterviewSummaryProps) {
             {section.answers.map((answer, answerIndex) => (
               <div
                 key={answer.question_id}
-                className={`flex items-center justify-between px-4 py-2 text-sm ${
+                data-testid={`answer-row-${answer.question_id}`}
+                className={`px-4 py-2 text-sm ${
                   answerIndex % 2 === 0 ? 'bg-canvas' : 'bg-surface-raised'
                 }`}
+                style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', alignItems: 'center', gap: '1rem' }}
               >
                 <span className="font-ui text-text-body">{answer.question_label}</span>
-                <span className="font-body text-text-muted">{answer.answer_label}</span>
+                <span
+                  data-testid={`answer-value-${answer.question_id}`}
+                  className="font-body text-text-muted"
+                  style={{ textAlign: 'right' }}
+                >
+                  {answer.answer_label}
+                </span>
                 {answer.editable && (
                   <button
                     type="button"

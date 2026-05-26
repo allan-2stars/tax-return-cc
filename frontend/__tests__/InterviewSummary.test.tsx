@@ -68,6 +68,18 @@ test('Edit button calls jumpToQuestion with question_id', async () => {
   await waitFor(() => expect(onEdit).toHaveBeenCalled())
 })
 
+test('answer value is right-aligned in a three-column grid row', async () => {
+  mockGetInterviewSummary.mockResolvedValue({ data: { data: SUMMARY_DATA } })
+  wrap(<InterviewSummary onEdit={jest.fn()} />)
+
+  const answerValue = await screen.findByTestId('answer-value-residency')
+  const style = window.getComputedStyle(answerValue)
+  expect(style.textAlign).toBe('right')
+
+  const row = screen.getByTestId('answer-row-residency')
+  expect(row).toHaveStyle({ display: 'grid', gridTemplateColumns: '1fr auto auto' })
+})
+
 test('does not render Edit button for non-editable answers', async () => {
   const nonEditableData = {
     sections: [{

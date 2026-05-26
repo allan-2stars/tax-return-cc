@@ -73,6 +73,20 @@ _ANSWER_DISPLAY_LABELS: dict[str, dict[str, str]] = {
     },
 }
 
+# Fallback labels applied when no per-question entry exists
+_GLOBAL_ANSWER_LABELS: dict[str, str] = {
+    "yes_regular":    "Yes, regularly",
+    "yes_sometimes":  "Yes, sometimes",
+    "fixed_rate":     "Fixed rate (67c per hour)",
+    "fixed_rate_67c": "Fixed rate (67c per hour)",
+    "actual_cost":    "Actual cost method",
+    "yes":            "Yes",
+    "no":             "No",
+    "not_sure":       "Not sure",
+    "true":           "Yes",
+    "false":          "No",
+}
+
 _SKILL_SECTION_TITLES: dict[str, str] = {
     "employee_tax_au": "Your employment",
     "wfh_skill":       "Work from home",
@@ -99,9 +113,14 @@ class JumpRequest(BaseModel):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _format_answer(question_id: str, answer_value: str) -> str:
-    labels = _ANSWER_DISPLAY_LABELS.get(question_id, {})
-    return labels.get(answer_value, answer_value)
+def _format_answer(question_id: str, answer_value) -> str:
+    if isinstance(answer_value, bool):
+        return "Yes" if answer_value else "No"
+    val = str(answer_value)
+    per_question = _ANSWER_DISPLAY_LABELS.get(question_id, {})
+    if val in per_question:
+        return per_question[val]
+    return _GLOBAL_ANSWER_LABELS.get(val, val)
 
 
 def _q_dict(q: Question | None) -> dict | None:
@@ -125,6 +144,14 @@ def _current_question(session: InterviewSession) -> dict | None:
     if not qid:
         return None
     q = _QUESTION_BY_ID.get(qid)
+    if q is None:
+        # Re-register skill questions from activated skills (handles server restart)
+        for skill_id in (session.activated_skills or []):
+            skill = _engine._registry.get_skill(skill_id)
+            if skill:
+                for sq in skill.get_questions(None):
+                    _QUESTION_BY_ID[sq.id] = sq
+        q = _QUESTION_BY_ID.get(qid)
     return _q_dict(q) if q else {"id": qid}
 
 
@@ -381,7 +408,7 @@ async def get_summary(
                     "question_id":    qid,
                     "question_label": q.ask,
                     "answer_value":   val,
-                    "answer_label":   val,
+                    "answer_label":   _format_answer(qid, val),
                     "editable":       True,
                 })
         if skill_answers:

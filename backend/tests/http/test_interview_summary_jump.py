@@ -251,3 +251,52 @@ async def test_jump_safety_limit(auth_client):
     body = resp.json()
     assert body["data"]["state"] == "in_progress"
     assert body["data"]["current_question"]["id"] == "fy_confirm"
+
+
+@pytest.mark.asyncio
+async def test_summary_wfh_skill_values_formatted(auth_client):
+    """Skill answer 'yes_regular' → 'Yes, regularly'; 'fixed_rate' → 'Fixed rate (67c per hour)'."""
+    await _complete_full_interview(auth_client)
+
+    resp = await auth_client.get("/api/v1/interview/summary")
+    assert resp.status_code == 200, resp.text
+    sections = resp.json()["data"]["sections"]
+
+    emp_section = next((s for s in sections if s["title"] == "Your employment"), None)
+    assert emp_section is not None, f"Expected 'Your employment' section, got: {[s['title'] for s in sections]}"
+
+    answers_by_id = {a["question_id"]: a for a in emp_section["answers"]}
+
+    assert "wfh" in answers_by_id, f"Expected 'wfh' in skill answers, got: {list(answers_by_id)}"
+    wfh_label = answers_by_id["wfh"]["answer_label"]
+    assert wfh_label == "Yes, regularly", (
+        f"Expected 'Yes, regularly', got '{wfh_label}'"
+    )
+
+    if "wfh_method" in answers_by_id:
+        method_label = answers_by_id["wfh_method"]["answer_label"]
+        assert method_label == "Fixed rate (67c per hour)", (
+            f"Expected 'Fixed rate (67c per hour)', got '{method_label}'"
+        )
+
+
+@pytest.mark.asyncio
+async def test_summary_yes_no_strings_formatted(auth_client):
+    """Skill section answers with raw 'yes'/'no' are returned as 'Yes'/'No'."""
+    await _complete_full_interview(auth_client)
+
+    resp = await auth_client.get("/api/v1/interview/summary")
+    assert resp.status_code == 200, resp.text
+    sections = resp.json()["data"]["sections"]
+
+    for section in sections:
+        if section["title"] == "Your situation":
+            continue
+        for ans in section["answers"]:
+            val = ans["answer_value"]
+            label = ans["answer_label"]
+            if val in ("yes", "no"):
+                assert label in ("Yes", "No"), (
+                    f"Question '{ans['question_id']}': raw '{val}' should be "
+                    f"formatted as 'Yes'/'No', got '{label}'"
+                )
