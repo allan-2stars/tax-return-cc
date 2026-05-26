@@ -36,6 +36,13 @@ Normal browser traffic must use the frontend origin only:
 
 `https://taxcc-api.signpega.com` should be treated as ops/debug only (not used by the app in normal usage).
 
+## Ops lockdown (recommended)
+
+- Keep normal browser traffic on `https://taxcc.signpega.com` only.
+- Keep `https://taxcc-api.signpega.com` for ops/debug only.
+- Put `taxcc-api.signpega.com` behind Cloudflare Access (or an IP allowlist).
+- Later hardening option: remove backend public exposure entirely (drop host port mapping and tunnel), and do ops via SSH + `docker compose exec`.
+
 ## Useful commands
 
 ```bash
@@ -43,6 +50,7 @@ make shell-be     # bash inside backend container
 make db-shell     # SQLite shell (dev)
 make migrate-dev  # run pending migrations
 make freeze       # freeze pip deps to requirements.lock
+make smoke-proxy  # frontend + proxy + (optional) direct backend health checks
 ```
 
 See `make help` for the full list.
