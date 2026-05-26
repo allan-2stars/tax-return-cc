@@ -83,4 +83,13 @@ describe('interview API', () => {
     expect(mockPost).toHaveBeenCalledWith('/api/v1/interview/jump', { question_id: 'residency' })
     expect(result.data.data).toEqual(mockData)
   })
+
+  it('jumpToQuestion sends edit_mode=true when editMode is true', async () => {
+    mockPost.mockResolvedValueOnce({ data: { data: {} } })
+    await jumpToQuestion('residency', true)
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/interview/jump', {
+      question_id: 'residency',
+      edit_mode: true,
+    })
+  })
 })

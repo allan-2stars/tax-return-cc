@@ -74,6 +74,8 @@ class InterviewSession(Base):
     pending_queue: Mapped[list | None] = mapped_column(JSON, nullable=True)
     answers: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     activated_skills: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    edit_mode: Mapped[bool] = mapped_column(Boolean, default=False)
+    edit_target: Mapped[str | None] = mapped_column(String(50), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_active_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

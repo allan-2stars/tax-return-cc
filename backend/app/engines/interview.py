@@ -265,6 +265,17 @@ class InterviewEngine:
         completed.append(question_id)
         session.completed_steps = completed
 
+        # In edit_mode, return to awaiting_evidence immediately after the target question
+        if session.edit_mode and question_id == session.edit_target:
+            session.state = "awaiting_evidence"
+            session.edit_mode = False
+            session.edit_target = None
+            session.current_step = None
+            session.pending_queue = []
+            session = await interview_repo.save(db, session)
+            await self._readiness_engine.mark_stale(session.workspace_id, db)
+            return session, None
+
         # Advance
         if pending:
             next_id = pending.pop(0)
@@ -399,6 +410,7 @@ class InterviewEngine:
         session_id: str,
         question_id: str,
         db: AsyncSession,
+        edit_mode: bool = False,
     ) -> tuple[InterviewSession, Question]:
         session = await interview_repo.get_by_id(db, session_id)
 
@@ -431,6 +443,8 @@ class InterviewEngine:
             ) from exc
 
         session.state = "in_progress"
+        session.edit_mode = edit_mode
+        session.edit_target = question_id if edit_mode else None
         session = await interview_repo.save(db, session)
         q = _QUESTION_BY_ID.get(question_id)
         if q is None:

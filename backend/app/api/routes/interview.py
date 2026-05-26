@@ -109,6 +109,7 @@ class SkipRequest(BaseModel):
 
 class JumpRequest(BaseModel):
     question_id: str
+    edit_mode: bool = False
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -431,7 +432,7 @@ async def jump_to_question(
         raise _no_session_error()
 
     try:
-        session, q = await _engine.jump(session.id, body.question_id, db)
+        session, q = await _engine.jump(session.id, body.question_id, db, body.edit_mode)
     except ValueError as e:
         raise HTTPException(
             status_code=404,
@@ -444,5 +445,6 @@ async def jump_to_question(
             "state":            session.state,
             "current_question": _q_dict(q),
             "progress":         _progress(session),
+            "edit_mode":        session.edit_mode,
         }
     }

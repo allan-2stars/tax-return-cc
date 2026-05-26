@@ -281,6 +281,45 @@ async def test_summary_wfh_skill_values_formatted(auth_client):
 
 
 @pytest.mark.asyncio
+async def test_jump_edit_mode_sets_flags(auth_client):
+    """POST /interview/jump with edit_mode=true sets session into edit mode."""
+    await _complete_full_interview(auth_client)
+
+    resp = await auth_client.post(
+        "/api/v1/interview/jump",
+        json={"question_id": "residency", "edit_mode": True},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["data"]["state"] == "in_progress"
+    assert body["data"]["current_question"]["id"] == "residency"
+    assert body["data"]["edit_mode"] is True
+
+
+@pytest.mark.asyncio
+async def test_edit_mode_returns_to_completion_after_one_answer(auth_client):
+    """In edit_mode, answering the target question returns state=awaiting_evidence immediately."""
+    await _complete_full_interview(auth_client)
+
+    # Jump to residency in edit_mode
+    resp = await auth_client.post(
+        "/api/v1/interview/jump",
+        json={"question_id": "residency", "edit_mode": True},
+    )
+    assert resp.status_code == 200, resp.text
+
+    # Answer residency — must return to awaiting_evidence without further questions
+    resp = await auth_client.post(
+        "/api/v1/interview/answer",
+        json={"question_id": "residency", "answer": "resident"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["data"]["state"] == "awaiting_evidence"
+    assert body["data"]["next_question"] is None
+
+
+@pytest.mark.asyncio
 async def test_summary_yes_no_strings_formatted(auth_client):
     """Skill section answers with raw 'yes'/'no' are returned as 'Yes'/'No'."""
     await _complete_full_interview(auth_client)

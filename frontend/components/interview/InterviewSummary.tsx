@@ -35,7 +35,7 @@ export default function InterviewSummary({ onEdit }: InterviewSummaryProps) {
     setJumping(questionId)
     setEditError(null)
     try {
-      await jumpToQuestion(questionId)
+      await jumpToQuestion(questionId, true)
       queryClient.invalidateQueries({ queryKey: ['interview', 'session'] })
       onEdit()
     } catch (error) {

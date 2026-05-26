@@ -48,6 +48,18 @@ export default function JourneyPage() {
       const newSkill = d.activated_skills.find((s) => !prev.includes(s))
       if (newSkill) setNewSkillPending(newSkill)
 
+      // Edit mode: server already set state=awaiting_evidence — skip completeInterview
+      if (d.state === 'awaiting_evidence') {
+        patch({
+          state: 'awaiting_evidence',
+          current_question: null,
+          activated_skills: d.activated_skills,
+          progress: d.progress,
+        })
+        queryClient.invalidateQueries({ queryKey: ['interview', 'summary'] })
+        return
+      }
+
       if (d.next_question === null) {
         const completeRes = await completeInterview()
         patch({

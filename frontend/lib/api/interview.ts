@@ -40,5 +40,8 @@ export const actOnSuggestion = (id: string, action: string) =>
 export const getInterviewSummary = () =>
   client.get<ApiResponse<InterviewSummaryData>>('/api/v1/interview/summary')
 
-export const jumpToQuestion = (question_id: string) =>
-  client.post<ApiResponse<InterviewSessionData>>('/api/v1/interview/jump', { question_id })
+export const jumpToQuestion = (question_id: string, edit_mode = false) =>
+  client.post<ApiResponse<InterviewSessionData>>('/api/v1/interview/jump', {
+    question_id,
+    ...(edit_mode && { edit_mode }),
+  })

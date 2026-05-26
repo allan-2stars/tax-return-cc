@@ -101,6 +101,32 @@ test('shows personalised next step for active skill on awaiting_evidence', async
   await waitFor(() => expect(screen.getByText(/PAYG Payment Summary/i)).toBeInTheDocument())
 })
 
+test('returns to completion screen immediately when answer response state is awaiting_evidence (edit mode)', async () => {
+  const mockAnswerQuestion = interviewApi.answerQuestion as jest.Mock
+  const mockCompleteInterview = interviewApi.completeInterview as jest.Mock
+  const mockInvalidateQueries = jest.fn()
+
+  mockGetSession.mockResolvedValue(SESSION('in_progress', QUESTION))
+  mockAnswerQuestion.mockResolvedValue({
+    data: { data: {
+      state: 'awaiting_evidence',
+      next_question: null,
+      activated_skills: ['employee_tax_au'],
+      progress: { completed: 5, total: 5 },
+    } },
+  })
+
+  const user = userEvent.setup()
+  wrap(<JourneyPage />)
+  await waitFor(() => expect(screen.getByText('Did you work from home?')).toBeInTheDocument())
+
+  await user.click(screen.getByRole('button', { name: 'Yes' }))
+
+  // completeInterview must NOT be called — session is already awaiting_evidence
+  await waitFor(() => expect(screen.getByText(/you're all set up/i)).toBeInTheDocument())
+  expect(mockCompleteInterview).not.toHaveBeenCalled()
+})
+
 test('calls completeInterview and shows completion screen when last answer exhausts queue', async () => {
   const mockAnswerQuestion = interviewApi.answerQuestion as jest.Mock
   const mockCompleteInterview = interviewApi.completeInterview as jest.Mock
