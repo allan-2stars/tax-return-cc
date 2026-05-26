@@ -87,7 +87,7 @@ async def test_process_answer_saves_answer_and_advances(db_session, workspace):
     assert session.answers.get(q1.id) == "yes"
 
 
-# ── 3. Branch insertion: has_spouse → spouse_income_range inserted next ───────
+# ── 3. Branch insertion: has_spouse=yes → spouse_income_range inserted next ───
 
 @pytest.mark.asyncio
 async def test_has_spouse_inserts_spouse_income_range_branch(db_session, workspace):
@@ -103,9 +103,9 @@ async def test_has_spouse_inserts_spouse_income_range_branch(db_session, workspa
     ]:
         session, q = await engine.process_answer(session.id, qid, ans, db_session)
 
-    assert q.id == "family_situation"
+    assert q.id == "has_spouse"
     session, branch_q = await engine.process_answer(
-        session.id, "family_situation", "has_spouse", db_session
+        session.id, "has_spouse", "yes", db_session
     )
 
     assert branch_q.id == "spouse_income_range"
@@ -128,19 +128,55 @@ async def test_go_back_undoes_branch_insertion(db_session, workspace):
         session, q = await engine.process_answer(session.id, qid, ans, db_session)
 
     session, branch_q = await engine.process_answer(
-        session.id, "family_situation", "has_spouse", db_session
+        session.id, "has_spouse", "yes", db_session
     )
     assert branch_q.id == "spouse_income_range"
 
     session, prev_q = await engine.go_back(session.id, db_session)
 
-    assert prev_q.id == "family_situation"
-    assert "family_situation" not in (session.answers or {})
+    assert prev_q.id == "has_spouse"
+    assert "has_spouse" not in (session.answers or {})
     pending_ids = [
         (step["id"] if isinstance(step, dict) else step)
         for step in (session.pending_queue or [])
     ]
     assert "spouse_income_range" not in pending_ids
+
+
+# ── 3b. Both spouse and dependents independently trigger their own branches ───
+
+@pytest.mark.asyncio
+async def test_spouse_and_dependents_both_trigger_branches(db_session, workspace):
+    """has_spouse=yes and has_dependents=yes must each independently trigger branches.
+    This was impossible with the old single family_situation question."""
+    from app.engines.interview import InterviewEngine
+
+    engine = InterviewEngine()
+    session, q = await engine.start(workspace.id, workspace.financial_year, db_session)
+
+    for qid, ans in [
+        ("fy_confirm", "yes"),
+        ("residency", "resident"),
+        ("employment_type", "employee"),
+    ]:
+        session, q = await engine.process_answer(session.id, qid, ans, db_session)
+
+    assert q.id == "has_spouse"
+
+    # Spouse = yes → spouse branches inserted
+    session, q = await engine.process_answer(session.id, "has_spouse", "yes", db_session)
+    assert q.id == "spouse_income_range"
+
+    session, q = await engine.process_answer(session.id, "spouse_income_range", "45000_120000", db_session)
+    assert q.id == "spouse_novated_lease"
+
+    session, q = await engine.process_answer(session.id, "spouse_novated_lease", "no", db_session)
+    # After spouse branches done, has_dependents should be next
+    assert q.id == "has_dependents"
+
+    # Dependents = yes → dependent_count inserted
+    session, q = await engine.process_answer(session.id, "has_dependents", "yes", db_session)
+    assert q.id == "dependent_count"
 
 
 # ── 5. Skill activation inserts skill questions into the queue ────────────────
@@ -166,7 +202,8 @@ async def test_skill_activation_inserts_skill_questions(db_session, workspace):
         ("fy_confirm", "yes"),
         ("residency", "resident"),
         ("employment_type", "employee"),
-        ("family_situation", "single"),
+        ("has_spouse", "no"),
+        ("has_dependents", "no"),
         ("lodger_type", "self"),
     ]:
         session, q = await engine.process_answer(session.id, qid, ans, db_session)
@@ -342,14 +379,15 @@ async def test_full_platform_flow_activates_employee_skill(db_session, workspace
         ("fy_confirm", "yes"),
         ("residency", "resident"),
         ("employment_type", "employee"),
-        ("family_situation", "single"),
+        ("has_spouse", "no"),
+        ("has_dependents", "no"),
         ("lodger_type", "self"),
     ]:
         session, q = await engine.process_answer(session.id, qid, ans, db_session)
 
     assert q is not None
     assert "employee_tax_au" in (session.activated_skills or [])
-    platform_ids = {"fy_confirm", "residency", "employment_type", "family_situation", "lodger_type"}
+    platform_ids = {"fy_confirm", "residency", "employment_type", "has_spouse", "has_dependents", "lodger_type"}
     assert q.id not in platform_ids
 
 
@@ -398,13 +436,14 @@ async def test_process_answer_reregisters_skill_questions_after_restart(db_sessi
         ("fy_confirm", "2024-25"),
         ("residency", "resident"),
         ("employment_type", "employee"),
-        ("family_situation", "single_no_dependents"),
+        ("has_spouse", "no"),
+        ("has_dependents", "no"),
     ]:
         session, _ = await engine.process_answer(session.id, qid, ans, db_session)
 
     # Simulate a server restart: wipe skill questions from _QUESTION_BY_ID
     skill_ids_to_purge = [k for k in list(_QUESTION_BY_ID) if k not in {
-        "fy_confirm", "residency", "employment_type", "family_situation",
+        "fy_confirm", "residency", "employment_type", "has_spouse", "has_dependents",
         "lodger_type", "spouse_income_range", "spouse_novated_lease",
         "spouse_rfba_amount", "dependent_count",
     }]
@@ -420,3 +459,49 @@ async def test_process_answer_reregisters_skill_questions_after_restart(db_sessi
     assert next_q is not None
     assert next_q.id == "wfh"
     assert next_q.ask  # has question text, not just an ID dict
+
+
+# ── 16. edit_mode + branches: branch questions asked before returning to summary
+
+@pytest.mark.asyncio
+async def test_edit_mode_with_branches_asks_branches_before_returning(db_session, workspace):
+    """In edit_mode, if the edited answer triggers branches, those branches must
+    be asked before transitioning back to awaiting_evidence."""
+    from app.engines.interview import InterviewEngine
+
+    engine = InterviewEngine()
+    session, _ = await engine.start(workspace.id, workspace.financial_year, db_session)
+
+    # Complete the full interview (no spouse, no dependents)
+    for qid, ans in [
+        ("fy_confirm", "2024-25"),
+        ("residency", "resident"),
+        ("employment_type", "employee"),
+        ("has_spouse", "no"),
+        ("has_dependents", "no"),
+        ("lodger_type", "self"),
+    ]:
+        session, _ = await engine.process_answer(session.id, qid, ans, db_session)
+    session = await engine.complete(session.id, db_session)
+    assert session.state == "awaiting_evidence"
+
+    # Jump to has_spouse in edit_mode
+    session, q = await engine.jump(session.id, "has_spouse", db_session, edit_mode=True)
+    assert session.edit_mode is True
+    assert session.edit_target == "has_spouse"
+
+    # Answer has_spouse = "yes" — this triggers branches
+    session, q = await engine.process_answer(session.id, "has_spouse", "yes", db_session)
+    # Must NOT return to awaiting_evidence yet — branch question comes first
+    assert session.state == "in_progress"
+    assert q is not None
+    assert q.id == "spouse_income_range"
+
+    # Answer the branch questions
+    session, q = await engine.process_answer(session.id, "spouse_income_range", "45000_120000", db_session)
+    assert q.id == "spouse_novated_lease"
+
+    session, q = await engine.process_answer(session.id, "spouse_novated_lease", "no", db_session)
+    # Branch queue exhausted — NOW returns to awaiting_evidence
+    assert session.state == "awaiting_evidence"
+    assert q is None

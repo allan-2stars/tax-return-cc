@@ -35,15 +35,23 @@ PLATFORM_QUESTIONS: list[Question] = [
         options=["employee", "sole_trader", "both"],
     ),
     Question(
-        id="family_situation",
-        ask="What is your family situation?",
+        id="has_spouse",
+        ask="Do you have a spouse or de facto partner?",
         type="single_choice",
-        options=["single_no_dependents", "has_spouse", "has_dependents", "both"],
+        options=["yes", "no"],
         branches={
-            "single_no_dependents": [],
-            "has_spouse":           ["spouse_income_range", "spouse_novated_lease"],
-            "has_dependents":       ["dependent_count"],
-            "both":                 ["spouse_income_range", "spouse_novated_lease", "dependent_count"],
+            "yes": ["spouse_income_range", "spouse_novated_lease"],
+            "no":  [],
+        },
+    ),
+    Question(
+        id="has_dependents",
+        ask="Do you have any dependent children?",
+        type="single_choice",
+        options=["yes", "no"],
+        branches={
+            "yes": ["dependent_count"],
+            "no":  [],
         },
     ),
     Question(
@@ -104,20 +112,17 @@ _PROFILE_FIELD_MAP: dict[str, str | None] = {
     "residency":            "resident_status",
     "employment_type":      "employment_type",
     "lodger_type":          "user_lodger_type",
-    "family_situation":     None,   # special-cased in _build_profile_updates
     "spouse_income_range":  "spouse_income_range",
-    "spouse_novated_lease": "spouse_has_novated_lease",
     "spouse_rfba_amount":   "spouse_rfba_amount",
     "dependent_count":      "dependent_count",
 }
 
 
 def _build_profile_updates(question_id: str, answer: Any) -> dict:
-    if question_id == "family_situation":
-        return {
-            "has_spouse":     answer in ("has_spouse", "both"),
-            "has_dependents": answer in ("has_dependents", "both"),
-        }
+    if question_id == "has_spouse":
+        return {"has_spouse": answer == "yes"}
+    if question_id == "has_dependents":
+        return {"has_dependents": answer == "yes"}
     if question_id == "spouse_novated_lease":
         return {"spouse_has_novated_lease": answer == "yes"}
     if question_id == "spouse_rfba_amount":
@@ -265,16 +270,23 @@ class InterviewEngine:
         completed.append(question_id)
         session.completed_steps = completed
 
-        # In edit_mode, return to awaiting_evidence immediately after the target question
+        # Edit mode: target question just answered
         if session.edit_mode and question_id == session.edit_target:
-            session.state = "awaiting_evidence"
-            session.edit_mode = False
             session.edit_target = None
-            session.current_step = None
-            session.pending_queue = []
-            session = await interview_repo.save(db, session)
-            await self._readiness_engine.mark_stale(session.workspace_id, db)
-            return session, None
+            if not branches_triggered:
+                # No new branches → return to completion immediately
+                session.state = "awaiting_evidence"
+                session.edit_mode = False
+                session.current_step = None
+                session.pending_queue = []
+                session = await interview_repo.save(db, session)
+                await self._readiness_engine.mark_stale(session.workspace_id, db)
+                return session, None
+            else:
+                # New branches triggered → replace pending with ONLY those branches.
+                # The remaining original queue is discarded so we return to summary
+                # as soon as the branch questions are exhausted.
+                pending = list(branches_triggered)
 
         # Advance
         if pending:
@@ -295,6 +307,12 @@ class InterviewEngine:
             session = await interview_repo.save(db, session)
             await self._readiness_engine.mark_stale(session.workspace_id, db)
             return session, next_q
+
+        # Edit mode: branch queue exhausted → return to completion
+        if session.edit_mode:
+            session.state = "awaiting_evidence"
+            session.edit_mode = False
+            session.edit_target = None
 
         session.current_step = None
         session.pending_queue = []

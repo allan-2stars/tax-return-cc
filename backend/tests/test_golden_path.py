@@ -35,7 +35,8 @@ async def test_complete_user_journey(auth_client, test_engine):
         ("fy_confirm", "2024-25"),
         ("residency", "resident"),
         ("employment_type", "employee"),
-        ("family_situation", "single_no_dependents"),
+        ("has_spouse", "no"),
+        ("has_dependents", "no"),
         ("lodger_type", "self"),
     ]:
         resp = await auth_client.post(

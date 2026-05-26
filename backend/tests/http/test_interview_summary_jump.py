@@ -9,11 +9,12 @@ async def _complete_full_interview(client) -> None:
 
     # Platform answers — these are the fixed questions for any employee
     platform_answers = [
-        ("fy_confirm",        "2024-25"),
-        ("residency",         "resident"),
-        ("employment_type",   "employee"),
-        ("family_situation",  "single_no_dependents"),
-        ("lodger_type",       "self"),
+        ("fy_confirm",      "2024-25"),
+        ("residency",       "resident"),
+        ("employment_type", "employee"),
+        ("has_spouse",      "no"),
+        ("has_dependents",  "no"),
+        ("lodger_type",     "self"),
     ]
     for qid, answer in platform_answers:
         resp = await client.post(
@@ -155,9 +156,10 @@ async def _complete_interview_with_spouse(client) -> None:
         ("fy_confirm",           "2024-25"),
         ("residency",            "resident"),
         ("employment_type",      "employee"),
-        ("family_situation",     "has_spouse"),
+        ("has_spouse",           "yes"),
         ("spouse_income_range",  "45000_120000"),
         ("spouse_novated_lease", "no"),
+        ("has_dependents",       "no"),
         ("lodger_type",          "self"),
     ]
     for qid, answer in answers:
@@ -315,6 +317,52 @@ async def test_edit_mode_returns_to_completion_after_one_answer(auth_client):
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
+    assert body["data"]["state"] == "awaiting_evidence"
+    assert body["data"]["next_question"] is None
+
+
+@pytest.mark.asyncio
+async def test_edit_mode_with_branches_asks_branches_before_returning(auth_client):
+    """In edit_mode, editing an answer that triggers branches must ask those branches
+    before returning state=awaiting_evidence. Regression for edit_mode branch wipe bug."""
+    await _complete_full_interview(auth_client)
+
+    # Jump to has_spouse in edit_mode
+    resp = await auth_client.post(
+        "/api/v1/interview/jump",
+        json={"question_id": "has_spouse", "edit_mode": True},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["data"]["edit_mode"] is True
+
+    # Answer has_spouse = "yes" — this triggers spouse branch questions
+    resp = await auth_client.post(
+        "/api/v1/interview/answer",
+        json={"question_id": "has_spouse", "answer": "yes"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    # Must still be in_progress — branch questions must be asked first
+    assert body["data"]["state"] == "in_progress", (
+        f"Expected in_progress while asking branches, got {body['data']['state']}"
+    )
+    assert body["data"]["next_question"]["id"] == "spouse_income_range"
+
+    # Answer the branch questions
+    resp = await auth_client.post(
+        "/api/v1/interview/answer",
+        json={"question_id": "spouse_income_range", "answer": "45000_120000"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["data"]["next_question"]["id"] == "spouse_novated_lease"
+
+    resp = await auth_client.post(
+        "/api/v1/interview/answer",
+        json={"question_id": "spouse_novated_lease", "answer": "no"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    # Branches exhausted — now returns to completion
     assert body["data"]["state"] == "awaiting_evidence"
     assert body["data"]["next_question"] is None
 

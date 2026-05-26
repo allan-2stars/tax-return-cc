@@ -30,7 +30,8 @@ _QUESTION_DISPLAY_LABELS: dict[str, str] = {
     "fy_confirm":           "Financial year",
     "residency":            "Residency status",
     "employment_type":      "Work situation",
-    "family_situation":     "Family situation",
+    "has_spouse":           "Spouse or partner",
+    "has_dependents":       "Dependent children",
     "lodger_type":          "Lodging method",
     "spouse_income_range":  "Spouse income range",
     "spouse_novated_lease": "Spouse novated lease",
@@ -48,12 +49,6 @@ _ANSWER_DISPLAY_LABELS: dict[str, dict[str, str]] = {
         "employee":    "Employee (PAYG)",
         "sole_trader": "Sole trader",
         "both":        "Both",
-    },
-    "family_situation": {
-        "single_no_dependents": "Single, no dependents",
-        "has_spouse":           "Have a spouse",
-        "has_dependents":       "Have dependents",
-        "both":                 "Spouse and dependents",
     },
     "lodger_type": {
         "self":    "Self-lodging",
