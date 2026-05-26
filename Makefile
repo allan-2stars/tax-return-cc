@@ -212,6 +212,10 @@ health:
 	@echo "── Frontend ──"
 	@curl -sf http://localhost:3060 > /dev/null && echo "✅ Frontend OK" || echo "❌ Frontend not responding"
 
+.PHONY: smoke-proxy
+smoke-proxy:
+	@./scripts/smoke-proxy.sh
+
 .PHONY: ps
 ps:
 	$(COMPOSE) ps
