@@ -25,6 +25,17 @@ make dev-logs     # tail logs
 make dev-down     # stop services
 ```
 
+## Production routing (same-site proxy)
+
+Normal browser traffic must use the frontend origin only:
+
+- Browser: `https://taxcc.signpega.com`
+- Frontend proxies: `/api/*` -> `http://backend:8000/api/*` (internal Docker network)
+- Backend cookies: host-only, httpOnly, `SameSite=Strict` (set via the proxied response)
+- SSE: `GET /api/v1/documents/{id}/stream` remains on the frontend origin
+
+`https://taxcc-api.signpega.com` should be treated as ops/debug only (not used by the app in normal usage).
+
 ## Useful commands
 
 ```bash
