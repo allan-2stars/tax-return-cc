@@ -20,7 +20,7 @@ export default function DeadlineBanner() {
 
   const days = daysUntilFYEnd(financialYear)
   const isOctWarning =
-    userLodgerType === 'self_lodger' &&
+    userLodgerType === 'self' &&
     readiness !== undefined &&
     readiness.percentage < 80
 
