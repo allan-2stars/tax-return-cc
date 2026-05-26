@@ -73,8 +73,9 @@ describe('DeadlineBanner', () => {
     expect(sessionStorage.getItem('deadline-banner-dismissed')).toBe('1')
   })
 
-  it('shows October lodgement warning for self-lodger with low readiness', () => {
-    setStore('2024-25', 'self_lodger')
+  it('shows October lodgement warning for self lodger with low readiness', () => {
+    // Canonical value from backend interview options is "self"
+    setStore('2024-25', 'self')
     mockReadiness.mockReturnValue({ data: { percentage: 60 } })
     freezeDate('2025-06-25T00:00:00.000Z') // within terracotta zone
     render(<DeadlineBanner />)
