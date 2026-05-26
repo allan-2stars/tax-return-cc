@@ -1,5 +1,9 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
 
+jest.mock('next-pwa', () => {
+  return () => (config: unknown) => config
+})
+
 describe('next.config rewrites', () => {
   const ORIGINAL_ENV = process.env.ENVIRONMENT
 
@@ -33,4 +37,3 @@ describe('next.config rewrites', () => {
     )
   })
 })
-
