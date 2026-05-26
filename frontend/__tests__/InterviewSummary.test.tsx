@@ -64,7 +64,7 @@ test('Edit button calls jumpToQuestion with question_id', async () => {
   await waitFor(() => expect(screen.getAllByRole('button', { name: /edit/i })[0]).toBeInTheDocument())
   fireEvent.click(screen.getAllByRole('button', { name: /edit/i })[0])
 
-  await waitFor(() => expect(mockJumpToQuestion).toHaveBeenCalledWith('residency'))
+  await waitFor(() => expect(mockJumpToQuestion).toHaveBeenCalledWith('residency', true))
   await waitFor(() => expect(onEdit).toHaveBeenCalled())
 })
 
