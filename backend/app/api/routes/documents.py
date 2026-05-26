@@ -11,6 +11,7 @@ from app.config import settings
 from app.db.base import AsyncSessionLocal, get_db
 from app.engines.evidence import EvidenceEngine
 from app.errors import AppError, DuplicateDocumentError, error_response
+from app.db.models import Workspace
 from app.repositories import documents as doc_repo
 from app.storage import get_storage_backend
 
@@ -70,10 +71,17 @@ async def upload_document(
     storage = get_storage_backend()
     engine = EvidenceEngine(db=db, storage=storage)
 
+    ws = await db.get(Workspace, workspace_id)
+    if not ws:
+        raise HTTPException(
+            status_code=404,
+            detail=error_response("not_found", "Workspace not found.", retryable=False),
+        )
+
     try:
         doc = await engine.validate_and_create(
             workspace_id=workspace_id,
-            financial_year="2024-25",
+            financial_year=ws.financial_year,
             file_data=file_data,
             filename=filename,
         )
