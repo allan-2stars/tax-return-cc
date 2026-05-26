@@ -12,7 +12,6 @@ const nextConfig = {
   output: 'standalone',
 
   async rewrites() {
-    if (process.env.ENVIRONMENT === 'production') return []
     return [
       {
         source: '/api/:path*',
