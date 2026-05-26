@@ -176,7 +176,9 @@ class EvidenceEngine:
                 doc.skill_id = classification.skill_id
                 await self._db.commit()
 
-                skill = get_registry().get_owner(classification.skill_id or "")
+                # classification.skill_id is a skill identifier, not a category.
+                # get_owner expects a category, so use get_skill here.
+                skill = get_registry().get_skill(classification.skill_id or "")
                 if skill:
                     candidates = skill.extract_events(doc, classification)
                     new_events = []
