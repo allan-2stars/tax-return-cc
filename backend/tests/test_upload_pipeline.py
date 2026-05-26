@@ -137,3 +137,39 @@ async def test_upload_without_ai_preserves_ocr_only_fallback(auth_client, test_e
         )).scalar() or 0
 
     assert event_count == 0
+
+
+@pytest.mark.asyncio
+async def test_upload_uses_workspace_financial_year(auth_client, test_engine, tmp_path, monkeypatch):
+    """
+    Fix Pack 1: /documents/upload must use Workspace.financial_year as the source of truth.
+    """
+    from app.config import settings
+    from app.db.models import Document
+
+    monkeypatch.setattr(settings, "STORAGE_PATH", str(tmp_path / "docs"))
+
+    # Create a second workspace for a different FY and switch the session to it.
+    res = await auth_client.post(
+        "/api/v1/workspaces",
+        json={"name": "FY 2025-26", "financial_year": "2025-26"},
+    )
+    assert res.status_code == 200, res.text
+    new_ws_id = res.json()["data"]["id"]
+
+    upload = await auth_client.post(
+        "/api/v1/documents/upload",
+        files={"file": ("fy.pdf", _MINIMAL_PDF, "application/pdf")},
+    )
+    assert upload.status_code == 200, upload.text
+    doc_id = upload.json()["document_id"]
+
+    from app.api.routes.documents import _run_extraction
+    await _run_extraction(doc_id)
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        doc = (await session.execute(select(Document).where(Document.id == doc_id))).scalar_one()
+
+    assert doc.workspace_id == new_ws_id
+    assert doc.financial_year == "2025-26"
