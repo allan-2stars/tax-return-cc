@@ -482,7 +482,7 @@ async def test_evidence_engine_creates_review_item_after_tax_event(
 
     with patch.object(engine, "_extract", return_value=("payg text", {}, "pdfplumber", 0.9)), \
          patch("app.engines.evidence.get_registry") as mock_reg:
-        mock_reg.return_value.get_owner.return_value = mock_skill
+        mock_reg.return_value.get_skill.return_value = mock_skill
         await engine.extract_and_finalize(doc.id)
 
     # ReviewItem should have been created for the extracted TaxEvent
