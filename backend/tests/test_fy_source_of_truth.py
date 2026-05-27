@@ -80,8 +80,12 @@ async def test_export_engine_uses_workspace_financial_year_when_profile_missing(
         db.add(TaxEvent(workspace_id=ws.id, financial_year=ws.financial_year, event_type="income", category="payg_income", description="Confirmed", amount=1.0, status="confirmed"))
         await db.commit()
 
+        def _close_task(coro):
+            coro.close()
+            return None
+
         # Prevent background task from running in this unit test.
-        with patch("app.engines.export.asyncio.create_task") as _:
+        with patch("app.engines.export.asyncio.create_task", side_effect=_close_task):
             engine = ExportEngine()
             record = await engine.generate(ws.id, "pw", db)
 
