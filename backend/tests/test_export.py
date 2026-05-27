@@ -219,8 +219,10 @@ async def test_generate_creates_background_job_and_export_record(workspace, db_s
 
     mock_pz, _ = _mock_zipper()
     with patch("app.engines.export.HTML") as mock_html, \
-         patch("app.engines.export.pyzipper", mock_pz):
+         patch("app.engines.export.pyzipper", mock_pz), \
+         patch("app.engines.export.asyncio.create_task") as mock_create_task:
         mock_html.return_value.write_pdf.return_value = b"PDF"
+        mock_create_task.side_effect = lambda coro: coro.close()  # prevent background task leakage in tests
         engine = ExportEngine()
         record = await engine.generate(workspace.id, "test-password", db_session)
 
@@ -238,6 +240,70 @@ async def test_generate_creates_background_job_and_export_record(workspace, db_s
     job = job_result.scalar_one_or_none()
     assert job is not None
     assert job.status in ("pending", "running")
+
+
+@pytest.mark.asyncio
+async def test_generate_includes_export_id_in_job_payload(workspace, db_session):
+    from app.engines.export import ExportEngine
+
+    await _create_interview_session(db_session, workspace.id, state="complete")
+    await _create_event(db_session, workspace.id, status="confirmed")
+
+    mock_pz, _ = _mock_zipper()
+    with patch("app.engines.export.HTML") as mock_html, \
+         patch("app.engines.export.pyzipper", mock_pz), \
+         patch("app.engines.export.asyncio.create_task") as mock_create_task:
+        mock_html.return_value.write_pdf.return_value = b"PDF"
+        mock_create_task.side_effect = lambda coro: coro.close()  # prevent background task leakage in tests
+        engine = ExportEngine()
+        record = await engine.generate(workspace.id, "test-password", db_session)
+
+    job_result = await db_session.execute(
+        select(BackgroundJob).where(
+            BackgroundJob.workspace_id == workspace.id,
+            BackgroundJob.job_type == "export_generate",
+        )
+    )
+    job = job_result.scalar_one()
+    assert job.payload is not None
+    assert job.payload.get("export_id") == record.id
+
+
+@pytest.mark.asyncio
+async def test_reconcile_marks_stale_generating_export_failed(workspace, db_session):
+    from app.engines.export import ExportEngine
+
+    stale_created = datetime.now(timezone.utc) - timedelta(seconds=700)
+
+    record = ExportRecord(
+        workspace_id=workspace.id,
+        financial_year="2024-25",
+        status="generating",
+        created_at=stale_created,
+    )
+    db_session.add(record)
+    await db_session.flush()
+
+    job = BackgroundJob(
+        workspace_id=workspace.id,
+        job_type="export_generate",
+        status="running",
+        payload={"export_id": record.id},
+        created_at=stale_created,
+    )
+    db_session.add(job)
+    await db_session.commit()
+
+    engine = ExportEngine()
+    updated = await engine.reconcile_stale_exports(db_session, stale_after_seconds=600)
+    assert updated >= 1
+
+    await db_session.refresh(record)
+    assert record.status == "failed"
+
+    await db_session.refresh(job)
+    assert job.status == "failed"
+    assert job.error == "Export interrupted (server restart or worker shutdown). Please generate again."
 
 
 # ── 6. background task completes and ExportRecord becomes "ready" ─────────────
