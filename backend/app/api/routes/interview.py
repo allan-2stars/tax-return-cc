@@ -211,6 +211,13 @@ async def get_session(
     # Auto-complete sessions that finished answering but never called /complete
     if session.state == "in_progress" and not (session.current_step or {}).get("id"):
         session = await _engine.complete(session.id, db)
+    required_platform_ids = [q.id for q in PLATFORM_QUESTIONS]
+    missing_platform_ids = [
+        qid for qid in required_platform_ids if (session.answers or {}).get(qid) is None
+    ]
+    needs_restart = (
+        session.state in ("awaiting_evidence", "complete") and len(missing_platform_ids) > 0
+    )
     return {
         "data": {
             "state": session.state,
@@ -219,6 +226,8 @@ async def get_session(
             "answers": session.answers or {},
             "activated_skills": session.activated_skills or [],
             "progress": _progress(session),
+            "needs_restart": needs_restart,
+            "missing_platform_ids": missing_platform_ids,
         }
     }
 
@@ -242,6 +251,37 @@ async def start_interview(
                 "resumed": True,
             }
         }
+
+    ws = await auth_repo.get_singleton_workspace(db)
+    financial_year = ws.financial_year if ws else "2024-25"
+    session, first_q = await _engine.start(workspace_id, financial_year, db)
+    return {
+        "data": {
+            "state": session.state,
+            "session_id": session.id,
+            "current_question": _q_dict(first_q),
+            "progress": _progress(session),
+        }
+    }
+
+
+# ── POST /interview/restart ───────────────────────────────────────────────────
+
+@router.post("/interview/restart")
+async def restart_interview(
+    workspace_id: str = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Abandon the current session (if any) and start a fresh interview.
+
+    This does not delete documents, review items, events, or exports.
+    """
+    existing = await interview_repo.get_active_by_workspace(db, workspace_id)
+    if existing:
+        existing.state = "abandoned"
+        existing.current_step = None
+        existing.pending_queue = []
+        await interview_repo.save(db, existing)
 
     ws = await auth_repo.get_singleton_workspace(db)
     financial_year = ws.financial_year if ws else "2024-25"

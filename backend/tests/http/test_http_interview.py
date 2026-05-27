@@ -68,6 +68,81 @@ async def test_back_navigation(auth_client):
 
 
 @pytest.mark.asyncio
+async def test_session_needs_restart_when_awaiting_evidence_missing_platform_answers(auth_client, test_engine):
+    """If an awaiting_evidence session is missing required platform answers, flag needs_restart."""
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.db.models import InterviewSession
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        broken = InterviewSession(
+            workspace_id=auth_client.workspace_id,
+            financial_year="2025-26",
+            state="awaiting_evidence",
+            current_step=None,
+            pending_queue=[],
+            completed_steps=[],
+            skipped_steps=[],
+            answers={"fy_confirm": "2025-26"},
+            branch_path=[],
+            activated_skills=[],
+        )
+        session.add(broken)
+        await session.commit()
+
+    resp = await auth_client.get("/api/v1/interview/session")
+    assert resp.status_code == 200, resp.text
+    data = resp.json()["data"]
+    assert data["state"] == "awaiting_evidence"
+    assert data["needs_restart"] is True
+    assert "residency" in (data.get("missing_platform_ids") or [])
+
+
+@pytest.mark.asyncio
+async def test_restart_abandons_old_session_and_starts_fresh(auth_client, test_engine):
+    """POST /interview/restart abandons broken session and returns a fresh in_progress session."""
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.db.models import InterviewSession
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        broken = InterviewSession(
+            workspace_id=auth_client.workspace_id,
+            financial_year="2025-26",
+            state="awaiting_evidence",
+            current_step=None,
+            pending_queue=[],
+            completed_steps=[],
+            skipped_steps=[],
+            answers={"fy_confirm": "2025-26"},
+            branch_path=[],
+            activated_skills=[],
+        )
+        session.add(broken)
+        await session.commit()
+
+    resp = await auth_client.post("/api/v1/interview/restart")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["data"]["state"] == "in_progress"
+    assert body["data"]["current_question"]["id"] == "fy_confirm"
+    new_id = body["data"]["session_id"]
+    assert new_id
+
+    # Old session must not remain active.
+    async with maker() as session:
+        result = await session.execute(
+            select(InterviewSession).where(InterviewSession.workspace_id == auth_client.workspace_id)
+        )
+        all_sessions = list(result.scalars().all())
+        assert len(all_sessions) >= 2
+        old = next(s for s in all_sessions if s.id != new_id)
+        assert old.state == "abandoned"
+
+@pytest.mark.asyncio
 async def test_legacy_pending_queue_family_situation_is_mapped_to_has_spouse(auth_client, test_engine):
     """Legacy compatibility: pending_queue may contain 'family_situation' from older deployments."""
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
