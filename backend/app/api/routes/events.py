@@ -6,10 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_auth
 from app.db.base import get_db
+from app.db.models import Workspace
 from app.engines.evidence import EvidenceEngine
 from app.engines.review import ReviewEngine
 from app.errors import AppError, error_response
-from app.repositories import profiles as profile_repo
 from app.storage import get_storage_backend
 
 router = APIRouter()
@@ -51,8 +51,13 @@ async def create_manual_event(
     workspace_id: str = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    profile = await profile_repo.get_by_workspace(db, workspace_id)
-    fy = profile.financial_year if profile else "2024-25"
+    ws = await db.get(Workspace, workspace_id)
+    if not ws:
+        raise HTTPException(
+            status_code=404,
+            detail=error_response("not_found", "Workspace not found.", retryable=False),
+        )
+    fy = ws.financial_year
 
     try:
         events = await _review_engine.create_manual_event(
