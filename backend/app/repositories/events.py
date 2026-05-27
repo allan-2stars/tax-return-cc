@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import TaxEvent
@@ -72,3 +72,13 @@ async def attach_document(
     await db.commit()
     await db.refresh(event)
     return event
+
+
+async def count_by_document(db: AsyncSession, workspace_id: str, document_id: str) -> int:
+    result = await db.execute(
+        select(func.count()).select_from(TaxEvent).where(
+            TaxEvent.workspace_id == workspace_id,
+            TaxEvent.document_id == document_id,
+        )
+    )
+    return int(result.scalar_one())

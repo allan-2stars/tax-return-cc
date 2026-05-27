@@ -13,6 +13,7 @@ from app.engines.evidence import EvidenceEngine
 from app.errors import AppError, DuplicateDocumentError, error_response
 from app.db.models import Workspace
 from app.repositories import documents as doc_repo
+from app.repositories import events as events_repo
 from app.storage import get_storage_backend
 
 logger = logging.getLogger(__name__)
@@ -143,7 +144,16 @@ async def stream_document_progress(
 
             if doc.status in ("ready", "failed", "archived"):
                 if doc.status == "ready":
-                    payload = {"document_id": document_id, "status": "ready", "events_created": 0}
+                    events_created = await events_repo.count_by_document(
+                        db,
+                        workspace_id=workspace_id,
+                        document_id=document_id,
+                    )
+                    payload = {
+                        "document_id": document_id,
+                        "status": "ready",
+                        "events_created": events_created,
+                    }
                 elif doc.status == "failed":
                     payload = {"document_id": document_id, "status": "failed", "error_code": "processing_failed"}
                 else:
