@@ -205,3 +205,39 @@ test('required number input shows error when submitted empty', async () => {
   await user.click(screen.getByRole('button', { name: /continue/i }))
   expect(await screen.findByRole('alert')).toBeInTheDocument()
 })
+
+test('dependent_count input includes min/max constraints', () => {
+  const q: InterviewQuestion = {
+    id: 'dependent_count',
+    ask: 'How many dependent children do you have?',
+    type: 'number',
+    options: null,
+    branches: null,
+    required: false,
+    why: null,
+    hint: null,
+  }
+  render(<QuestionCard question={q} onAnswer={jest.fn()} onBack={jest.fn()} onSkip={jest.fn()} />)
+  const input = screen.getByRole('spinbutton')
+  expect(input).toHaveAttribute('min', '0')
+  expect(input).toHaveAttribute('max', '20')
+})
+
+test('spouse_rfba_amount currency input includes min/max constraints', () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const q: any = {
+    id: 'spouse_rfba_amount',
+    ask: "What is your spouse's RFBA?",
+    type: 'number',
+    options: null,
+    branches: null,
+    required: false,
+    why: null,
+    hint: null,
+    currency: true,
+  }
+  render(<QuestionCard question={q} onAnswer={jest.fn()} onBack={jest.fn()} onSkip={jest.fn()} />)
+  const input = screen.getByRole('spinbutton')
+  expect(input).toHaveAttribute('min', '0')
+  expect(input).toHaveAttribute('max', '1000000')
+})
