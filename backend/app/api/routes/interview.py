@@ -186,6 +186,28 @@ async def get_session(
                 "progress": {"completed": 0, "total": 0},
             }
         }
+    # Legacy compatibility: older deployments persisted a single 'family_situation' question.
+    # Current interview splits this into has_spouse + has_dependents.
+    repaired = False
+    current_id = (session.current_step or {}).get("id")
+    if current_id == "family_situation":
+        session.current_step = {"id": "has_spouse"}
+        pending = list(session.pending_queue or [])
+        if "has_dependents" not in pending:
+            session.pending_queue = ["has_dependents"] + pending
+        repaired = True
+    pending = list(session.pending_queue or [])
+    if "family_situation" in pending:
+        expanded = []
+        for qid in pending:
+            if qid == "family_situation":
+                expanded.extend(["has_spouse", "has_dependents"])
+                repaired = True
+            else:
+                expanded.append(qid)
+        session.pending_queue = expanded
+    if repaired:
+        session = await interview_repo.save(db, session)
     # Auto-complete sessions that finished answering but never called /complete
     if session.state == "in_progress" and not (session.current_step or {}).get("id"):
         session = await _engine.complete(session.id, db)

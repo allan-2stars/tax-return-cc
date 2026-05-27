@@ -108,6 +108,12 @@ _QUESTION_BY_ID: dict[str, Question] = {
 _PLATFORM_IDS: list[str] = [q.id for q in PLATFORM_QUESTIONS]
 _PLATFORM_ID_SET: frozenset[str] = frozenset(_PLATFORM_IDS)
 
+_LEGACY_QUEUE_ALIASES: dict[str, list[str]] = {
+    # Legacy (single question) → current (split questions).
+    # Older persisted InterviewSession rows may still contain this id.
+    "family_situation": ["has_spouse", "has_dependents"],
+}
+
 _PROFILE_FIELD_MAP: dict[str, str | None] = {
     "residency":            "resident_status",
     "employment_type":      "employment_type",
@@ -202,6 +208,16 @@ class InterviewEngine:
         profile = await profile_repo.get_by_workspace(db, session.workspace_id)
 
         current_id = (session.current_step or {}).get("id")
+        # Legacy compatibility: old deployments stored a single family_situation question.
+        # Current interview splits this into has_spouse + has_dependents.
+        if current_id == "family_situation":
+            session.current_step = {"id": "has_spouse"}
+            pending_queue = list(session.pending_queue or [])
+            if "has_dependents" not in pending_queue:
+                session.pending_queue = ["has_dependents"] + pending_queue
+            session = await interview_repo.save(db, session)
+            current_id = "has_spouse"
+
         if current_id != question_id:
             raise ValueError(f"Expected answer for {current_id!r}, got {question_id!r}")
 
@@ -290,6 +306,16 @@ class InterviewEngine:
 
         # Advance
         if pending:
+            # Legacy compatibility: normalize old question ids in queue before advancing.
+            # We do not silently ignore unknown ids: only explicit aliases are supported.
+            normalized: list[str] = []
+            for qid in pending:
+                if qid in _LEGACY_QUEUE_ALIASES:
+                    normalized.extend(_LEGACY_QUEUE_ALIASES[qid])
+                else:
+                    normalized.append(qid)
+            pending = normalized
+
             next_id = pending.pop(0)
             # Re-register skill questions if missing (handles server restart where
             # _QUESTION_BY_ID is in-memory and does not survive process restarts)
