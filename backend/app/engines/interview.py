@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Any
 
@@ -195,7 +196,16 @@ class InterviewEngine:
         session.pending_queue = list(_PLATFORM_IDS[1:])
         session.current_step = {"id": first_id}
         session = await interview_repo.save(db, session)
-        return session, _QUESTION_BY_ID[first_id]
+        first_q = _QUESTION_BY_ID[first_id]
+        # FY options must include the workspace financial_year (source of truth).
+        if first_id == "fy_confirm" and first_q.options:
+            opts = list(first_q.options)
+            if financial_year not in opts:
+                opts = [financial_year] + opts
+            # Keep a small set: workspace FY + next 2 most recent.
+            opts = opts[:3]
+            first_q = replace(first_q, options=opts)
+        return session, first_q
 
     async def process_answer(
         self,
@@ -220,6 +230,33 @@ class InterviewEngine:
 
         if current_id != question_id:
             raise ValueError(f"Expected answer for {current_id!r}, got {question_id!r}")
+
+        current_q = _QUESTION_BY_ID.get(question_id)
+        if current_q and current_q.type == "single_choice" and current_q.options:
+            if answer not in current_q.options:
+                raise ValueError(f"Invalid option for {question_id!r}: {answer!r}")
+
+        # Numeric validation (baseline + per-question limits)
+        if current_q and (current_q.type == "number" or current_q.currency):
+            s = str(answer).strip()
+            try:
+                if question_id == "dependent_count":
+                    if "." in s:
+                        raise ValueError("dependent_count must be an integer")
+                    n_int = int(s)
+                    if n_int < 0 or n_int > 20:
+                        raise ValueError("dependent_count must be between 0 and 20")
+                else:
+                    n = float(s)
+                    if not (n == n and n != float("inf") and n != float("-inf")):
+                        raise ValueError("Number must be finite")
+                    if abs(n) > 1_000_000_000:
+                        raise ValueError("Number out of allowed range")
+                    if question_id == "spouse_rfba_amount":
+                        if n < 0 or n > 1_000_000:
+                            raise ValueError("spouse_rfba_amount must be between 0 and 1000000")
+            except ValueError as e:
+                raise
 
         # Persist answer
         answers = dict(session.answers or {})
