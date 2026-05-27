@@ -42,6 +42,11 @@ describe('DashboardLayout', () => {
     expect(screen.queryByText('secret')).not.toBeInTheDocument()
   })
 
+  afterEach(() => {
+    const { useAuth } = require('@/lib/hooks/useAuth')
+    useAuth.mockReturnValue({ isAuthenticated: true })
+  })
+
   it('renders the sidebar nav with core navigation items', () => {
     render(<DashboardLayout><div>content</div></DashboardLayout>)
     expect(screen.getByText('Tax Journey')).toBeInTheDocument()
