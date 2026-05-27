@@ -68,6 +68,111 @@ async def test_back_navigation(auth_client):
 
 
 @pytest.mark.asyncio
+async def test_start_interview_fy_confirm_includes_workspace_financial_year(auth_client, test_engine):
+    """fy_confirm options must include the workspace financial_year."""
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.db.models import Workspace
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        ws = (await session.execute(select(Workspace).where(Workspace.id == auth_client.workspace_id))).scalar_one()
+        ws.financial_year = "2025-26"
+        await session.commit()
+
+    resp = await auth_client.post("/api/v1/interview/start")
+    assert resp.status_code == 200, resp.text
+    q = resp.json()["data"]["current_question"]
+    assert q["id"] == "fy_confirm"
+    assert "2025-26" in (q.get("options") or [])
+
+
+@pytest.mark.asyncio
+async def test_answer_single_choice_invalid_option_returns_422(auth_client):
+    """Single choice answers must be one of question.options."""
+    await auth_client.post("/api/v1/interview/start")
+    resp = await auth_client.post(
+        "/api/v1/interview/answer",
+        json={"question_id": "fy_confirm", "answer": "1900-01"},
+    )
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert detail["error_code"] == "invalid_answer"
+
+
+@pytest.mark.asyncio
+async def test_dependent_count_rejects_out_of_range_and_not_persisted(auth_client):
+    """dependent_count must be integer between 0 and 20 (inclusive)."""
+    await auth_client.post("/api/v1/interview/start")
+    for qid, answer in [
+        ("fy_confirm", "2024-25"),
+        ("residency", "resident"),
+        ("employment_type", "employee"),
+        ("has_spouse", "no"),
+        ("has_dependents", "yes"),
+    ]:
+        resp = await auth_client.post(
+            "/api/v1/interview/answer",
+            json={"question_id": qid, "answer": answer},
+        )
+        assert resp.status_code == 200, resp.text
+    # Next question should be dependent_count
+    assert resp.json()["data"]["next_question"]["id"] == "dependent_count"
+
+    resp = await auth_client.post(
+        "/api/v1/interview/answer",
+        json={"question_id": "dependent_count", "answer": "9999"},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["error_code"] == "invalid_answer"
+
+    # Summary must not include dependent_count
+    resp = await auth_client.get("/api/v1/interview/summary")
+    assert resp.status_code == 200
+    sections = resp.json()["data"]["sections"]
+    situation = next((s for s in sections if s["title"] == "Your situation"), None)
+    assert situation is not None
+    ids = {a["question_id"] for a in situation["answers"]}
+    assert "dependent_count" not in ids
+
+
+@pytest.mark.asyncio
+async def test_spouse_rfba_amount_rejects_out_of_range_and_not_persisted(auth_client):
+    """spouse_rfba_amount must be between 0 and 1_000_000."""
+    await auth_client.post("/api/v1/interview/start")
+    for qid, answer in [
+        ("fy_confirm", "2024-25"),
+        ("residency", "resident"),
+        ("employment_type", "employee"),
+        ("has_spouse", "yes"),
+        ("spouse_income_range", "45000_120000"),
+        ("spouse_novated_lease", "yes"),
+    ]:
+        resp = await auth_client.post(
+            "/api/v1/interview/answer",
+            json={"question_id": qid, "answer": answer},
+        )
+        assert resp.status_code == 200, resp.text
+    assert resp.json()["data"]["next_question"]["id"] == "spouse_rfba_amount"
+
+    resp = await auth_client.post(
+        "/api/v1/interview/answer",
+        json={"question_id": "spouse_rfba_amount", "answer": "999999999999999999999"},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["error_code"] == "invalid_answer"
+
+    resp = await auth_client.get("/api/v1/interview/summary")
+    assert resp.status_code == 200
+    sections = resp.json()["data"]["sections"]
+    situation = next((s for s in sections if s["title"] == "Your situation"), None)
+    assert situation is not None
+    ids = {a["question_id"] for a in situation["answers"]}
+    assert "spouse_rfba_amount" not in ids
+
+
+@pytest.mark.asyncio
 async def test_session_needs_restart_when_awaiting_evidence_missing_platform_answers(auth_client, test_engine):
     """If an awaiting_evidence session is missing required platform answers, flag needs_restart."""
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
