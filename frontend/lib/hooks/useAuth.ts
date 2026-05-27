@@ -19,7 +19,17 @@ export function useAuth() {
           router.replace('/setup')
           return
         }
+        if (data.setup_confirmed === false) {
+          setAuthenticated(false)
+          router.replace('/setup')
+          return
+        }
         const { workspace_id, financial_year, is_unlocked, user_lodger_type } = data
+        if (!workspace_id || !financial_year || financial_year === 'unknown') {
+          setAuthenticated(false)
+          router.replace('/login')
+          return
+        }
         setWorkspace(workspace_id, financial_year)
         setAuthenticated(true)
         setUnlocked(is_unlocked)

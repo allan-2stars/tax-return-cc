@@ -83,7 +83,15 @@ export default function DashboardLayout({
   const [showNewFY, setShowNewFY] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
 
-  useAuth()
+  const { isAuthenticated } = useAuth()
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-canvas flex items-center justify-center px-4">
+        <p className="text-sm font-ui text-text-muted">Loading…</p>
+      </div>
+    )
+  }
 
   function handleNewFYSuccess(ws: CreateWorkspaceResult) {
     setWorkspace(ws.id, ws.financial_year)
