@@ -268,6 +268,32 @@ async def test_recover_reencrypts_dek(auth_client, patch_password):
     assert login.status_code == 200
 
 
+# ── recover (no workspace_id) ────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_recover_without_workspace_id_reencrypts_dek(auth_client, patch_password):
+    """
+    Recovery is a pre-auth flow: client should not need to know workspace_id.
+    Backend must infer the singleton workspace.
+    """
+    recovery_key = auth_client.recovery_key
+    new_password = "new-password-after-recovery-no-ws"
+
+    resp = await auth_client.post(
+        "/api/v1/auth/recover",
+        json={
+            "recovery_key": recovery_key,
+            "new_password": new_password,
+        },
+    )
+    assert resp.status_code == 200
+
+    login = await auth_client.post(
+        "/api/v1/auth/login", json={"password": new_password}
+    )
+    assert login.status_code == 200
+
+
 # ── unlock session expiry ─────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
