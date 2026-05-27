@@ -112,4 +112,32 @@ describe('ExportPage', () => {
     await waitFor(() => screen.getByText(/download now/i))
     jest.useRealTimers()
   })
+
+  it('shows failure message and generate again button when export status is failed', async () => {
+    mockGetEligibility.mockResolvedValue({ data: { data: readyEligibility } })
+    mockGenerateExport.mockResolvedValue({
+      data: { data: { export_id: 'exp-fail', status: 'generating', warnings: [] } },
+    })
+    mockGetExportStatus.mockResolvedValue({
+      data: {
+        data: {
+          id: 'exp-fail', workspace_id: 'ws-1', financial_year: '2024-25',
+          status: 'failed', readiness_pct: 80, confirmed_count: 5,
+          review_count: 1, agent_count: 0, missing_count: 0,
+          file_size_bytes: null, expires_at: null, created_at: null,
+          error_message: 'Export interrupted (server restart or worker shutdown). Please generate again.',
+        },
+      },
+    })
+
+    wrap(<ExportPage />)
+    await waitFor(() => screen.getByLabelText(/export password/i))
+    fireEvent.change(screen.getByLabelText(/export password/i), { target: { value: 'pass' } })
+    fireEvent.click(screen.getByRole('button', { name: /generate review pack/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/export interrupted/i)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /generate again/i })).toBeInTheDocument()
+    })
+  })
 })
