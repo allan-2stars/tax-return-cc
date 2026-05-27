@@ -258,6 +258,7 @@ export interface ExportRecord {
   agent_count: number
   missing_count: number
   status: ExportStatus
+  error_message?: string | null
   file_size_bytes: number | null
   expires_at: string | null
   created_at: string | null

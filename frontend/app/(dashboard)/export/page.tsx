@@ -62,6 +62,7 @@ export default function ExportPage() {
   const canExport = eligibility?.can_export ?? false
   const isGenerating = exportStatus?.status === 'generating'
   const isReady = exportStatus?.status === 'ready'
+  const isFailed = exportStatus?.status === 'failed'
   const showForm = (canExport || showGenerateForm) && activeExportId === null
 
   if (eligibilityLoading) {
@@ -151,6 +152,24 @@ export default function ExportPage() {
             onClick={() => downloadExport(exportStatus.id)}
           >
             Download now
+          </button>
+        </div>
+      )}
+
+      {isFailed && exportStatus && (
+        <div className="rounded-lg border border-review bg-review-bg p-4 space-y-2">
+          <p className="text-sm font-ui font-semibold text-text-primary">
+            Export failed
+          </p>
+          <p className="text-sm font-ui text-text-muted">
+            {exportStatus.error_message ?? 'Export failed. Please generate again.'}
+          </p>
+          <button
+            type="button"
+            className="text-sm font-ui text-accent underline"
+            onClick={handleRegenerate}
+          >
+            Generate again
           </button>
         </div>
       )}
