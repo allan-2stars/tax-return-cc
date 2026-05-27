@@ -158,6 +158,24 @@ async def test_session_endpoint_unauthenticated_with_workspace_returns_401(clien
     assert resp.status_code == 401
 
 
+@pytest.mark.asyncio
+async def test_session_endpoint_cookie_workspace_missing_returns_401(client, patch_password):
+    """If session cookie references a workspace_id that does not exist, /auth/session must not return ok."""
+    from app.api.dependencies import sign_session
+
+    # Create a real workspace so the endpoint does not return setup_required.
+    setup = await client.post(
+        "/api/v1/auth/setup",
+        json={"password": TEST_PASSWORD, "financial_year": "2024-25"},
+    )
+    assert setup.status_code == 200
+
+    client.cookies.set("session", sign_session("00000000-0000-0000-0000-000000000000"))
+    resp = await client.get("/api/v1/auth/session")
+    assert resp.status_code == 401
+    assert resp.json()["detail"]["error_code"] == "invalid_session"
+
+
 # ── setup ────────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
