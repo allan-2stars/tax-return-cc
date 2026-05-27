@@ -16,6 +16,9 @@ export const getSession = () =>
 export const startInterview = () =>
   client.post<ApiResponse<InterviewSessionData>>('/api/v1/interview/start')
 
+export const restartInterview = () =>
+  client.post<ApiResponse<InterviewSessionData>>('/api/v1/interview/restart')
+
 export const answerQuestion = (question_id: string, answer: string | number) =>
   client.post<ApiResponse<AnswerResponseData>>('/api/v1/interview/answer', { question_id, answer: String(answer) })
 

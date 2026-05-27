@@ -16,6 +16,7 @@ jest.mock('next/navigation', () => ({
 
 const mockGetSession = interviewApi.getSession as jest.Mock
 const mockGetYoySuggestions = interviewApi.getYoySuggestions as jest.Mock
+const mockRestartInterview = interviewApi.restartInterview as jest.Mock
 const mockUseInterviewStore = useInterviewStore as jest.Mock
 const mockSetNewSkillPending = jest.fn()
 
@@ -24,13 +25,14 @@ function wrap(ui: React.ReactElement) {
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>)
 }
 
-const SESSION = (state: string, question?: object) => ({
+const SESSION = (state: string, question?: object, extra?: object) => ({
   data: {
     data: {
       state,
       current_question: question ?? null,
       activated_skills: ['employee_tax_au'],
       progress: { completed: 1, total: 5 },
+      ...(extra ?? {}),
     },
   },
 })
@@ -71,6 +73,23 @@ test('shows completion screen when state is awaiting_evidence', async () => {
   mockGetSession.mockResolvedValue(SESSION('awaiting_evidence'))
   wrap(<JourneyPage />)
   await waitFor(() => expect(screen.getByText(/you're all set up/i)).toBeInTheDocument())
+})
+
+test('shows restart journey screen when needs_restart is true', async () => {
+  mockGetSession
+    .mockResolvedValueOnce(SESSION('awaiting_evidence', undefined, { needs_restart: true }))
+    .mockResolvedValueOnce(SESSION('in_progress', QUESTION))
+  mockRestartInterview.mockResolvedValue({ data: { data: {} } })
+
+  const user = userEvent.setup()
+  wrap(<JourneyPage />)
+
+  await waitFor(() => expect(screen.getByText(/needs attention/i)).toBeInTheDocument())
+  expect(screen.queryByText(/you're all set up/i)).not.toBeInTheDocument()
+
+  await user.click(screen.getByRole('button', { name: /restart tax journey/i }))
+  await waitFor(() => expect(mockRestartInterview).toHaveBeenCalled())
+  await waitFor(() => expect(screen.getByText('Did you work from home?')).toBeInTheDocument())
 })
 
 test('renders completion screen when state is complete', async () => {

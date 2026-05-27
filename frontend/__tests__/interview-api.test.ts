@@ -6,6 +6,7 @@ jest.mock('@/lib/api/client', () => ({
 import client from '@/lib/api/client'
 import {
   getSession, startInterview, answerQuestion,
+  restartInterview,
   goBack, skipQuestion, getYoySuggestions, actOnSuggestion,
   getInterviewSummary, jumpToQuestion,
 } from '@/lib/api/interview'
@@ -26,6 +27,12 @@ describe('interview API', () => {
     mockPost.mockResolvedValue({ data: { data: {} } })
     await startInterview()
     expect(mockPost).toHaveBeenCalledWith('/api/v1/interview/start')
+  })
+
+  it('restartInterview calls POST /api/v1/interview/restart', async () => {
+    mockPost.mockResolvedValue({ data: { data: {} } })
+    await restartInterview()
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/interview/restart')
   })
 
   it('answerQuestion calls POST /api/v1/interview/answer with body', async () => {

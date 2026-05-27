@@ -97,6 +97,8 @@ export interface InterviewSessionData {
   activated_skills?: string[]
   progress: InterviewProgress
   resumed?: boolean
+  needs_restart?: boolean
+  missing_platform_ids?: string[]
 }
 
 export interface AnswerResponseData {

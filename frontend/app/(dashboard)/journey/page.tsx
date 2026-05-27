@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   startInterview, answerQuestion, completeInterview,
+  restartInterview,
   goBack, skipQuestion, getYoySuggestions, actOnSuggestion,
 } from '@/lib/api/interview'
 import type { InterviewSessionData, YoYSuggestion } from '@/lib/api/types'
@@ -36,6 +37,11 @@ export default function JourneyPage() {
 
   const startMutation = useMutation({
     mutationFn: startInterview,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['interview', 'session'] }),
+  })
+
+  const restartMutation = useMutation({
+    mutationFn: restartInterview,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['interview', 'session'] }),
   })
 
@@ -158,13 +164,32 @@ export default function JourneyPage() {
       {(data.state === 'awaiting_evidence' || data.state === 'complete') && (
         <div className="space-y-10">
           {/* Heading */}
-          <div className="space-y-2">
-            <h1 className="font-display text-3xl text-text-primary">You're all set up</h1>
-            <p className="font-body text-lg text-text-muted">Here's what to do next</p>
-          </div>
+          {data.needs_restart ? (
+            <div className="space-y-3">
+              <h1 className="font-display text-3xl text-text-primary">Your Tax Journey needs attention</h1>
+              <p className="font-body text-text-muted">
+                Some interview answers are incomplete or inconsistent. Restarting will not remove uploaded documents or review data.
+              </p>
+              <button
+                type="button"
+                onClick={() => restartMutation.mutate()}
+                disabled={restartMutation.isPending}
+                className="px-6 py-3 rounded-md bg-accent text-surface font-ui font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
+              >
+                {restartMutation.isPending ? 'Restarting...' : 'Restart Tax Journey'}
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <h1 className="font-display text-3xl text-text-primary">You're all set up</h1>
+              <p className="font-body text-lg text-text-muted">Here's what to do next</p>
+            </div>
+          )}
+
+          {data.needs_restart && <Disclaimer />}
 
           {/* YoY suggestions (keep existing) */}
-          {yoy && yoy.length > 0 && (
+          {!data.needs_restart && yoy && yoy.length > 0 && (
             <div className="space-y-3">
               <h2 className="text-sm font-ui font-medium text-text-muted uppercase tracking-wide">From last year</h2>
               {yoy.slice(0, 3).map((s) => (
@@ -178,15 +203,17 @@ export default function JourneyPage() {
           )}
 
           {/* Personalised next steps */}
-          <NextStepsList activatedSkills={data.activated_skills ?? []} />
+          {!data.needs_restart && <NextStepsList activatedSkills={data.activated_skills ?? []} />}
 
           {/* Answer summary + edit flow */}
-          <InterviewSummary
-            onEdit={() => {}}
-          />
+          {!data.needs_restart && (
+            <InterviewSummary
+              onEdit={() => {}}
+            />
+          )}
 
           {/* CTAs */}
-          <div className="flex flex-col sm:flex-row gap-3">
+          {!data.needs_restart && <div className="flex flex-col sm:flex-row gap-3">
             <button
               type="button"
               onClick={() => router.push('/readiness')}
@@ -201,9 +228,9 @@ export default function JourneyPage() {
             >
               Upload documents →
             </button>
-          </div>
+          </div>}
 
-          <Disclaimer />
+          {!data.needs_restart && <Disclaimer />}
         </div>
       )}
     </div>
