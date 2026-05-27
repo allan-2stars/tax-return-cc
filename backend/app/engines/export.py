@@ -44,16 +44,18 @@ async def _run_export(
     from app.repositories import audit as audit_repo
     from app.repositories import documents as doc_repo
     from app.repositories import events as events_repo
-    from app.repositories import profiles as profile_repo
     from app.repositories import readiness as readiness_repo
     from app.repositories import review as review_repo
+    from app.db.models import Workspace
 
     async with AsyncSessionLocal() as db:
         try:
             await jobs_repo.update_status(db, job_id, "running")
 
-            profile = await profile_repo.get_by_workspace(db, workspace_id)
-            fy = profile.financial_year if profile else "2024-25"
+            ws = await db.get(Workspace, workspace_id)
+            if not ws:
+                raise ValueError("Workspace not found.")
+            fy = ws.financial_year
 
             # Snapshot readiness at export time (ARCHITECTURE.md §15 addition)
             readiness = await readiness_repo.get_score(db, workspace_id)
@@ -295,12 +297,14 @@ class ExportEngine:
         self, workspace_id: str, password: str, db
     ) -> object:
         from app.repositories import events as events_repo
-        from app.repositories import profiles as profile_repo
         from app.repositories import readiness as readiness_repo
         from app.repositories import review as review_repo
+        from app.db.models import Workspace
 
-        profile = await profile_repo.get_by_workspace(db, workspace_id)
-        fy = profile.financial_year if profile else "2024-25"
+        ws = await db.get(Workspace, workspace_id)
+        if not ws:
+            raise ValueError("Workspace not found.")
+        fy = ws.financial_year
 
         events = await events_repo.get_by_workspace(db, workspace_id)
         confirmed = [e for e in events if e.status == "confirmed"]
