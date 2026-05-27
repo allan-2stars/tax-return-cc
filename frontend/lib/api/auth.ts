@@ -23,5 +23,5 @@ export const setupConfirm = (confirmation: string) =>
 export const unlock = (password: string) =>
   client.post('/api/v1/auth/unlock', { password })
 
-export const recover = (workspaceId: string, recoveryKey: string, newPassword: string) =>
-  client.post('/api/v1/auth/recover', { workspace_id: workspaceId, recovery_key: recoveryKey, new_password: newPassword })
+export const recover = (recoveryKey: string, newPassword: string) =>
+  client.post('/api/v1/auth/recover', { recovery_key: recoveryKey, new_password: newPassword })
