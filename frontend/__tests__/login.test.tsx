@@ -35,6 +35,7 @@ describe('LoginPage', () => {
     render(<LoginPage />)
     expect(screen.getByLabelText('Password')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /log in/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /forgot password\?/i })).toHaveAttribute('href', '/recover')
   })
 
   it('disables submit button while submitting', async () => {
