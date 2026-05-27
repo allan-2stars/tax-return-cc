@@ -50,3 +50,21 @@ async def list_export_jobs_before(db: AsyncSession, cutoff) -> list[BackgroundJo
         )
     )
     return list(result.scalars().all())
+
+
+async def get_export_job_by_export_id(
+    db: AsyncSession,
+    workspace_id: str,
+    export_id: str,
+) -> BackgroundJob | None:
+    result = await db.execute(
+        select(BackgroundJob)
+        .where(
+            BackgroundJob.workspace_id == workspace_id,
+            BackgroundJob.job_type == "export_generate",
+            BackgroundJob.payload["export_id"].as_string() == export_id,
+        )
+        .order_by(BackgroundJob.created_at.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()

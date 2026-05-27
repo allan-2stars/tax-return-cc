@@ -36,6 +36,10 @@ def _record_dict(r) -> dict:
     }
 
 
+_SAFE_INTERRUPTED_MESSAGE = "Export interrupted (server restart or worker shutdown). Please generate again."
+_GENERIC_FAILED_MESSAGE = "Export failed. Please generate again."
+
+
 # ── GET /export/eligibility ───────────────────────────────────────────────────
 
 @router.get("/export/eligibility")
@@ -104,7 +108,19 @@ async def get_export_status(
         created = record.created_at.replace(tzinfo=None) if record.created_at else None
         if created and created <= cutoff:
             record = await exports_repo.update_status(db, export_id, "failed")
-    return {"data": _record_dict(record)}
+
+    data = _record_dict(record)
+
+    if record.status == "failed":
+        from app.repositories import jobs as jobs_repo
+
+        job = await jobs_repo.get_export_job_by_export_id(db, workspace_id, export_id)
+        if job and job.error == _SAFE_INTERRUPTED_MESSAGE:
+            data["error_message"] = _SAFE_INTERRUPTED_MESSAGE
+        else:
+            data["error_message"] = _GENERIC_FAILED_MESSAGE
+
+    return {"data": data}
 
 
 # ── GET /export/{id}/download ─────────────────────────────────────────────────
