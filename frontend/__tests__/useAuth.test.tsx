@@ -41,6 +41,16 @@ describe('useAuth', () => {
     })
   })
 
+  it('redirects to /setup when detail.error_code is setup_not_confirmed', async () => {
+    mockGetSession.mockRejectedValue({
+      response: { data: { detail: { error_code: 'setup_not_confirmed' } } },
+    })
+    renderHook(() => useAuth())
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith('/setup')
+    })
+  })
+
   it('redirects to /setup when setup_required is true in response data', async () => {
     mockGetSession.mockResolvedValue({
       data: { data: { setup_required: true, authenticated: false } },
