@@ -1,5 +1,8 @@
 """HTTP smoke tests for /documents route group."""
+import json
+
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 # Minimal valid PDF bytes — small enough for tests, valid enough that
 # pdfplumber can open it without raising an exception.
@@ -88,3 +91,48 @@ async def test_upload_unsupported_format(auth_client):
     assert resp.status_code == 422
     detail = resp.json()["detail"]
     assert detail["error_code"] == "unsupported_format"
+
+
+@pytest.mark.asyncio
+async def test_document_stream_ready_reports_events_created(auth_client, test_engine):
+    """SSE stream 'ready' payload reports real TaxEvent count for this document."""
+    from app.db.models import Document, TaxEvent
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        doc = Document(
+            workspace_id=auth_client.workspace_id,
+            financial_year="2024-25",
+            original_filename="ready.pdf",
+            storage_key="documents/ready.pdf",
+            file_type="pdf",
+            file_size_bytes=123,
+            sha256_hash="0" * 64,
+            status="ready",
+        )
+        session.add(doc)
+        await session.flush()
+
+        for i in range(2):
+            session.add(
+                TaxEvent(
+                    workspace_id=auth_client.workspace_id,
+                    document_id=doc.id,
+                    financial_year="2024-25",
+                    event_type="income",
+                    category="payg_income",
+                    description=f"Event {i}",
+                    amount=100.0,
+                    status="needs_user_review",
+                )
+            )
+
+        await session.commit()
+
+        resp = await auth_client.get(f"/api/v1/documents/{doc.id}/stream")
+        assert resp.status_code == 200
+        line = resp.text.strip().splitlines()[0]
+        assert line.startswith("data: ")
+        payload = json.loads(line[len("data: ") :])
+        assert payload["status"] == "ready"
+        assert payload["events_created"] == 2
