@@ -26,11 +26,12 @@ export function useAuth() {
         setUserLodgerType(user_lodger_type ?? null)
       })
       .catch((err: unknown) => {
-        const errorCode = (
+        const data = (
           err as {
-            response?: { data?: { error_code?: string } }
+            response?: { data?: { error_code?: string; detail?: { error_code?: string } } }
           }
-        )?.response?.data?.error_code
+        )?.response?.data
+        const errorCode = data?.error_code ?? data?.detail?.error_code
         if (errorCode === 'setup_not_confirmed') {
           router.replace('/setup')
         } else {
