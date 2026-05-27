@@ -248,14 +248,12 @@ async def test_setup_after_confirmed_returns_409(client, patch_password):
 
 @pytest.mark.asyncio
 async def test_recover_reencrypts_dek(auth_client, patch_password):
-    workspace_id = auth_client.workspace_id
     recovery_key = auth_client.recovery_key
     new_password = "new-password-after-recovery"
 
     resp = await auth_client.post(
         "/api/v1/auth/recover",
         json={
-            "workspace_id": workspace_id,
             "recovery_key": recovery_key,
             "new_password": new_password,
         },
@@ -424,12 +422,9 @@ async def test_require_auth_blocks_before_confirm(client, patch_password):
 
 @pytest.mark.asyncio
 async def test_recover_wrong_key_returns_401(auth_client, patch_password):
-    workspace_id = auth_client.workspace_id
-
     resp = await auth_client.post(
         "/api/v1/auth/recover",
         json={
-            "workspace_id": workspace_id,
             "recovery_key": "WRONG-WRONG-WRONG-WRONG / WRONG-WRONG-WRONG-WRONG",
             "new_password": "some-new-password",
         },

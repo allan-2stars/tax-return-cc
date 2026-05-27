@@ -75,7 +75,6 @@ class UnlockRequest(BaseModel):
 class RecoverRequest(BaseModel):
     recovery_key: str
     new_password: str = Field(..., min_length=8)
-    workspace_id: str
 
 
 class ConfirmSetupRequest(BaseModel):
@@ -292,7 +291,9 @@ async def unlock(
 
 @router.post("/auth/recover")
 async def recover(body: RecoverRequest, db: AsyncSession = Depends(get_db)):
-    ws = await auth_repo.get_security(db, body.workspace_id)
+    existing = await auth_repo.get_singleton_workspace(db)
+    workspace_id = existing.id if existing else ""
+    ws = await auth_repo.get_security(db, workspace_id)
     if not ws or not ws.recovery_key_hash or not ws.recovery_encrypted_dek:
         raise HTTPException(
             status_code=404,
