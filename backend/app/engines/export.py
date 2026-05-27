@@ -20,6 +20,9 @@ _DISCLAIMER_TEXT = (
 
 _SCHEMA_VERSION = "1.0"
 
+_STALE_EXPORT_AFTER_SECONDS = 600
+_STALE_EXPORT_MESSAGE = "Export interrupted (server restart or worker shutdown). Please generate again."
+
 _TEMPLATES_DIR = Path(__file__).parent.parent / "templates" / "export"
 
 
@@ -319,11 +322,6 @@ class ExportEngine:
             hours=settings.EXPORT_RETENTION_HOURS
         )
 
-        job = await jobs_repo.create_job(
-            db, workspace_id, "export_generate",
-            payload={"workspace_id": workspace_id, "fy": fy},
-        )
-
         record = await exports_repo.create(
             db,
             workspace_id=workspace_id,
@@ -333,6 +331,13 @@ class ExportEngine:
             review_count=len(pending),
             agent_count=len(agent),
             expires_at=expires_at,
+        )
+
+        job = await jobs_repo.create_job(
+            db,
+            workspace_id,
+            "export_generate",
+            payload={"workspace_id": workspace_id, "fy": fy, "export_id": record.id},
         )
 
         asyncio.create_task(
@@ -347,6 +352,28 @@ class ExportEngine:
         )
 
         return record
+
+    async def reconcile_stale_exports(self, db, stale_after_seconds: int = _STALE_EXPORT_AFTER_SECONDS) -> int:
+        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=stale_after_seconds)
+
+        stale_exports = await exports_repo.get_generating_before(db, cutoff)
+        if not stale_exports:
+            return 0
+
+        stale_ids = {r.id for r in stale_exports}
+        updated = 0
+
+        for record in stale_exports:
+            await exports_repo.update_status(db, record.id, "failed")
+            updated += 1
+
+        stale_jobs = await jobs_repo.list_export_jobs_before(db, cutoff)
+        for job in stale_jobs:
+            payload = job.payload or {}
+            export_id = payload.get("export_id")
+            if export_id is None or export_id in stale_ids:
+                await jobs_repo.update_status(db, job.id, "failed", error=_STALE_EXPORT_MESSAGE)
+        return updated
 
     # ── get download ──────────────────────────────────────────────────────────
 

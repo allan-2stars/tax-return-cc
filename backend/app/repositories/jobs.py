@@ -39,3 +39,14 @@ async def update_status(
     await db.commit()
     await db.refresh(job)
     return job
+
+
+async def list_export_jobs_before(db: AsyncSession, cutoff) -> list[BackgroundJob]:
+    result = await db.execute(
+        select(BackgroundJob).where(
+            BackgroundJob.job_type == "export_generate",
+            BackgroundJob.status.in_(["pending", "running"]),
+            BackgroundJob.created_at <= cutoff,
+        )
+    )
+    return list(result.scalars().all())

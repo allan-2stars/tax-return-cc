@@ -3,6 +3,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from datetime import datetime, timedelta, timezone
+
 from app.api.dependencies import require_auth
 from app.db.base import get_db
 from app.engines.export import ExportEngine
@@ -96,6 +98,12 @@ async def get_export_status(
             status_code=404,
             detail=error_response("export_not_found", "Export not found.", retryable=False),
         )
+
+    if record.status == "generating":
+        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=600)
+        created = record.created_at.replace(tzinfo=None) if record.created_at else None
+        if created and created <= cutoff:
+            record = await exports_repo.update_status(db, export_id, "failed")
     return {"data": _record_dict(record)}
 
 

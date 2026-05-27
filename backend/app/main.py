@@ -43,6 +43,10 @@ async def lifespan(app: FastAPI):
             expired = await ExportEngine().cleanup_expired(db)
             if expired:
                 logger.info("Cleaned up %d expired export(s) on startup", expired)
+
+            reconciled = await ExportEngine().reconcile_stale_exports(db)
+            if reconciled:
+                logger.info("Marked %d stale export(s) as failed on startup", reconciled)
     yield
 
 

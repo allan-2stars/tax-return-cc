@@ -82,3 +82,13 @@ async def get_expired(db: AsyncSession, retention_hours: int) -> list[ExportReco
         )
     )
     return list(result.scalars().all())
+
+
+async def get_generating_before(db: AsyncSession, cutoff: datetime) -> list[ExportRecord]:
+    result = await db.execute(
+        select(ExportRecord).where(
+            ExportRecord.status == "generating",
+            ExportRecord.created_at <= cutoff,
+        )
+    )
+    return list(result.scalars().all())
