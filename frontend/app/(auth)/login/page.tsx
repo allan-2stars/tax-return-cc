@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import axios from 'axios'
@@ -148,6 +149,15 @@ export default function LoginPage() {
               'Log in'
             )}
           </button>
+
+          <div className="text-center">
+            <Link
+              href="/recover"
+              className="font-ui text-sm text-text-muted hover:text-text-body"
+            >
+              Forgot password?
+            </Link>
+          </div>
         </form>
       </div>
     </div>
