@@ -66,3 +66,66 @@ async def test_status_lazily_marks_stale_generating_export_failed(auth_client, t
     resp = await auth_client.get(f"/api/v1/export/{record.id}/status")
     assert resp.status_code == 200
     assert resp.json()["data"]["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_status_includes_safe_error_message_for_interrupted_export(auth_client, test_engine):
+    """GET /export/{id}/status includes safe error_message for failed exports."""
+    from app.db.models import BackgroundJob, ExportRecord
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        record = ExportRecord(
+            workspace_id=auth_client.workspace_id,
+            financial_year="2024-25",
+            status="failed",
+        )
+        session.add(record)
+        await session.flush()
+
+        msg = "Export interrupted (server restart or worker shutdown). Please generate again."
+        job = BackgroundJob(
+            workspace_id=auth_client.workspace_id,
+            job_type="export_generate",
+            status="failed",
+            payload={"export_id": record.id},
+            error=msg,
+        )
+        session.add(job)
+        await session.commit()
+
+    resp = await auth_client.get(f"/api/v1/export/{record.id}/status")
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert data["status"] == "failed"
+    assert data["error_message"] == msg
+
+
+@pytest.mark.asyncio
+async def test_status_masks_arbitrary_job_errors(auth_client, test_engine):
+    """GET /export/{id}/status masks arbitrary BackgroundJob.error strings."""
+    from app.db.models import BackgroundJob, ExportRecord
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        record = ExportRecord(
+            workspace_id=auth_client.workspace_id,
+            financial_year="2024-25",
+            status="failed",
+        )
+        session.add(record)
+        await session.flush()
+
+        job = BackgroundJob(
+            workspace_id=auth_client.workspace_id,
+            job_type="export_generate",
+            status="failed",
+            payload={"export_id": record.id},
+            error="Traceback: secrets and stack frames",
+        )
+        session.add(job)
+        await session.commit()
+
+    resp = await auth_client.get(f"/api/v1/export/{record.id}/status")
+    assert resp.status_code == 200
+    assert resp.json()["data"]["error_message"] == "Export failed. Please generate again."
