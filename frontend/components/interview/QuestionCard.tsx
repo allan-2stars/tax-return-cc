@@ -39,6 +39,12 @@ function formatOptionLabel(value: string | number): string {
   return OPTION_LABELS[s] ?? s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
+function numericConstraints(questionId: string): { min?: number; max?: number } {
+  if (questionId === 'dependent_count') return { min: 0, max: 20 }
+  if (questionId === 'spouse_rfba_amount') return { min: 0, max: 1000000 }
+  return {}
+}
+
 interface Props {
   question: InterviewQuestion
   onAnswer: (questionId: string, answer: string) => void
@@ -51,6 +57,7 @@ export default function QuestionCard({
   question, onAnswer, onBack, onSkip, isSubmitting = false,
 }: Props) {
   const [whyOpen, setWhyOpen] = useState(false)
+  const constraints = numericConstraints(question.id)
 
   const {
     register,
@@ -133,6 +140,7 @@ export default function QuestionCard({
                 disabled={isSubmitting}
                 style={{ MozAppearance: 'textfield' } as React.CSSProperties}
                 className="w-full pl-7 pr-4 py-3 rounded-md border border-border bg-surface font-mono text-base text-text-primary focus:outline-none focus:border-accent [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                {...constraints}
                 {...register('answer', question.required ? { required: 'Please enter an amount.' } : {})}
               />
             </div>
@@ -163,6 +171,7 @@ export default function QuestionCard({
               type={question.type === 'number' ? 'number' : 'text'}
               disabled={isSubmitting}
               className="w-full py-3 px-4 rounded-md bg-surface border border-border focus:border-accent focus:outline-none text-text-body font-ui"
+              {...(question.type === 'number' ? constraints : {})}
               {...register('answer', question.required ? { required: 'This field is required.' } : {})}
             />
             {errors.answer && (
