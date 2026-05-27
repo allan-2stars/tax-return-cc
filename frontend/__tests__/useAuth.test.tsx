@@ -61,6 +61,42 @@ describe('useAuth', () => {
     })
   })
 
+  it('redirects to /setup when setup_confirmed is false in response data', async () => {
+    mockGetSession.mockResolvedValue({
+      data: {
+        data: {
+          workspace_id: 'ws-1',
+          financial_year: '2024-25',
+          is_unlocked: false,
+          user_lodger_type: 'self',
+          setup_confirmed: false,
+        },
+      },
+    })
+    renderHook(() => useAuth())
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith('/setup')
+    })
+  })
+
+  it('redirects to /login when financial_year is unknown in response data', async () => {
+    mockGetSession.mockResolvedValue({
+      data: {
+        data: {
+          workspace_id: 'ws-bad',
+          financial_year: 'unknown',
+          is_unlocked: false,
+          user_lodger_type: 'self',
+          setup_confirmed: true,
+        },
+      },
+    })
+    renderHook(() => useAuth())
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith('/login')
+    })
+  })
+
   it('does not redirect when session exists', async () => {
     mockGetSession.mockResolvedValue({
       data: {
