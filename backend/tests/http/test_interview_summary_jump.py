@@ -368,6 +368,110 @@ async def test_edit_mode_with_branches_asks_branches_before_returning(auth_clien
 
 
 @pytest.mark.asyncio
+async def test_edit_mode_platform_preserves_unrelated_answers(auth_client):
+    """Editing a platform question must preserve unrelated answers (no destructive rewind)."""
+    await _complete_full_interview(auth_client)
+
+    # Edit residency (no branches). Answering should return immediately.
+    resp = await auth_client.post(
+        "/api/v1/interview/jump",
+        json={"question_id": "residency", "edit_mode": True},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["data"]["current_question"]["id"] == "residency"
+
+    resp = await auth_client.post(
+        "/api/v1/interview/answer",
+        json={"question_id": "residency", "answer": "resident"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["data"]["state"] == "awaiting_evidence"
+
+    # Summary should still include other platform answers (e.g., employment_type and lodger_type).
+    resp = await auth_client.get("/api/v1/interview/summary")
+    assert resp.status_code == 200, resp.text
+    sections = resp.json()["data"]["sections"]
+    situation = next((s for s in sections if s["title"] == "Your situation"), None)
+    assert situation is not None
+    ids = {a["question_id"] for a in situation["answers"]}
+    assert "employment_type" in ids
+    assert "lodger_type" in ids
+
+
+@pytest.mark.asyncio
+async def test_edit_mode_has_dependents_no_to_yes_asks_dependent_count_only(auth_client):
+    """Editing has_dependents to yes should ask dependent_count, then return to summary."""
+    await _complete_full_interview(auth_client)  # has_dependents = "no"
+
+    resp = await auth_client.post(
+        "/api/v1/interview/jump",
+        json={"question_id": "has_dependents", "edit_mode": True},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["data"]["current_question"]["id"] == "has_dependents"
+
+    resp = await auth_client.post(
+        "/api/v1/interview/answer",
+        json={"question_id": "has_dependents", "answer": "yes"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["data"]["state"] == "in_progress"
+    assert body["data"]["next_question"]["id"] == "dependent_count"
+
+    resp = await auth_client.post(
+        "/api/v1/interview/answer",
+        json={"question_id": "dependent_count", "answer": "2"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["data"]["state"] == "awaiting_evidence"
+    assert body["data"]["next_question"] is None
+
+
+@pytest.mark.asyncio
+async def test_edit_mode_has_spouse_yes_to_no_removes_spouse_followups(auth_client):
+    """Editing has_spouse yes->no invalidates spouse follow-up answers only."""
+    await _complete_interview_with_spouse(auth_client)
+
+    # Ensure spouse follow-ups exist in summary first.
+    resp = await auth_client.get("/api/v1/interview/summary")
+    assert resp.status_code == 200, resp.text
+    situation = next((s for s in resp.json()["data"]["sections"] if s["title"] == "Your situation"), None)
+    assert situation is not None
+    ids_before = {a["question_id"] for a in situation["answers"]}
+    assert "has_spouse" in ids_before
+    assert "spouse_income_range" in ids_before
+    assert "spouse_novated_lease" in ids_before
+
+    resp = await auth_client.post(
+        "/api/v1/interview/jump",
+        json={"question_id": "has_spouse", "edit_mode": True},
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = await auth_client.post(
+        "/api/v1/interview/answer",
+        json={"question_id": "has_spouse", "answer": "no"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["data"]["state"] == "awaiting_evidence"
+    assert body["data"]["next_question"] is None
+
+    # Summary should no longer include spouse follow-ups, but unrelated answers remain.
+    resp = await auth_client.get("/api/v1/interview/summary")
+    assert resp.status_code == 200, resp.text
+    situation = next((s for s in resp.json()["data"]["sections"] if s["title"] == "Your situation"), None)
+    assert situation is not None
+    ids_after = {a["question_id"] for a in situation["answers"]}
+    assert "spouse_income_range" not in ids_after
+    assert "spouse_novated_lease" not in ids_after
+    assert "employment_type" in ids_after
+    assert "lodger_type" in ids_after
+
+
+@pytest.mark.asyncio
 async def test_summary_yes_no_strings_formatted(auth_client):
     """Skill section answers with raw 'yes'/'no' are returned as 'Yes'/'No'."""
     await _complete_full_interview(auth_client)

@@ -289,6 +289,27 @@ class InterviewEngine:
         # Edit mode: target question just answered
         if session.edit_mode and question_id == session.edit_target:
             session.edit_target = None
+            # Platform edit dependency repair (v1): invalidate only direct branch
+            # follow-up questions for the edited platform question.
+            direct_followups: set[str] = set()
+            if current_q and current_q.branches:
+                for _, qids in (current_q.branches or {}).items():
+                    direct_followups.update(qids)
+            if direct_followups:
+                answers2 = dict(session.answers or {})
+                for qid in direct_followups:
+                    answers2.pop(qid, None)
+                session.answers = answers2
+
+                completed2 = [qid for qid in (session.completed_steps or []) if qid not in direct_followups]
+                session.completed_steps = completed2
+
+                skipped2 = [
+                    s for s in (session.skipped_steps or [])
+                    if (s.get("question_id") if isinstance(s, dict) else s) not in direct_followups
+                ]
+                session.skipped_steps = skipped2
+
             if not branches_triggered:
                 # No new branches → return to completion immediately
                 session.state = "awaiting_evidence"
@@ -470,26 +491,46 @@ class InterviewEngine:
                 for q in skill_obj.get_questions(None):
                     _QUESTION_BY_ID[q.id] = q
 
-        # Iteratively call go_back until current_step == question_id
-        max_steps = len(session.branch_path or []) + 1
-        try:
-            for _ in range(max_steps):
-                if (session.current_step or {}).get("id") == question_id:
-                    break
-                session, _ = await self.go_back(session_id, db)
-            else:
-                raise ValueError(
-                    f"Could not reach {question_id!r} after {max_steps} steps"
-                )
-        except (ValueError, KeyError) as exc:
-            raise ValueError(
-                f"Cannot reach question {question_id!r}: {exc}"
-            ) from exc
+        if edit_mode:
+            # Edit mode should not destructively rewind answers. We set the current
+            # step directly and clear only the target answer so it can be re-answered.
+            answers = dict(session.answers or {})
+            answers.pop(question_id, None)
+            session.answers = answers
 
-        session.state = "in_progress"
-        session.edit_mode = edit_mode
-        session.edit_target = question_id if edit_mode else None
-        session = await interview_repo.save(db, session)
+            completed = list(session.completed_steps or [])
+            if question_id in completed:
+                completed.remove(question_id)
+            session.completed_steps = completed
+
+            session.state = "in_progress"
+            session.edit_mode = True
+            session.edit_target = question_id
+            session.current_step = {"id": question_id}
+            session.pending_queue = []
+            session = await interview_repo.save(db, session)
+        else:
+            # Iteratively call go_back until current_step == question_id
+            max_steps = len(session.branch_path or []) + 1
+            try:
+                for _ in range(max_steps):
+                    if (session.current_step or {}).get("id") == question_id:
+                        break
+                    session, _ = await self.go_back(session_id, db)
+                else:
+                    raise ValueError(
+                        f"Could not reach {question_id!r} after {max_steps} steps"
+                    )
+            except (ValueError, KeyError) as exc:
+                raise ValueError(
+                    f"Cannot reach question {question_id!r}: {exc}"
+                ) from exc
+
+            session.state = "in_progress"
+            session.edit_mode = False
+            session.edit_target = None
+            session = await interview_repo.save(db, session)
+
         q = _QUESTION_BY_ID.get(question_id)
         if q is None:
             raise ValueError(f"Question {question_id!r} not found in question registry")
