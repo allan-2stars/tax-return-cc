@@ -65,10 +65,11 @@ describe('auth API', () => {
     expect(mockPost).toHaveBeenCalledWith('/api/v1/auth/unlock', { password: 'mypassword' })
   })
 
-  it('recover POSTs to /api/v1/auth/recover with recovery_key and new_password', async () => {
+  it('recover POSTs to /api/v1/auth/recover with workspace_id, recovery_key and new_password', async () => {
     mockPost.mockResolvedValue({})
-    await authApi.recover('RECOVERY-KEY', 'newpassword')
+    await authApi.recover('ws1', 'RECOVERY-KEY', 'newpassword')
     expect(mockPost).toHaveBeenCalledWith('/api/v1/auth/recover', {
+      workspace_id: 'ws1',
       recovery_key: 'RECOVERY-KEY',
       new_password: 'newpassword',
     })
