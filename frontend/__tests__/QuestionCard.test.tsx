@@ -137,6 +137,30 @@ test('renders numeric option value without crashing', () => {
   expect(screen.getByRole('button', { name: '1' })).toBeInTheDocument()
 })
 
+test('renders boolean-like options as Yes/No (not True/False) and preserves raw value', () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const boolQ: any = {
+    id: 'has_private_health',
+    ask: 'Do you have private health insurance?',
+    type: 'single_choice',
+    options: [true, false],
+    branches: null,
+    required: false,
+    why: null,
+    hint: null,
+  }
+  const onAnswer = jest.fn()
+  render(<QuestionCard question={boolQ} onAnswer={onAnswer} onBack={jest.fn()} onSkip={jest.fn()} />)
+
+  // Display should be Yes/No (not True/False).
+  expect(screen.getByRole('button', { name: 'Yes' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'No' })).toBeInTheDocument()
+
+  // Raw value is preserved on submit (do not coerce to string).
+  fireEvent.click(screen.getByRole('button', { name: 'Yes' }))
+  expect(onAnswer).toHaveBeenCalledWith('has_private_health', true)
+})
+
 // ── New: currency input ───────────────────────────────────────────────────────
 
 test('currency input shows $ prefix', () => {

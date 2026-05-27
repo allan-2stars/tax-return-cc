@@ -34,6 +34,8 @@ const OPTION_LABELS: Record<string, string> = {
 
 function formatOptionLabel(value: string | number): string {
   const s = String(value)
+  if (s === 'true') return 'Yes'
+  if (s === 'false') return 'No'
   return OPTION_LABELS[s] ?? s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
