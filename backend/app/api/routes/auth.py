@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import bcrypt
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -149,7 +150,38 @@ async def session_status(
         )
     workspace_id = decode_session_cookie(session, max_age=settings.SESSION_MAX_AGE_DAYS * 86400)
 
+    # Session cookie must reference a real workspace and security record.
+    ws = await db.get(Workspace, workspace_id)
+    if ws is None:
+        resp = JSONResponse(
+            status_code=401,
+            content={
+                "detail": error_response(
+                    "invalid_session",
+                    "Invalid session. Please log in again.",
+                    retryable=False,
+                )
+            },
+        )
+        resp.delete_cookie("session", path="/")
+        resp.delete_cookie("unlock_session", path="/")
+        return resp
+
     ws_sec = await auth_repo.get_security(db, workspace_id)
+    if ws_sec is None:
+        resp = JSONResponse(
+            status_code=401,
+            content={
+                "detail": error_response(
+                    "invalid_session",
+                    "Invalid session. Please log in again.",
+                    retryable=False,
+                )
+            },
+        )
+        resp.delete_cookie("session", path="/")
+        resp.delete_cookie("unlock_session", path="/")
+        return resp
     if ws_sec and not ws_sec.setup_confirmed:
         raise HTTPException(
             status_code=403,
