@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     AI_TIMEOUT_SECONDS: int = 15
 
     APP_PASSWORD_HASH: str = ""
-    SESSION_MAX_AGE_DAYS: int = 7
+    SESSION_MAX_AGE_DAYS: int = 1
     UNLOCK_SESSION_MINUTES: int = 30
 
     CORS_ORIGINS: str = "https://taxcc.signpega.com,http://127.0.0.1:3060"

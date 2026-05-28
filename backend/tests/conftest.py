@@ -71,6 +71,7 @@ def patch_password(monkeypatch):
     monkeypatch.setattr(settings, "APP_PASSWORD_HASH", hashed)
     monkeypatch.setattr(settings, "SECRET_KEY", "test-secret-key-for-unit-tests")
     monkeypatch.setattr(settings, "ENVIRONMENT", "test")
+    monkeypatch.setattr(settings, "SESSION_MAX_AGE_DAYS", 1)
 
 
 @pytest_asyncio.fixture
