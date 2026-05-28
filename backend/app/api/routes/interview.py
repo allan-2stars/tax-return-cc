@@ -119,14 +119,33 @@ def _format_answer(question_id: str, answer_value) -> str:
     return _GLOBAL_ANSWER_LABELS.get(val, val)
 
 
-def _q_dict(q: Question | None) -> dict | None:
+def _q_dict(q: Question | None, financial_year: str | None = None) -> dict | None:
     if q is None:
         return None
+    options = q.options
+    if q.id == "fy_confirm" and financial_year and options:
+        opts: list[str] = []
+        # Workspace FY first (source of truth), then existing defaults, then previous years.
+        def _push(val: str) -> None:
+            if val not in opts:
+                opts.append(val)
+
+        _push(financial_year)
+        for v in options:
+            _push(str(v))
+        # Add a couple of prior FYs based on the workspace FY.
+        try:
+            start = int(financial_year.split("-")[0])
+            for d in (1, 2):
+                _push(f"{start - d}-{str((start - d + 1) % 100).zfill(2)}")
+        except Exception:
+            pass
+        options = opts[:3]
     return {
         "id": q.id,
         "ask": q.ask,
         "type": q.type,
-        "options": q.options,
+        "options": options,
         "branches": q.branches,
         "required": q.required,
         "why": q.why,
@@ -148,7 +167,7 @@ def _current_question(session: InterviewSession) -> dict | None:
                 for sq in skill.get_questions(None):
                     _QUESTION_BY_ID[sq.id] = sq
         q = _QUESTION_BY_ID.get(qid)
-    return _q_dict(q) if q else {"id": qid}
+    return _q_dict(q, financial_year=session.financial_year) if q else {"id": qid}
 
 
 def _progress(session: InterviewSession) -> dict:
@@ -259,7 +278,7 @@ async def start_interview(
         "data": {
             "state": session.state,
             "session_id": session.id,
-            "current_question": _q_dict(first_q),
+            "current_question": _q_dict(first_q, financial_year=financial_year),
             "progress": _progress(session),
         }
     }
@@ -290,7 +309,7 @@ async def restart_interview(
         "data": {
             "state": session.state,
             "session_id": session.id,
-            "current_question": _q_dict(first_q),
+            "current_question": _q_dict(first_q, financial_year=financial_year),
             "progress": _progress(session),
         }
     }
@@ -322,7 +341,7 @@ async def answer_question(
         "data": {
             "session_id": session.id,
             "state": session.state,
-            "next_question": _q_dict(next_q),
+            "next_question": _q_dict(next_q, financial_year=session.financial_year),
             "activated_skills": session.activated_skills or [],
             "progress": _progress(session),
         }
@@ -346,7 +365,7 @@ async def skip_question(
         "data": {
             "session_id": session.id,
             "state": session.state,
-            "next_question": _q_dict(next_q),
+            "next_question": _q_dict(next_q, financial_year=session.financial_year),
             "progress": _progress(session),
         }
     }
@@ -375,7 +394,7 @@ async def go_back(
         "data": {
             "session_id": session.id,
             "state": session.state,
-            "current_question": _q_dict(prev_q),
+            "current_question": _q_dict(prev_q, financial_year=session.financial_year),
             "progress": _progress(session),
         }
     }
