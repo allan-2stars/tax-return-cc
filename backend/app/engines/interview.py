@@ -233,6 +233,14 @@ class InterviewEngine:
 
         current_q = _QUESTION_BY_ID.get(question_id)
         if current_q and current_q.type == "single_choice" and current_q.options:
+            # HTTP layer sends answers as strings; normalize common boolean forms
+            # for boolean option questions.
+            if isinstance(answer, str) and any(isinstance(o, bool) for o in current_q.options):
+                al = answer.strip().lower()
+                if al == "true":
+                    answer = True
+                elif al == "false":
+                    answer = False
             if answer not in current_q.options:
                 raise ValueError(f"Invalid option for {question_id!r}: {answer!r}")
 
