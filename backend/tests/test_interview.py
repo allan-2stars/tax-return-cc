@@ -411,6 +411,32 @@ async def test_question_dict_includes_required_why_hint(auth_client):
     assert isinstance(q["required"], bool)
 
 
+# ── 13b. boolean option normalization (strings) ───────────────────────────────
+
+@pytest.mark.asyncio
+async def test_process_answer_accepts_true_false_strings_for_boolean_single_choice(db_session, workspace):
+    """HTTP layer sends answers as strings; boolean option questions must accept 'true'/'false' strings."""
+    from app.engines.interview import InterviewEngine, _QUESTION_BY_ID
+    from app.skills.base import Question
+    from app.repositories import interview as interview_repo
+
+    engine = InterviewEngine()
+    session, _ = await engine.start(workspace.id, workspace.financial_year, db_session)
+
+    _QUESTION_BY_ID["bool_test"] = Question(
+        id="bool_test",
+        ask="bool?",
+        type="single_choice",
+        options=[True, False],
+    )
+    session.current_step = {"id": "bool_test"}
+    session.pending_queue = []
+    await interview_repo.save(db_session, session)
+
+    session2, _ = await engine.process_answer(session.id, "bool_test", "True", db_session)
+    assert (session2.answers or {}).get("bool_test") is True
+
+
 # ── 14. spouse_rfba_amount is currency=True, required=False ──────────────────
 
 @pytest.mark.asyncio
