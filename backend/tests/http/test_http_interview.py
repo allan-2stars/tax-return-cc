@@ -89,6 +89,34 @@ async def test_start_interview_fy_confirm_includes_workspace_financial_year(auth
 
 
 @pytest.mark.asyncio
+async def test_get_session_fy_confirm_options_include_workspace_financial_year_and_no_duplicates(
+    auth_client, test_engine
+):
+    """GET /interview/session must return fy_confirm options aligned to workspace FY (dynamic, not import-time)."""
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.db.models import Workspace
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        ws = (
+            await session.execute(select(Workspace).where(Workspace.id == auth_client.workspace_id))
+        ).scalar_one()
+        ws.financial_year = "2025-26"
+        await session.commit()
+
+    await auth_client.post("/api/v1/interview/start")
+    resp = await auth_client.get("/api/v1/interview/session")
+    assert resp.status_code == 200, resp.text
+    q = resp.json()["data"]["current_question"]
+    assert q["id"] == "fy_confirm"
+    opts = q.get("options") or []
+    assert opts[0] == "2025-26"
+    assert len(opts) == len(set(opts))
+
+
+@pytest.mark.asyncio
 async def test_answer_single_choice_invalid_option_returns_422(auth_client):
     """Single choice answers must be one of question.options."""
     await auth_client.post("/api/v1/interview/start")
