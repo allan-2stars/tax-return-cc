@@ -22,8 +22,13 @@ export default function LoginPage() {
   useEffect(() => {
     getSession()
       .then((res) => {
-        if (res.data.data.setup_required) {
+        const data = res.data.data
+        if (data.setup_confirmed === false || data.setup_required) {
           router.push('/setup')
+          return
+        }
+        if (data.setup_confirmed === true) {
+          router.push('/journey')
         }
       })
       .catch(() => {

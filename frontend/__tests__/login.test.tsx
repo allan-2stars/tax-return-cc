@@ -97,6 +97,16 @@ describe('LoginPage', () => {
     })
   })
 
+  it('redirects to /journey on mount when already authenticated and setup_confirmed is true', async () => {
+    ;(mockGetSession as jest.Mock).mockResolvedValue({
+      data: { data: { setup_required: false, setup_confirmed: true } },
+    })
+    render(<LoginPage />)
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith('/journey')
+    })
+  })
+
   it('redirects to /setup on setup_not_confirmed error', async () => {
     const user = userEvent.setup()
     ;(mockLogin as jest.Mock).mockRejectedValue({
