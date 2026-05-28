@@ -7,7 +7,7 @@ from app.db.base import get_db
 from app.db.models import InterviewSession
 from app.engines.interview import (
     InterviewEngine, InlineQuestion, _QUESTION_BY_ID,
-    BRANCH_QUESTIONS, PLATFORM_QUESTIONS,
+    BRANCH_QUESTIONS, PLATFORM_QUESTIONS, _fy_confirm_options,
 )
 from app.errors import error_response
 from app.repositories import auth as auth_repo
@@ -124,23 +124,7 @@ def _q_dict(q: Question | None, financial_year: str | None = None) -> dict | Non
         return None
     options = q.options
     if q.id == "fy_confirm" and financial_year and options:
-        opts: list[str] = []
-        # Workspace FY first (source of truth), then existing defaults, then previous years.
-        def _push(val: str) -> None:
-            if val not in opts:
-                opts.append(val)
-
-        _push(financial_year)
-        for v in options:
-            _push(str(v))
-        # Add a couple of prior FYs based on the workspace FY.
-        try:
-            start = int(financial_year.split("-")[0])
-            for d in (1, 2):
-                _push(f"{start - d}-{str((start - d + 1) % 100).zfill(2)}")
-        except Exception:
-            pass
-        options = opts[:3]
+        options = _fy_confirm_options(financial_year, options)
     return {
         "id": q.id,
         "ask": q.ask,

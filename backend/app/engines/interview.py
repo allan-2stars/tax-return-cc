@@ -124,6 +124,25 @@ _PROFILE_FIELD_MAP: dict[str, str | None] = {
     "dependent_count":      "dependent_count",
 }
 
+def _fy_confirm_options(workspace_fy: str, base_options: list[Any] | None) -> list[str]:
+    opts: list[str] = []
+
+    def _push(val: str) -> None:
+        if val not in opts:
+            opts.append(val)
+
+    if workspace_fy:
+        _push(workspace_fy)
+    for v in (base_options or []):
+        _push(str(v))
+    try:
+        start = int(workspace_fy.split("-")[0])
+        for d in (1, 2):
+            _push(f"{start - d}-{str((start - d + 1) % 100).zfill(2)}")
+    except Exception:
+        pass
+    return opts[:3]
+
 
 def _build_profile_updates(question_id: str, answer: Any) -> dict:
     if question_id == "has_spouse":
@@ -197,14 +216,10 @@ class InterviewEngine:
         session.current_step = {"id": first_id}
         session = await interview_repo.save(db, session)
         first_q = _QUESTION_BY_ID[first_id]
-        # FY options must include the workspace financial_year (source of truth).
-        if first_id == "fy_confirm" and first_q.options:
-            opts = list(first_q.options)
-            if financial_year not in opts:
-                opts = [financial_year] + opts
-            # Keep a small set: workspace FY + next 2 most recent.
-            opts = opts[:3]
-            first_q = replace(first_q, options=opts)
+        if first_id == "fy_confirm":
+            first_q = replace(
+                first_q, options=_fy_confirm_options(financial_year, first_q.options)
+            )
         return session, first_q
 
     async def process_answer(
@@ -233,15 +248,19 @@ class InterviewEngine:
 
         current_q = _QUESTION_BY_ID.get(question_id)
         if current_q and current_q.type == "single_choice" and current_q.options:
+            if question_id == "fy_confirm":
+                allowed = _fy_confirm_options(session.financial_year, current_q.options)
+            else:
+                allowed = current_q.options
             # HTTP layer sends answers as strings; normalize common boolean forms
             # for boolean option questions.
-            if isinstance(answer, str) and any(isinstance(o, bool) for o in current_q.options):
+            if isinstance(answer, str) and any(isinstance(o, bool) for o in allowed):
                 al = answer.strip().lower()
                 if al == "true":
                     answer = True
                 elif al == "false":
                     answer = False
-            if answer not in current_q.options:
+            if answer not in allowed:
                 raise ValueError(f"Invalid option for {question_id!r}: {answer!r}")
 
         # Numeric validation (baseline + per-question limits)
