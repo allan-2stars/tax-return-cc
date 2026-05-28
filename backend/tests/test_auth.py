@@ -104,6 +104,20 @@ async def test_login_correct_password_sets_cookie(client, patch_password):
 
 
 @pytest.mark.asyncio
+async def test_login_session_cookie_ttl_is_one_day(client, patch_password):
+    await client.post(
+        "/api/v1/auth/setup",
+        json={"password": TEST_PASSWORD, "financial_year": "2024-25"},
+    )
+    resp = await client.post("/api/v1/auth/login", json={"password": TEST_PASSWORD})
+    assert resp.status_code == 200
+
+    cookie_headers = resp.headers.get_list("set-cookie")
+    session_cookie = next((h for h in cookie_headers if h.startswith("session=")), "")
+    assert "Max-Age=86400" in session_cookie
+
+
+@pytest.mark.asyncio
 async def test_login_wrong_password_returns_401(client, patch_password):
     await client.post(
         "/api/v1/auth/setup",
