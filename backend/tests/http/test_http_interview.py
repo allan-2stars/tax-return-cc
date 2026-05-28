@@ -130,6 +130,55 @@ async def test_answer_single_choice_invalid_option_returns_422(auth_client):
 
 
 @pytest.mark.asyncio
+async def test_answer_fy_confirm_accepts_workspace_financial_year(auth_client, test_engine):
+    """Answering fy_confirm with workspace.financial_year must be accepted (dynamic options)."""
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.db.models import Workspace
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        ws = (
+            await session.execute(select(Workspace).where(Workspace.id == auth_client.workspace_id))
+        ).scalar_one()
+        ws.financial_year = "2025-26"
+        await session.commit()
+
+    await auth_client.post("/api/v1/interview/start")
+    resp = await auth_client.post(
+        "/api/v1/interview/answer",
+        json={"question_id": "fy_confirm", "answer": "2025-26"},
+    )
+    assert resp.status_code == 200, resp.text
+
+
+@pytest.mark.asyncio
+async def test_answer_fy_confirm_rejects_future_financial_year(auth_client, test_engine):
+    """fy_confirm should not accept arbitrary FY strings outside the allowed dynamic set."""
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.db.models import Workspace
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        ws = (
+            await session.execute(select(Workspace).where(Workspace.id == auth_client.workspace_id))
+        ).scalar_one()
+        ws.financial_year = "2025-26"
+        await session.commit()
+
+    await auth_client.post("/api/v1/interview/start")
+    resp = await auth_client.post(
+        "/api/v1/interview/answer",
+        json={"question_id": "fy_confirm", "answer": "2099-00"},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["error_code"] == "invalid_answer"
+
+
+@pytest.mark.asyncio
 async def test_dependent_count_rejects_out_of_range_and_not_persisted(auth_client):
     """dependent_count must be integer between 0 and 20 (inclusive)."""
     await auth_client.post("/api/v1/interview/start")
