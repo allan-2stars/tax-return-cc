@@ -297,6 +297,40 @@ async def test_jump_edit_mode_sets_flags(auth_client):
     assert body["data"]["current_question"]["id"] == "residency"
     assert body["data"]["edit_mode"] is True
 
+    resp = await auth_client.get("/api/v1/interview/session")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["data"]["edit_mode"] is True
+    assert body["data"]["edit_target"] == "residency"
+    assert body["data"]["edit_flow_completed"] == 0
+    assert body["data"]["edit_flow_total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_cancel_edit_returns_to_summary_without_removing_answer(auth_client):
+    """POST /interview/cancel-edit exits edit mode and preserves the original answer."""
+    await _complete_full_interview(auth_client)
+
+    resp = await auth_client.post(
+        "/api/v1/interview/jump",
+        json={"question_id": "residency", "edit_mode": True},
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = await auth_client.post("/api/v1/interview/cancel-edit")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["data"]["state"] == "awaiting_evidence"
+    assert body["data"]["current_question"] is None
+    assert body["data"]["edit_mode"] is False
+
+    resp = await auth_client.get("/api/v1/interview/summary")
+    assert resp.status_code == 200, resp.text
+    situation = next((s for s in resp.json()["data"]["sections"] if s["title"] == "Your situation"), None)
+    assert situation is not None
+    answers = {a["question_id"]: a for a in situation["answers"]}
+    assert answers["residency"]["answer_value"] == "resident"
+
 
 @pytest.mark.asyncio
 async def test_edit_mode_returns_to_completion_after_one_answer(auth_client):

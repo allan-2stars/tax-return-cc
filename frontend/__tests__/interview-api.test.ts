@@ -7,7 +7,7 @@ import client from '@/lib/api/client'
 import {
   getSession, startInterview, answerQuestion,
   restartInterview,
-  goBack, skipQuestion, getYoySuggestions, actOnSuggestion,
+  goBack, cancelEdit, skipQuestion, getYoySuggestions, actOnSuggestion,
   getInterviewSummary, jumpToQuestion,
 } from '@/lib/api/interview'
 
@@ -55,6 +55,12 @@ describe('interview API', () => {
     mockPost.mockResolvedValue({ data: { data: {} } })
     await goBack()
     expect(mockPost).toHaveBeenCalledWith('/api/v1/interview/back')
+  })
+
+  it('cancelEdit calls POST /api/v1/interview/cancel-edit', async () => {
+    mockPost.mockResolvedValue({ data: { data: {} } })
+    await cancelEdit()
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/interview/cancel-edit')
   })
 
   it('skipQuestion calls POST /api/v1/interview/skip with body', async () => {

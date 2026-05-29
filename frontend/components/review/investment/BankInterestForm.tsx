@@ -3,14 +3,14 @@ import { useForm } from 'react-hook-form'
 import { useState } from 'react'
 import { createManualEvent } from '@/lib/api/events'
 
-interface InvestmentFormProps { onSuccess: () => void; onBack: () => void }
+interface InvestmentFormProps { onSuccess: () => void; onBack: () => void; onCancel: () => void }
 
 interface BankInterestFields {
   bank_name: string; account_type: string
   interest_amount: string; in_payg: boolean; note: string
 }
 
-export default function BankInterestForm({ onSuccess, onBack }: InvestmentFormProps) {
+export default function BankInterestForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) {
   const { register, handleSubmit, formState: { errors } } = useForm<BankInterestFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -84,7 +84,7 @@ export default function BankInterestForm({ onSuccess, onBack }: InvestmentFormPr
           className="min-h-11 px-5 rounded-md bg-accent text-white text-sm font-ui font-semibold disabled:opacity-50">
           {pending ? 'Saving…' : 'Add item'}
         </button>
-        <button type="button" onClick={onBack} className="min-h-11 px-4 text-sm font-ui text-text-muted">Cancel</button>
+        <button type="button" onClick={onCancel} className="min-h-11 px-4 text-sm font-ui text-text-muted">Cancel</button>
       </div>
     </form>
   )

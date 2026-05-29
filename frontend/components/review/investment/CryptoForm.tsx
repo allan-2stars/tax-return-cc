@@ -8,7 +8,7 @@ import useWorkspaceStore from '@/lib/stores/workspace.store'
 
 type CryptoSubType = 'buy' | 'sell' | 'staking'
 
-interface InvestmentFormProps { onSuccess: () => void; onBack: () => void }
+interface InvestmentFormProps { onSuccess: () => void; onBack: () => void; onCancel: () => void }
 
 interface CryptoBuyFields {
   exchange: string; coin: string; amount_units: string
@@ -38,7 +38,7 @@ function AutoCalcBox({ label, value, unit = '' }: { label: string; value: string
   )
 }
 
-function CryptoBuySubForm({ onSuccess, onBack }: InvestmentFormProps) {
+function CryptoBuySubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) {
   const { register, handleSubmit, watch, formState: { errors } } = useForm<CryptoBuyFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -131,17 +131,19 @@ function CryptoBuySubForm({ onSuccess, onBack }: InvestmentFormProps) {
       </div>
       {error && <p role="alert" className="text-sm font-ui text-risk-high">{error}</p>}
       <div className="flex gap-3">
+        <button type="button" onClick={onBack}
+          className="min-h-11 px-4 text-sm font-ui text-text-muted">Back</button>
         <button type="submit" disabled={pending}
           className="min-h-11 px-5 rounded-md bg-accent text-white text-sm font-ui font-semibold disabled:opacity-50">
           {pending ? 'Saving…' : 'Add item'}
         </button>
-        <button type="button" onClick={onBack} className="min-h-11 px-4 text-sm font-ui text-text-muted">Cancel</button>
+        <button type="button" onClick={onCancel} className="min-h-11 px-4 text-sm font-ui text-text-muted">Cancel</button>
       </div>
     </form>
   )
 }
 
-function CryptoSellSubForm({ onSuccess, onBack }: InvestmentFormProps) {
+function CryptoSellSubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) {
   const { register, handleSubmit, watch, formState: { errors } } = useForm<CryptoSellFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -296,17 +298,19 @@ function CryptoSellSubForm({ onSuccess, onBack }: InvestmentFormProps) {
       </div>
       {error && <p role="alert" className="text-sm font-ui text-risk-high">{error}</p>}
       <div className="flex gap-3">
+        <button type="button" onClick={onBack}
+          className="min-h-11 px-4 text-sm font-ui text-text-muted">Back</button>
         <button type="submit" disabled={pending}
           className="min-h-11 px-5 rounded-md bg-accent text-white text-sm font-ui font-semibold disabled:opacity-50">
           {pending ? 'Saving…' : 'Add item'}
         </button>
-        <button type="button" onClick={onBack} className="min-h-11 px-4 text-sm font-ui text-text-muted">Cancel</button>
+        <button type="button" onClick={onCancel} className="min-h-11 px-4 text-sm font-ui text-text-muted">Cancel</button>
       </div>
     </form>
   )
 }
 
-function CryptoStakingSubForm({ onSuccess, onBack }: InvestmentFormProps) {
+function CryptoStakingSubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) {
   const { register, handleSubmit, watch, formState: { errors } } = useForm<CryptoStakingFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -388,17 +392,19 @@ function CryptoStakingSubForm({ onSuccess, onBack }: InvestmentFormProps) {
       </div>
       {error && <p role="alert" className="text-sm font-ui text-risk-high">{error}</p>}
       <div className="flex gap-3">
+        <button type="button" onClick={onBack}
+          className="min-h-11 px-4 text-sm font-ui text-text-muted">Back</button>
         <button type="submit" disabled={pending}
           className="min-h-11 px-5 rounded-md bg-accent text-white text-sm font-ui font-semibold disabled:opacity-50">
           {pending ? 'Saving…' : 'Add item'}
         </button>
-        <button type="button" onClick={onBack} className="min-h-11 px-4 text-sm font-ui text-text-muted">Cancel</button>
+        <button type="button" onClick={onCancel} className="min-h-11 px-4 text-sm font-ui text-text-muted">Cancel</button>
       </div>
     </form>
   )
 }
 
-export default function CryptoForm({ onSuccess, onBack }: InvestmentFormProps) {
+export default function CryptoForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) {
   const [subType, setSubType] = useState<CryptoSubType | null>(null)
 
   if (!subType) {
@@ -423,7 +429,7 @@ export default function CryptoForm({ onSuccess, onBack }: InvestmentFormProps) {
   }
 
   const backToSubType = () => setSubType(null)
-  if (subType === 'buy') return <CryptoBuySubForm onSuccess={onSuccess} onBack={backToSubType} />
-  if (subType === 'sell') return <CryptoSellSubForm onSuccess={onSuccess} onBack={backToSubType} />
-  return <CryptoStakingSubForm onSuccess={onSuccess} onBack={backToSubType} />
+  if (subType === 'buy') return <CryptoBuySubForm onSuccess={onSuccess} onBack={backToSubType} onCancel={onCancel} />
+  if (subType === 'sell') return <CryptoSellSubForm onSuccess={onSuccess} onBack={backToSubType} onCancel={onCancel} />
+  return <CryptoStakingSubForm onSuccess={onSuccess} onBack={backToSubType} onCancel={onCancel} />
 }

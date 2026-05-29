@@ -164,11 +164,11 @@ export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
   // Investment: specific sub-form
   if (step === 2 && eventType === 'investment' && investmentSubType !== null && investmentSubType !== 'other') {
     const backToSubType = () => setInvestmentSubType(null)
-    if (investmentSubType === 'shares') return <SharesForm onSuccess={onSuccess} onBack={backToSubType} />
-    if (investmentSubType === 'crypto') return <CryptoForm onSuccess={onSuccess} onBack={backToSubType} />
-    if (investmentSubType === 'bank_interest') return <BankInterestForm onSuccess={onSuccess} onBack={backToSubType} />
-    if (investmentSubType === 'managed_fund') return <ManagedFundForm onSuccess={onSuccess} onBack={backToSubType} />
-    if (investmentSubType === 'foreign_income') return <ForeignIncomeForm onSuccess={onSuccess} onBack={backToSubType} />
+    if (investmentSubType === 'shares') return <SharesForm onSuccess={onSuccess} onBack={backToSubType} onCancel={onCancel} />
+    if (investmentSubType === 'crypto') return <CryptoForm onSuccess={onSuccess} onBack={backToSubType} onCancel={onCancel} />
+    if (investmentSubType === 'bank_interest') return <BankInterestForm onSuccess={onSuccess} onBack={backToSubType} onCancel={onCancel} />
+    if (investmentSubType === 'managed_fund') return <ManagedFundForm onSuccess={onSuccess} onBack={backToSubType} onCancel={onCancel} />
+    if (investmentSubType === 'foreign_income') return <ForeignIncomeForm onSuccess={onSuccess} onBack={backToSubType} onCancel={onCancel} />
   }
 
   const categories = TYPE_CATEGORIES[eventType!]

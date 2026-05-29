@@ -1,6 +1,6 @@
 'use client'
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { uploadDocument } from '@/lib/api/documents'
+import { uploadDocument, getDocumentSummary } from '@/lib/api/documents'
 import { useSSE } from '@/lib/hooks/useSSE'
 
 const ALLOWED_TYPES = new Set([
@@ -25,6 +25,7 @@ const STAGE_LABELS: Record<string, string> = {
   classify: 'Identifying document type...',
   extract: 'Finding tax items...',
 }
+const POLL_MS = 2000
 
 type UploadKind = 'idle' | 'hover' | 'uploading' | 'success' | 'error'
 
@@ -42,24 +43,78 @@ export default function UploadZone({ onUploadComplete, onDuplicate }: UploadZone
   const inputRef = useRef<HTMLInputElement>(null)
   const dragCounterRef = useRef(0)
   const uploadingRef = useRef(false)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const resolvedRef = useRef(false)
 
   const sseUrl = documentId ? `/api/v1/documents/${documentId}/stream` : null
-  const { data: sseData } = useSSE(sseUrl)
+  const { data: sseData, error: sseError } = useSSE(sseUrl)
+
+  const clearPoll = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+  }, [])
+
+  const resolveSuccess = useCallback((id: string) => {
+    if (resolvedRef.current) return
+    resolvedRef.current = true
+    clearPoll()
+    setKind('success')
+    setDocumentId(null)
+    onUploadComplete(id)
+  }, [clearPoll, onUploadComplete])
+
+  const resolveFailure = useCallback((errorCode?: string) => {
+    if (resolvedRef.current) return
+    resolvedRef.current = true
+    clearPoll()
+    setKind('error')
+    setErrorMessage(ERROR_MESSAGES[errorCode ?? ''] ?? ERROR_MESSAGES.default)
+    setDocumentId(null)
+  }, [clearPoll])
 
   useEffect(() => {
     if (!sseData) return
     if (sseData.status === 'ready') {
-      setKind('success')
-      setDocumentId(null)
-      onUploadComplete(sseData.document_id)
+      resolveSuccess(sseData.document_id)
     } else if (sseData.status === 'failed') {
-      setKind('error')
-      setErrorMessage(ERROR_MESSAGES[sseData.error_code ?? ''] ?? ERROR_MESSAGES.default)
-      setDocumentId(null)
+      resolveFailure(sseData.error_code)
     } else if (sseData.status === 'processing' && sseData.stage) {
       setSseStage(STAGE_LABELS[sseData.stage] ?? 'Processing...')
     }
-  }, [sseData, onUploadComplete])
+  }, [sseData, resolveSuccess, resolveFailure])
+
+  useEffect(() => {
+    if (!documentId || kind !== 'uploading') {
+      clearPoll()
+      return
+    }
+
+    const checkSummary = async () => {
+      try {
+        const res = await getDocumentSummary(documentId)
+        const status = res.data.data.status
+        if (status === 'ready') {
+          resolveSuccess(documentId)
+        } else if (status === 'failed' || status === 'archived') {
+          resolveFailure(status === 'archived' ? 'archived' : 'processing_failed')
+        }
+      } catch {
+        // Keep polling; transient fetch errors should not wedge upload state.
+      }
+    }
+
+    if (sseError) {
+      setSseStage('Processing document...')
+    }
+    void checkSummary()
+    pollRef.current = setInterval(() => { void checkSummary() }, POLL_MS)
+
+    return () => clearPoll()
+  }, [documentId, kind, sseError, clearPoll, resolveFailure, resolveSuccess])
+
+  useEffect(() => () => clearPoll(), [clearPoll])
 
   const processFile = useCallback(
     async (file: File) => {
@@ -76,9 +131,11 @@ export default function UploadZone({ onUploadComplete, onDuplicate }: UploadZone
         return
       }
       uploadingRef.current = true
+      resolvedRef.current = false
       setFilename(file.name)
       setKind('uploading')
       setSseStage('')
+      setErrorMessage('')
       try {
         const res = await uploadDocument(file)
         const data = res.data
@@ -105,6 +162,8 @@ export default function UploadZone({ onUploadComplete, onDuplicate }: UploadZone
   }
 
   const handleReset = () => {
+    clearPoll()
+    resolvedRef.current = false
     setKind('idle')
     setFilename('')
     setErrorMessage('')

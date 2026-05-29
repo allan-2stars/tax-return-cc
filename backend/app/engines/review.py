@@ -1,7 +1,9 @@
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from enum import Enum
+import math
+import re
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -137,6 +139,16 @@ class ReviewEngine:
         """Create TaxEvent(s) + ReviewItem(s) for a manual entry."""
         import uuid as _uuid
 
+        self._validate_manual_event(
+            description=description,
+            amount=amount,
+            date_value=date,
+            frequency=frequency,
+            note=note,
+            periods=periods,
+            metadata=metadata,
+        )
+
         _status = review_status or "needs_user_review"
         _risk = "high" if review_status == "needs_agent_review" else "low"
 
@@ -201,6 +213,162 @@ class ReviewEngine:
         asyncio.create_task(self._readiness_engine.recalculate(workspace_id))
 
         return created_events
+
+    @staticmethod
+    def _is_finite_number(value) -> bool:
+        try:
+            num = float(value)
+        except (TypeError, ValueError):
+            return False
+        return math.isfinite(num)
+
+    @staticmethod
+    def _parse_iso_date(value: str, field: str) -> date:
+        try:
+            parsed = datetime.strptime(value, "%Y-%m-%d").date()
+        except Exception as exc:
+            raise ValueError(f"{field} must be a valid ISO date (YYYY-MM-DD).") from exc
+        if parsed > datetime.now(timezone.utc).date():
+            raise ValueError(f"{field} cannot be in the future.")
+        return parsed
+
+    def _require_max_text(self, value: str | None, max_len: int, field: str) -> None:
+        if value is not None and len(value) > max_len:
+            raise ValueError(f"{field} must be at most {max_len} characters.")
+
+    def _require_finite(self, value, field: str) -> float:
+        if not self._is_finite_number(value):
+            raise ValueError(f"{field} must be a finite number.")
+        return float(value)
+
+    def _require_non_negative(self, value, field: str) -> float:
+        num = self._require_finite(value, field)
+        if num < 0:
+            raise ValueError(f"{field} must be greater than or equal to 0.")
+        if num > 999_999_999:
+            raise ValueError(f"{field} must be less than or equal to 999999999.")
+        return num
+
+    def _require_positive(self, value, field: str) -> float:
+        num = self._require_finite(value, field)
+        if num <= 0:
+            raise ValueError(f"{field} must be greater than 0.")
+        if num > 999_999_999:
+            raise ValueError(f"{field} must be less than or equal to 999999999.")
+        return num
+
+    def _require_short_text_field(self, metadata: dict | None, field: str, required: bool = False) -> str:
+        value = (metadata or {}).get(field)
+        if required and (value is None or str(value).strip() == ""):
+            raise ValueError(f"{field} is required.")
+        if value is None:
+            return ""
+        text = str(value).strip()
+        if len(text) > 100:
+            raise ValueError(f"{field} must be at most 100 characters.")
+        return text
+
+    def _validate_manual_event(
+        self,
+        description: str,
+        amount: float,
+        date_value: str,
+        frequency: str,
+        note: str | None,
+        periods: list[dict] | None,
+        metadata: dict | None,
+    ) -> None:
+        self._require_max_text(description, 500, "Description")
+        self._require_max_text(note, 5000, "Note")
+        self._parse_iso_date(date_value, "date")
+
+        if frequency == "monthly" and periods:
+            for idx, period in enumerate(periods):
+                self._require_positive(period.get("months"), f"periods[{idx}].months")
+                self._require_positive(period.get("amount_per_month"), f"periods[{idx}].amount_per_month")
+        else:
+            self._require_positive(amount, "amount")
+
+        meta = metadata or {}
+        for key, raw_value in meta.items():
+            if isinstance(raw_value, str) and len(raw_value) > 100:
+                raise ValueError(f"{key} must be at most 100 characters.")
+            if isinstance(raw_value, (int, float)):
+                self._require_non_negative(raw_value, key)
+
+        investment_sub_type = meta.get("investment_sub_type")
+        if investment_sub_type == "shares":
+            self._validate_shares_metadata(meta)
+        elif investment_sub_type == "crypto":
+            self._validate_crypto_metadata(meta)
+        elif investment_sub_type == "bank_interest":
+            self._validate_bank_interest_metadata(meta)
+        elif investment_sub_type == "foreign_income":
+            self._validate_foreign_income_metadata(meta)
+
+    def _validate_shares_metadata(self, metadata: dict) -> None:
+        tx_type = self._require_short_text_field(metadata, "transaction_type", required=True).lower()
+
+        stock_code = self._require_short_text_field(metadata, "stock_code", required=True).upper()
+        if not re.fullmatch(r"[A-Z0-9]{1,10}", stock_code):
+            raise ValueError("Stock code must match ^[A-Z0-9]{1,10}$.")
+
+        if tx_type in {"buy", "sell"}:
+            self._require_positive(metadata.get("units"), "units")
+            self._require_non_negative(metadata.get("brokerage_fee", 0), "brokerage_fee")
+            purchase_date = self._parse_iso_date(str(metadata.get("purchase_date", "")), "purchase_date")
+            if tx_type == "buy":
+                self._require_positive(metadata.get("price_per_unit"), "price_per_unit")
+            if tx_type == "sell":
+                self._require_positive(metadata.get("sale_price_per_unit"), "sale_price_per_unit")
+                self._require_positive(metadata.get("purchase_price_per_unit"), "purchase_price_per_unit")
+                sale_date = self._parse_iso_date(str(metadata.get("sale_date", "")), "sale_date")
+                if purchase_date > sale_date:
+                    raise ValueError("purchase_date must be on or before sale_date.")
+
+        if tx_type == "dividend":
+            self._require_positive(metadata.get("dividend_amount"), "dividend_amount")
+            self._require_non_negative(metadata.get("franking_credits", 0), "franking_credits")
+            self._parse_iso_date(str(metadata.get("payment_date", "")), "payment_date")
+
+    def _validate_crypto_metadata(self, metadata: dict) -> None:
+        tx_type = self._require_short_text_field(metadata, "transaction_type", required=True).lower()
+        coin = self._require_short_text_field(metadata, "coin", required=True).upper()
+        if not re.fullmatch(r"[A-Z0-9]{1,10}", coin):
+            raise ValueError("Coin/token must match ^[A-Z0-9]{1,10}$.")
+
+        if tx_type in {"buy", "sell"}:
+            self._require_positive(metadata.get("amount_units"), "amount_units")
+            self._require_non_negative(metadata.get("transaction_fee", 0), "transaction_fee")
+            purchase_date = self._parse_iso_date(str(metadata.get("purchase_date", "")), "purchase_date")
+            if tx_type == "buy":
+                self._require_positive(metadata.get("purchase_price"), "purchase_price")
+            if tx_type == "sell":
+                self._require_positive(metadata.get("sale_price"), "sale_price")
+                self._require_positive(metadata.get("purchase_price"), "purchase_price")
+                sale_date = self._parse_iso_date(str(metadata.get("sale_date", "")), "sale_date")
+                if purchase_date > sale_date:
+                    raise ValueError("purchase_date must be on or before sale_date.")
+
+        if tx_type == "staking":
+            self._require_positive(metadata.get("income_amount"), "income_amount")
+            self._parse_iso_date(str(metadata.get("income_date", "")), "income_date")
+
+    def _validate_bank_interest_metadata(self, metadata: dict) -> None:
+        self._require_short_text_field(metadata, "bank_name", required=True)
+        self._require_short_text_field(metadata, "account_type", required=True)
+        self._require_positive(metadata.get("interest_amount"), "interest_amount")
+
+    def _validate_foreign_income_metadata(self, metadata: dict) -> None:
+        self._require_short_text_field(metadata, "country", required=True)
+        currency = self._require_short_text_field(metadata, "currency", required=True).upper()
+        if not re.fullmatch(r"[A-Z]{3}", currency):
+            raise ValueError("Currency code must match ^[A-Z]{3}$.")
+        self._require_positive(metadata.get("foreign_amount"), "foreign_amount")
+        self._require_positive(metadata.get("exchange_rate"), "exchange_rate")
+        if metadata.get("foreign_tax_paid") is not None:
+            self._require_non_negative(metadata.get("foreign_tax_paid"), "foreign_tax_paid")
+        self._parse_iso_date(str(metadata.get("income_date", "")), "income_date")
 
     # ── queue ─────────────────────────────────────────────────────────────────
 

@@ -6,7 +6,7 @@ import { Info } from 'lucide-react'
 import { validateDate } from '@/lib/utils/fy'
 import useWorkspaceStore from '@/lib/stores/workspace.store'
 
-interface InvestmentFormProps { onSuccess: () => void; onBack: () => void }
+interface InvestmentFormProps { onSuccess: () => void; onBack: () => void; onCancel: () => void }
 
 interface ManagedFundFields {
   fund_name: string; fund_manager: string
@@ -15,7 +15,7 @@ interface ManagedFundFields {
   distribution_date: string; note: string
 }
 
-export default function ManagedFundForm({ onSuccess, onBack }: InvestmentFormProps) {
+export default function ManagedFundForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) {
   const { register, handleSubmit, watch, formState: { errors } } = useForm<ManagedFundFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -137,7 +137,7 @@ export default function ManagedFundForm({ onSuccess, onBack }: InvestmentFormPro
           className="min-h-11 px-5 rounded-md bg-accent text-white text-sm font-ui font-semibold disabled:opacity-50">
           {pending ? 'Saving…' : 'Add item'}
         </button>
-        <button type="button" onClick={onBack} className="min-h-11 px-4 text-sm font-ui text-text-muted">Cancel</button>
+        <button type="button" onClick={onCancel} className="min-h-11 px-4 text-sm font-ui text-text-muted">Cancel</button>
       </div>
     </form>
   )

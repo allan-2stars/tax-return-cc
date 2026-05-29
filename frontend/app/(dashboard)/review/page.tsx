@@ -14,18 +14,20 @@ const INCOME_CATEGORIES = new Set([
 const DEDUCTION_CATEGORIES = new Set([
   'work_expense', 'work_subscription', 'work_equipment', 'vehicle', 'travel',
   'uniform', 'self_education', 'other_deduction', 'donation', 'private_health_rebate',
+  'wfh_deduction',
 ])
 const INVESTMENT_CATEGORIES = new Set([
-  'crypto_income', 'capital_gain', 'investment_income',
+  'crypto', 'crypto_income', 'crypto_gain', 'crypto_loss',
+  'capital_gain', 'capital_loss', 'dividend',
+  'foreign_income', 'managed_fund_distribution',
 ])
 
-const FILTER_TABS = ['All', 'Income', 'Deductions', 'Investments', 'WFH', 'Confirmed']
+const FILTER_TABS = ['All', 'Income', 'Deductions', 'Investments', 'Confirmed']
 
 function applyFilter(items: ReviewItem[], filter: string): ReviewItem[] {
   if (filter === 'income') return items.filter((i) => INCOME_CATEGORIES.has(i.category ?? ''))
   if (filter === 'deductions') return items.filter((i) => DEDUCTION_CATEGORIES.has(i.category ?? ''))
   if (filter === 'investments') return items.filter((i) => INVESTMENT_CATEGORIES.has(i.category ?? ''))
-  if (filter === 'wfh') return items.filter((i) => i.category?.includes('wfh') ?? false)
   if (filter === 'confirmed') return items.filter((i) => i.status === 'confirmed')
   return items
 }
@@ -140,6 +142,12 @@ function ReviewContent() {
         >
           + Add item manually
         </button>
+        <p className="text-xs font-ui text-text-muted mt-3">
+          Supporting Evidence = uploaded source documents.
+        </p>
+        <p className="text-xs font-ui text-text-muted mt-1">
+          Review = tax items extracted or manually added for confirmation before export.
+        </p>
       </div>
 
       {/* Filter tabs */}

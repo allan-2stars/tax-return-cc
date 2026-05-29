@@ -12,6 +12,7 @@ type SharesSubType = 'buy' | 'sell' | 'dividend'
 interface InvestmentFormProps {
   onSuccess: () => void
   onBack: () => void
+  onCancel: () => void
 }
 
 interface BuyFields {
@@ -69,7 +70,7 @@ function AutoCalcBox({ label, value }: { label: string; value: string }) {
   )
 }
 
-function SharesBuySubForm({ onSuccess, onBack }: InvestmentFormProps) {
+function SharesBuySubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) {
   const { register, handleSubmit, watch, formState: { errors } } = useForm<BuyFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -166,18 +167,20 @@ function SharesBuySubForm({ onSuccess, onBack }: InvestmentFormProps) {
       </div>
       {error && <p role="alert" className="text-sm font-ui text-risk-high">{error}</p>}
       <div className="flex gap-3">
+        <button type="button" onClick={onBack}
+          className="min-h-11 px-4 text-sm font-ui text-text-muted">Back</button>
         <button type="submit" disabled={pending}
           className="min-h-11 px-5 rounded-md bg-accent text-white text-sm font-ui font-semibold disabled:opacity-50">
           {pending ? 'Saving…' : 'Add item'}
         </button>
-        <button type="button" onClick={onBack}
+        <button type="button" onClick={onCancel}
           className="min-h-11 px-4 text-sm font-ui text-text-muted">Cancel</button>
       </div>
     </form>
   )
 }
 
-function SharesSellSubForm({ onSuccess, onBack }: InvestmentFormProps) {
+function SharesSellSubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) {
   const { register, handleSubmit, watch, formState: { errors } } = useForm<SellFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -323,18 +326,20 @@ function SharesSellSubForm({ onSuccess, onBack }: InvestmentFormProps) {
       </div>
       {error && <p role="alert" className="text-sm font-ui text-risk-high">{error}</p>}
       <div className="flex gap-3">
+        <button type="button" onClick={onBack}
+          className="min-h-11 px-4 text-sm font-ui text-text-muted">Back</button>
         <button type="submit" disabled={pending}
           className="min-h-11 px-5 rounded-md bg-accent text-white text-sm font-ui font-semibold disabled:opacity-50">
           {pending ? 'Saving…' : 'Add item'}
         </button>
-        <button type="button" onClick={onBack}
+        <button type="button" onClick={onCancel}
           className="min-h-11 px-4 text-sm font-ui text-text-muted">Cancel</button>
       </div>
     </form>
   )
 }
 
-function SharesDividendSubForm({ onSuccess, onBack }: InvestmentFormProps) {
+function SharesDividendSubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) {
   const { register, handleSubmit, watch, formState: { errors } } = useForm<DividendFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -422,18 +427,20 @@ function SharesDividendSubForm({ onSuccess, onBack }: InvestmentFormProps) {
       </div>
       {error && <p role="alert" className="text-sm font-ui text-risk-high">{error}</p>}
       <div className="flex gap-3">
+        <button type="button" onClick={onBack}
+          className="min-h-11 px-4 text-sm font-ui text-text-muted">Back</button>
         <button type="submit" disabled={pending}
           className="min-h-11 px-5 rounded-md bg-accent text-white text-sm font-ui font-semibold disabled:opacity-50">
           {pending ? 'Saving…' : 'Add item'}
         </button>
-        <button type="button" onClick={onBack}
+        <button type="button" onClick={onCancel}
           className="min-h-11 px-4 text-sm font-ui text-text-muted">Cancel</button>
       </div>
     </form>
   )
 }
 
-export default function SharesForm({ onSuccess, onBack }: InvestmentFormProps) {
+export default function SharesForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) {
   const [subType, setSubType] = useState<SharesSubType | null>(null)
 
   if (!subType) {
@@ -454,7 +461,7 @@ export default function SharesForm({ onSuccess, onBack }: InvestmentFormProps) {
   }
 
   const backToSubType = () => setSubType(null)
-  if (subType === 'buy') return <SharesBuySubForm onSuccess={onSuccess} onBack={backToSubType} />
-  if (subType === 'sell') return <SharesSellSubForm onSuccess={onSuccess} onBack={backToSubType} />
-  return <SharesDividendSubForm onSuccess={onSuccess} onBack={backToSubType} />
+  if (subType === 'buy') return <SharesBuySubForm onSuccess={onSuccess} onBack={backToSubType} onCancel={onCancel} />
+  if (subType === 'sell') return <SharesSellSubForm onSuccess={onSuccess} onBack={backToSubType} onCancel={onCancel} />
+  return <SharesDividendSubForm onSuccess={onSuccess} onBack={backToSubType} onCancel={onCancel} />
 }

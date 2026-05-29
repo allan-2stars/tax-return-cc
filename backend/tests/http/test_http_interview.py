@@ -180,7 +180,7 @@ async def test_answer_fy_confirm_rejects_future_financial_year(auth_client, test
 
 @pytest.mark.asyncio
 async def test_dependent_count_rejects_out_of_range_and_not_persisted(auth_client):
-    """dependent_count must be integer between 0 and 20 (inclusive)."""
+    """dependent_count must be integer between 1 and 20 when has_dependents=yes."""
     await auth_client.post("/api/v1/interview/start")
     for qid, answer in [
         ("fy_confirm", "2024-25"),
@@ -199,6 +199,27 @@ async def test_dependent_count_rejects_out_of_range_and_not_persisted(auth_clien
 
     resp = await auth_client.post(
         "/api/v1/interview/answer",
+        json={"question_id": "dependent_count", "answer": "0"},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["error_code"] == "invalid_answer"
+
+    resp = await auth_client.post(
+        "/api/v1/interview/answer",
+        json={"question_id": "dependent_count", "answer": "-1"},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["error_code"] == "invalid_answer"
+
+    resp = await auth_client.post(
+        "/api/v1/interview/answer",
+        json={"question_id": "dependent_count", "answer": "1.5"},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["error_code"] == "invalid_answer"
+
+    resp = await auth_client.post(
+        "/api/v1/interview/answer",
         json={"question_id": "dependent_count", "answer": "9999"},
     )
     assert resp.status_code == 422
@@ -212,6 +233,84 @@ async def test_dependent_count_rejects_out_of_range_and_not_persisted(auth_clien
     assert situation is not None
     ids = {a["question_id"] for a in situation["answers"]}
     assert "dependent_count" not in ids
+
+
+@pytest.mark.asyncio
+async def test_dependent_count_accepts_1_to_20(auth_client):
+    """dependent_count should accept integers 1..20 when has_dependents=yes."""
+    await auth_client.post("/api/v1/interview/start")
+    for qid, answer in [
+        ("fy_confirm", "2024-25"),
+        ("residency", "resident"),
+        ("employment_type", "employee"),
+        ("has_spouse", "no"),
+        ("has_dependents", "yes"),
+    ]:
+        resp = await auth_client.post(
+            "/api/v1/interview/answer",
+            json={"question_id": qid, "answer": answer},
+        )
+        assert resp.status_code == 200, resp.text
+    assert resp.json()["data"]["next_question"]["id"] == "dependent_count"
+
+    resp = await auth_client.post(
+        "/api/v1/interview/answer",
+        json={"question_id": "dependent_count", "answer": "1"},
+    )
+    assert resp.status_code == 200, resp.text
+
+
+async def _reach_wfh_days_question(auth_client):
+    await auth_client.post("/api/v1/interview/start")
+    for qid, answer in [
+        ("fy_confirm", "2024-25"),
+        ("residency", "resident"),
+        ("employment_type", "employee"),
+        ("has_spouse", "no"),
+        ("has_dependents", "no"),
+        ("lodger_type", "self"),
+        ("wfh", "yes_regular"),
+        ("wfh_method", "fixed_rate"),
+    ]:
+        resp = await auth_client.post(
+            "/api/v1/interview/answer",
+            json={"question_id": qid, "answer": answer},
+        )
+        assert resp.status_code == 200, f"{qid} failed: {resp.text}"
+    assert resp.json()["data"]["next_question"]["id"] == "wfh_days"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid", ["-3", "0", "1.5", "8"])
+async def test_wfh_days_rejects_invalid_values_and_not_persisted(auth_client, invalid):
+    """wfh_days must reject invalid values and must not persist in summary."""
+    await _reach_wfh_days_question(auth_client)
+
+    resp = await auth_client.post(
+        "/api/v1/interview/answer",
+        json={"question_id": "wfh_days", "answer": invalid},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["error_code"] == "invalid_answer"
+
+    resp = await auth_client.get("/api/v1/interview/summary")
+    assert resp.status_code == 200
+    sections = resp.json()["data"]["sections"]
+    all_ids = {a["question_id"] for s in sections for a in s["answers"]}
+    assert "wfh_days" not in all_ids
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("valid", ["1", "2", "7"])
+async def test_wfh_days_accepts_1_to_7_integers(auth_client, valid):
+    """wfh_days should accept integer days 1..7."""
+    await _reach_wfh_days_question(auth_client)
+
+    resp = await auth_client.post(
+        "/api/v1/interview/answer",
+        json={"question_id": "wfh_days", "answer": valid},
+    )
+    assert resp.status_code == 200, resp.text
 
 
 @pytest.mark.asyncio

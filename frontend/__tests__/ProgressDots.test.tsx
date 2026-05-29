@@ -30,3 +30,14 @@ test('has accessible aria-label', () => {
   render(<ProgressDots completed={2} total={5} />)
   expect(screen.getByLabelText('2 of 5 questions answered')).toBeInTheDocument()
 })
+
+test('clamps invalid completed and total values', () => {
+  const { container } = render(<ProgressDots completed={-3} total={0} />)
+  expect(container.querySelectorAll('[data-testid="dot"]')).toHaveLength(1)
+  expect(screen.getByLabelText('0 of 1 questions answered')).toBeInTheDocument()
+})
+
+test('caps rendered dots at a safe maximum', () => {
+  const { container } = render(<ProgressDots completed={12} total={200} />)
+  expect(container.querySelectorAll('[data-testid="dot"]')).toHaveLength(12)
+})

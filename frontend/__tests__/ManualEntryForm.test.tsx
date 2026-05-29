@@ -75,4 +75,80 @@ describe('ManualEntryForm', () => {
     fireEvent.click(screen.getByRole('button', { name: /shares \/ ETF/i }))
     expect(screen.getByRole('button', { name: /^buy$/i })).toBeInTheDocument()
   })
+
+  it('Investment -> Crypto -> Buy: Back returns to crypto transaction selector', () => {
+    render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
+    fireEvent.click(screen.getByText(/^investment$/i))
+    fireEvent.click(screen.getByRole('button', { name: /cryptocurrency/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^buy$/i }))
+
+    fireEvent.click(screen.getByRole('button', { name: /back/i }))
+    expect(screen.getByRole('button', { name: /^buy$/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^sell$/i })).toBeInTheDocument()
+  })
+
+  it('Investment -> Crypto -> Buy: Cancel exits entire wizard', () => {
+    const onCancel = jest.fn()
+    render(<ManualEntryForm onSuccess={jest.fn()} onCancel={onCancel} />)
+    fireEvent.click(screen.getByText(/^investment$/i))
+    fireEvent.click(screen.getByRole('button', { name: /cryptocurrency/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^buy$/i }))
+
+    const buttons = screen.getAllByRole('button', { name: /^cancel$/i })
+    fireEvent.click(buttons[buttons.length - 1])
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('Investment -> Shares -> Sell: Cancel exits entire wizard', () => {
+    const onCancel = jest.fn()
+    render(<ManualEntryForm onSuccess={jest.fn()} onCancel={onCancel} />)
+    fireEvent.click(screen.getByText(/^investment$/i))
+    fireEvent.click(screen.getByRole('button', { name: /shares \/ ETF/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^sell$/i }))
+
+    const buttons = screen.getAllByRole('button', { name: /^cancel$/i })
+    fireEvent.click(buttons[buttons.length - 1])
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('Investment -> Bank Interest: Cancel exits entire wizard', () => {
+    const onCancel = jest.fn()
+    render(<ManualEntryForm onSuccess={jest.fn()} onCancel={onCancel} />)
+    fireEvent.click(screen.getByText(/^investment$/i))
+    fireEvent.click(screen.getByRole('button', { name: /bank interest/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }))
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('Investment -> Managed Fund: Cancel exits entire wizard', () => {
+    const onCancel = jest.fn()
+    render(<ManualEntryForm onSuccess={jest.fn()} onCancel={onCancel} />)
+    fireEvent.click(screen.getByText(/^investment$/i))
+    fireEvent.click(screen.getByRole('button', { name: /managed fund/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }))
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('Investment -> Foreign Income: Cancel exits entire wizard', () => {
+    const onCancel = jest.fn()
+    render(<ManualEntryForm onSuccess={jest.fn()} onCancel={onCancel} />)
+    fireEvent.click(screen.getByText(/^investment$/i))
+    fireEvent.click(screen.getByRole('button', { name: /foreign income \/ investment/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }))
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('Income simple form: Back returns to previous step', () => {
+    render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
+    fireEvent.click(screen.getByText(/^income$/i))
+    fireEvent.click(screen.getByRole('button', { name: /back/i }))
+    expect(screen.getByText(/what type of item\?/i)).toBeInTheDocument()
+  })
+
+  it('Deduction simple form: Back returns to previous step', () => {
+    render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
+    fireEvent.click(screen.getByText(/^deduction$/i))
+    fireEvent.click(screen.getByRole('button', { name: /back/i }))
+    expect(screen.getByText(/what type of item\?/i)).toBeInTheDocument()
+  })
 })

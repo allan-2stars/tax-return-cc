@@ -271,8 +271,14 @@ class InterviewEngine:
                     if "." in s:
                         raise ValueError("dependent_count must be an integer")
                     n_int = int(s)
-                    if n_int < 0 or n_int > 20:
-                        raise ValueError("dependent_count must be between 0 and 20")
+                    if n_int < 1 or n_int > 20:
+                        raise ValueError("dependent_count must be between 1 and 20")
+                elif question_id == "wfh_days":
+                    if "." in s:
+                        raise ValueError("wfh_days must be an integer")
+                    n_int = int(s)
+                    if n_int < 1 or n_int > 7:
+                        raise ValueError("wfh_days must be between 1 and 7")
                 else:
                     n = float(s)
                     if not (n == n and n != float("inf") and n != float("-inf")):
@@ -347,12 +353,12 @@ class InterviewEngine:
             await skills_repo.lock_activated_skills(db, session.workspace_id, new_skills)
 
         completed = list(session.completed_steps or [])
-        completed.append(question_id)
+        if question_id not in completed:
+            completed.append(question_id)
         session.completed_steps = completed
 
         # Edit mode: target question just answered
         if session.edit_mode and question_id == session.edit_target:
-            session.edit_target = None
             # Platform edit dependency repair (v1): invalidate only direct branch
             # follow-up questions for the edited platform question.
             direct_followups: set[str] = set()
@@ -514,6 +520,16 @@ class InterviewEngine:
         session = await interview_repo.save(db, session)
         return session
 
+    async def cancel_edit(self, session_id: str, db: AsyncSession) -> InterviewSession:
+        session = await interview_repo.get_by_id(db, session_id)
+        session.state = "awaiting_evidence"
+        session.edit_mode = False
+        session.edit_target = None
+        session.current_step = None
+        session.pending_queue = []
+        session = await interview_repo.save(db, session)
+        return session
+
     async def resume(
         self, session_id: str, db: AsyncSession
     ) -> tuple[InterviewSession, Question]:
@@ -556,17 +572,8 @@ class InterviewEngine:
                     _QUESTION_BY_ID[q.id] = q
 
         if edit_mode:
-            # Edit mode should not destructively rewind answers. We set the current
-            # step directly and clear only the target answer so it can be re-answered.
-            answers = dict(session.answers or {})
-            answers.pop(question_id, None)
-            session.answers = answers
-
-            completed = list(session.completed_steps or [])
-            if question_id in completed:
-                completed.remove(question_id)
-            session.completed_steps = completed
-
+            # Edit mode keeps the original answer until the replacement is submitted
+            # so cancelling an edit can safely return to the summary unchanged.
             session.state = "in_progress"
             session.edit_mode = True
             session.edit_target = question_id

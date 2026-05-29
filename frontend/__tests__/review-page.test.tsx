@@ -134,7 +134,8 @@ describe('ReviewPage — filter tabs', () => {
     expect(screen.getByRole('tab', { name: /^all$/i })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('tab', { name: /^income$/i })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /^deductions$/i })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /^wfh$/i })).toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: /^wfh$/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^investments$/i })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /^confirmed$/i })).toBeInTheDocument()
   })
 
@@ -174,6 +175,106 @@ describe('ReviewPage — filter tabs', () => {
     fireEvent.click(screen.getByRole('tab', { name: /^deductions$/i }))
     fireEvent.click(screen.getByRole('tab', { name: /^all$/i }))
     expect(mockRouterPush).toHaveBeenLastCalledWith('/review', { scroll: false })
+  })
+
+  it('shows guidance text explaining Supporting Evidence vs Review', async () => {
+    mockGetReviewQueue.mockResolvedValue({ data: { data: emptyQueue } })
+    wrap(<ReviewPage />)
+    await waitFor(() =>
+      expect(screen.getByText(/supporting evidence = uploaded source documents/i)).toBeInTheDocument()
+    )
+    expect(
+      screen.getByText(/review = tax items extracted or manually added for confirmation before export/i)
+    ).toBeInTheDocument()
+  })
+
+  it('shows crypto in Investments filter', async () => {
+    const queue: ReviewQueue = {
+      ...emptyQueue,
+      needs_review: {
+        count: 2,
+        items: [
+          { ...makeItem('item-crypto', 'Crypto disposal'), category: 'crypto', status: 'needs_user_review' },
+          { ...makeItem('item-income', 'PAYG Income'), category: 'payg_income', status: 'needs_user_review' },
+        ],
+      },
+      total: 2,
+      pending: 2,
+    }
+    mockGetReviewQueue.mockResolvedValue({ data: { data: queue } })
+    wrap(<ReviewPage />)
+    await waitFor(() => screen.getByRole('tab', { name: /^investments$/i }))
+    fireEvent.click(screen.getByRole('tab', { name: /^investments$/i }))
+    await waitFor(() => expect(screen.getByText('Crypto disposal')).toBeInTheDocument())
+    expect(screen.queryByText('PAYG Income')).not.toBeInTheDocument()
+  })
+
+  it('shows managed_fund_distribution in Investments filter', async () => {
+    const queue: ReviewQueue = {
+      ...emptyQueue,
+      needs_review: {
+        count: 2,
+        items: [
+          { ...makeItem('item-managed', 'Managed fund annual statement'), category: 'managed_fund_distribution', status: 'needs_user_review' },
+          { ...makeItem('item-expense', 'Work Laptop'), category: 'work_expense', status: 'needs_user_review' },
+        ],
+      },
+      total: 2,
+      pending: 2,
+    }
+    mockGetReviewQueue.mockResolvedValue({ data: { data: queue } })
+    wrap(<ReviewPage />)
+    await waitFor(() => screen.getByRole('tab', { name: /^investments$/i }))
+    fireEvent.click(screen.getByRole('tab', { name: /^investments$/i }))
+    await waitFor(() => expect(screen.getByText('Managed fund annual statement')).toBeInTheDocument())
+    expect(screen.queryByText('Work Laptop')).not.toBeInTheDocument()
+  })
+
+  it('shows bank_interest in Income and not Investments', async () => {
+    const queue: ReviewQueue = {
+      ...emptyQueue,
+      needs_review: {
+        count: 2,
+        items: [
+          { ...makeItem('item-bank', 'Savings account interest'), category: 'bank_interest', status: 'needs_user_review' },
+          { ...makeItem('item-capital', 'ETF sale'), category: 'capital_gain', status: 'needs_user_review' },
+        ],
+      },
+      total: 2,
+      pending: 2,
+    }
+    mockGetReviewQueue.mockResolvedValue({ data: { data: queue } })
+    wrap(<ReviewPage />)
+    await waitFor(() => screen.getByRole('tab', { name: /^income$/i }))
+
+    fireEvent.click(screen.getByRole('tab', { name: /^income$/i }))
+    await waitFor(() => expect(screen.getByText('Savings account interest')).toBeInTheDocument())
+    expect(screen.queryByText('ETF sale')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: /^investments$/i }))
+    await waitFor(() => expect(screen.getByText('ETF sale')).toBeInTheDocument())
+    expect(screen.queryByText('Savings account interest')).not.toBeInTheDocument()
+  })
+
+  it('shows wfh_deduction in Deductions filter', async () => {
+    const queue: ReviewQueue = {
+      ...emptyQueue,
+      needs_review: {
+        count: 2,
+        items: [
+          { ...makeItem('item-wfh', 'WFH running costs'), category: 'wfh_deduction', status: 'needs_user_review' },
+          { ...makeItem('item-income', 'PAYG Income'), category: 'payg_income', status: 'needs_user_review' },
+        ],
+      },
+      total: 2,
+      pending: 2,
+    }
+    mockGetReviewQueue.mockResolvedValue({ data: { data: queue } })
+    wrap(<ReviewPage />)
+    await waitFor(() => screen.getByRole('tab', { name: /^deductions$/i }))
+    fireEvent.click(screen.getByRole('tab', { name: /^deductions$/i }))
+    await waitFor(() => expect(screen.getByText('WFH running costs')).toBeInTheDocument())
+    expect(screen.queryByText('PAYG Income')).not.toBeInTheDocument()
   })
 })
 

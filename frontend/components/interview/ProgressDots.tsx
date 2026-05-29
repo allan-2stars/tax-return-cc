@@ -4,14 +4,19 @@ interface Props {
 }
 
 export default function ProgressDots({ completed, total }: Props) {
+  const safeTotal = Math.max(1, total)
+  const clampedCompleted = Math.max(0, Math.min(completed, safeTotal))
+  const renderTotal = Math.min(safeTotal, 12)
+  const renderCompleted = Math.min(clampedCompleted, renderTotal)
+
   return (
     <div
       className="flex items-center gap-2"
-      aria-label={`${completed} of ${total} questions answered`}
+      aria-label={`${clampedCompleted} of ${safeTotal} questions answered`}
     >
-      {Array.from({ length: total }).map((_, i) => {
-        const isDone = i < completed
-        const isCurrent = i === completed
+      {Array.from({ length: renderTotal }).map((_, i) => {
+        const isDone = i < renderCompleted
+        const isCurrent = i === renderCompleted
         return (
           <div
             key={i}

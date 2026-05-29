@@ -39,8 +39,9 @@ function formatOptionLabel(value: string | number): string {
   return OPTION_LABELS[s] ?? s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-function numericConstraints(questionId: string): { min?: number; max?: number } {
-  if (questionId === 'dependent_count') return { min: 0, max: 20 }
+function numericConstraints(questionId: string): { min?: number; max?: number; step?: number } {
+  if (questionId === 'dependent_count') return { min: 1, max: 20, step: 1 }
+  if (questionId === 'wfh_days') return { min: 1, max: 7, step: 1 }
   if (questionId === 'spouse_rfba_amount') return { min: 0, max: 1000000 }
   return {}
 }
@@ -51,10 +52,13 @@ interface Props {
   onBack: () => void
   onSkip: (questionId: string) => void
   isSubmitting?: boolean
+  currentAnswer?: string | number | boolean | null
+  serverError?: string | null
+  editMode?: boolean
 }
 
 export default function QuestionCard({
-  question, onAnswer, onBack, onSkip, isSubmitting = false,
+  question, onAnswer, onBack, onSkip, isSubmitting = false, currentAnswer, serverError,
 }: Props) {
   const [whyOpen, setWhyOpen] = useState(false)
   const constraints = numericConstraints(question.id)
@@ -119,7 +123,11 @@ export default function QuestionCard({
                 type="button"
                 onClick={() => onAnswer(question.id, opt)}
                 disabled={isSubmitting}
-                className="w-full py-4 px-4 text-left rounded-md bg-surface border border-border hover:border-accent text-text-body font-ui transition-colors disabled:opacity-50"
+                className={`w-full py-4 px-4 text-left rounded-md bg-surface border text-text-body font-ui transition-colors disabled:opacity-50 ${
+                  String(currentAnswer ?? '') === String(opt)
+                    ? 'border-accent'
+                    : 'border-border hover:border-accent'
+                }`}
               >
                 {formatOptionLabel(opt)}
               </button>
@@ -128,9 +136,15 @@ export default function QuestionCard({
         </ul>
       )}
 
+      {serverError && (
+        <p role="alert" className="text-sm font-ui text-risk-high">
+          {serverError}
+        </p>
+      )}
+
       {/* Currency input */}
       {question.currency && (
-        <form onSubmit={handleSubmit(onNumberSubmit)} className="space-y-3">
+        <form onSubmit={handleSubmit(onNumberSubmit)} noValidate className="space-y-3">
           <div>
             <div className="relative flex items-center">
               <span className="absolute left-3 text-text-muted font-ui text-sm select-none">$</span>
@@ -140,6 +154,7 @@ export default function QuestionCard({
                 disabled={isSubmitting}
                 style={{ MozAppearance: 'textfield' } as React.CSSProperties}
                 className="w-full pl-7 pr-4 py-3 rounded-md border border-border bg-surface font-mono text-base text-text-primary focus:outline-none focus:border-accent [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                defaultValue={currentAnswer == null ? '' : String(currentAnswer)}
                 {...constraints}
                 {...register('answer', question.required ? { required: 'Please enter an amount.' } : {})}
               />
@@ -165,12 +180,13 @@ export default function QuestionCard({
 
       {/* Plain text / number input */}
       {!question.currency && (question.type === 'text' || question.type === 'number') && (
-        <form onSubmit={handleSubmit(onNumberSubmit)} className="space-y-3">
+        <form onSubmit={handleSubmit(onNumberSubmit)} noValidate className="space-y-3">
           <div>
             <input
               type={question.type === 'number' ? 'number' : 'text'}
               disabled={isSubmitting}
               className="w-full py-3 px-4 rounded-md bg-surface border border-border focus:border-accent focus:outline-none text-text-body font-ui"
+              defaultValue={currentAnswer == null ? '' : String(currentAnswer)}
               {...(question.type === 'number' ? constraints : {})}
               {...register('answer', question.required ? { required: 'This field is required.' } : {})}
             />

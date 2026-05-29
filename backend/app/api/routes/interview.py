@@ -160,6 +160,41 @@ def _progress(session: InterviewSession) -> dict:
     return {"completed": completed, "total": total}
 
 
+def _edit_progress(session: InterviewSession) -> dict:
+    if not session.edit_mode:
+        return {"edit_flow_completed": 0, "edit_flow_total": 0}
+
+    current = 1 if session.current_step else 0
+    pending = len(session.pending_queue or [])
+    if not session.edit_target:
+        return {"edit_flow_completed": 0, "edit_flow_total": current + pending}
+    if (session.current_step or {}).get("id") == session.edit_target:
+        return {"edit_flow_completed": 0, "edit_flow_total": max(1, current + pending)}
+
+    branch_path = list(session.branch_path or [])
+    target_index = next(
+        (
+            idx for idx in range(len(branch_path) - 1, -1, -1)
+            if branch_path[idx].get("question_id") == session.edit_target
+        ),
+        None,
+    )
+    completed = 0 if target_index is None else len(branch_path[target_index:])
+    total = completed + current + pending
+    return {
+        "edit_flow_completed": completed,
+        "edit_flow_total": max(1, total),
+    }
+
+
+def _edit_fields(session: InterviewSession) -> dict:
+    return {
+        "edit_mode": bool(session.edit_mode),
+        "edit_target": session.edit_target,
+        **_edit_progress(session),
+    }
+
+
 def _no_session_error() -> HTTPException:
     return HTTPException(
         status_code=409,
@@ -229,6 +264,7 @@ async def get_session(
             "answers": session.answers or {},
             "activated_skills": session.activated_skills or [],
             "progress": _progress(session),
+            **_edit_fields(session),
             "needs_restart": needs_restart,
             "missing_platform_ids": missing_platform_ids,
         }
@@ -328,6 +364,7 @@ async def answer_question(
             "next_question": _q_dict(next_q, financial_year=session.financial_year),
             "activated_skills": session.activated_skills or [],
             "progress": _progress(session),
+            **_edit_fields(session),
         }
     }
 
@@ -380,6 +417,32 @@ async def go_back(
             "state": session.state,
             "current_question": _q_dict(prev_q, financial_year=session.financial_year),
             "progress": _progress(session),
+            **_edit_fields(session),
+        }
+    }
+
+
+# ── POST /interview/cancel-edit ───────────────────────────────────────────────
+
+@router.post("/interview/cancel-edit")
+async def cancel_edit(
+    workspace_id: str = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    session = await interview_repo.get_active_by_workspace(db, workspace_id)
+    if not session:
+        raise _no_session_error()
+
+    session = await _engine.cancel_edit(session.id, db)
+    return {
+        "data": {
+            "session_id": session.id,
+            "state": session.state,
+            "current_question": None,
+            "answers": session.answers or {},
+            "activated_skills": session.activated_skills or [],
+            "progress": _progress(session),
+            **_edit_fields(session),
         }
     }
 
@@ -505,6 +568,6 @@ async def jump_to_question(
             "state":            session.state,
             "current_question": _q_dict(q),
             "progress":         _progress(session),
-            "edit_mode":        session.edit_mode,
+            **_edit_fields(session),
         }
     }

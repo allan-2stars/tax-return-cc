@@ -17,6 +17,8 @@ jest.mock('next/navigation', () => ({
 const mockGetSession = interviewApi.getSession as jest.Mock
 const mockGetYoySuggestions = interviewApi.getYoySuggestions as jest.Mock
 const mockRestartInterview = interviewApi.restartInterview as jest.Mock
+const mockGoBack = interviewApi.goBack as jest.Mock
+const mockCancelEdit = interviewApi.cancelEdit as jest.Mock
 const mockUseInterviewStore = useInterviewStore as jest.Mock
 const mockSetNewSkillPending = jest.fn()
 
@@ -67,6 +69,52 @@ test('shows QuestionCard when state is in_progress', async () => {
   mockGetSession.mockResolvedValue(SESSION('in_progress', QUESTION))
   wrap(<JourneyPage />)
   await waitFor(() => expect(screen.getByText('Did you work from home?')).toBeInTheDocument())
+})
+
+test('back in edit mode cancels edit and returns to summary instead of normal back', async () => {
+  mockGetSession.mockResolvedValue(SESSION('in_progress', QUESTION, {
+    edit_mode: true,
+    edit_target: 'wfh',
+    edit_flow_completed: 0,
+    edit_flow_total: 1,
+  }))
+  mockCancelEdit.mockResolvedValue({
+    data: { data: {
+      state: 'awaiting_evidence',
+      current_question: null,
+      activated_skills: ['employee_tax_au'],
+      progress: { completed: 5, total: 5 },
+      edit_mode: false,
+      edit_target: null,
+      edit_flow_completed: 0,
+      edit_flow_total: 0,
+    } },
+  })
+
+  const user = userEvent.setup()
+  wrap(<JourneyPage />)
+
+  await waitFor(() => expect(screen.getByText('Did you work from home?')).toBeInTheDocument())
+  await user.click(screen.getByRole('button', { name: /back/i }))
+
+  await waitFor(() => expect(mockCancelEdit).toHaveBeenCalled())
+  expect(mockGoBack).not.toHaveBeenCalled()
+  await waitFor(() => expect(screen.getByText(/you're all set up/i)).toBeInTheDocument())
+})
+
+test('progress dots use edit mini-flow total when editing one question', async () => {
+  mockGetSession.mockResolvedValue(SESSION('in_progress', QUESTION, {
+    edit_mode: true,
+    edit_target: 'wfh',
+    edit_flow_completed: 0,
+    edit_flow_total: 1,
+  }))
+
+  wrap(<JourneyPage />)
+
+  await waitFor(() => expect(screen.getByText('Did you work from home?')).toBeInTheDocument())
+  expect(screen.getAllByTestId('dot')).toHaveLength(1)
+  expect(screen.getByLabelText('0 of 1 questions answered')).toBeInTheDocument()
 })
 
 test('shows completion screen when state is awaiting_evidence', async () => {

@@ -1,10 +1,11 @@
 'use client'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   startInterview, answerQuestion, completeInterview,
   restartInterview,
-  goBack, skipQuestion, getYoySuggestions, actOnSuggestion,
+  goBack, cancelEdit, skipQuestion, getYoySuggestions, actOnSuggestion,
 } from '@/lib/api/interview'
 import type { InterviewSessionData, YoYSuggestion } from '@/lib/api/types'
 import QuestionCard from '@/components/interview/QuestionCard'
@@ -22,6 +23,11 @@ export default function JourneyPage() {
   const { newSkillPending, setNewSkillPending } = useInterviewStore()
 
   const { data, isLoading, isError } = useInterview()
+  const [serverError, setServerError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setServerError(null)
+  }, [data?.current_question?.id])
 
   const { data: yoy } = useQuery<YoYSuggestion[]>({
     queryKey: ['yoy', 'suggestions'],
@@ -49,6 +55,7 @@ export default function JourneyPage() {
     mutationFn: ({ question_id, answer }: { question_id: string; answer: string }) =>
       answerQuestion(question_id, answer),
     onSuccess: async (res) => {
+      setServerError(null)
       const d = res.data.data
       const prev = data?.activated_skills ?? []
       const newSkill = d.activated_skills.find((s) => !prev.includes(s))
@@ -61,6 +68,10 @@ export default function JourneyPage() {
           current_question: null,
           activated_skills: d.activated_skills,
           progress: d.progress,
+          edit_mode: d.edit_mode,
+          edit_target: d.edit_target,
+          edit_flow_completed: d.edit_flow_completed,
+          edit_flow_total: d.edit_flow_total,
         })
         queryClient.invalidateQueries({ queryKey: ['interview', 'summary'] })
         return
@@ -82,13 +93,30 @@ export default function JourneyPage() {
         current_question: d.next_question, // answer response uses next_question; cache uses current_question
         activated_skills: d.activated_skills,
         progress: d.progress,
+        edit_mode: d.edit_mode,
+        edit_target: d.edit_target,
+        edit_flow_completed: d.edit_flow_completed,
+        edit_flow_total: d.edit_flow_total,
       })
+    },
+    onError: (err: unknown) => {
+      const message = (err as { response?: { status?: number; data?: { detail?: { message?: string } } } })
+        ?.response?.data?.detail?.message
+      setServerError(message ?? 'Unable to save answer right now. Please try again.')
     },
   })
 
   const backMutation = useMutation({
     mutationFn: goBack,
     onSuccess: (res) => patch(res.data.data),
+  })
+
+  const cancelEditMutation = useMutation({
+    mutationFn: cancelEdit,
+    onSuccess: (res) => {
+      patch(res.data.data)
+      queryClient.invalidateQueries({ queryKey: ['interview', 'summary'] })
+    },
   })
 
   const skipMutation = useMutation({
@@ -105,10 +133,17 @@ export default function JourneyPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['yoy', 'suggestions'] }),
   })
 
-  const isBusy = answerMutation.isPending || backMutation.isPending || skipMutation.isPending
+  const isBusy = answerMutation.isPending || backMutation.isPending || cancelEditMutation.isPending || skipMutation.isPending
 
   if (isLoading) return <div className="p-8 font-ui text-text-muted">Loading your tax journey...</div>
   if (isError || !data) return <div className="p-8 font-ui text-risk-high">Unable to load your tax journey. Please refresh the page.</div>
+
+  const displayProgress = data.edit_mode
+    ? {
+        completed: data.edit_flow_completed ?? 0,
+        total: data.edit_flow_total ?? 1,
+      }
+    : data.progress
 
   return (
     <div className="max-w-xl mx-auto px-4 py-8 space-y-6">
@@ -150,13 +185,16 @@ export default function JourneyPage() {
 
       {(data.state === 'in_progress' || data.state === 'paused') && data.current_question && (
         <div className="space-y-6">
-          <ProgressDots completed={data.progress.completed} total={data.progress.total} />
+          <ProgressDots completed={displayProgress.completed} total={displayProgress.total} />
           <QuestionCard
             question={data.current_question}
             onAnswer={(qid, ans) => answerMutation.mutate({ question_id: qid, answer: ans })}
-            onBack={() => backMutation.mutate()}
+            onBack={() => data.edit_mode ? cancelEditMutation.mutate() : backMutation.mutate()}
             onSkip={(qid) => skipMutation.mutate({ question_id: qid, reason: 'user_skipped' })}
             isSubmitting={isBusy}
+            currentAnswer={data.answers?.[data.current_question.id]}
+            serverError={serverError}
+            editMode={data.edit_mode}
           />
         </div>
       )}

@@ -25,6 +25,9 @@ export const answerQuestion = (question_id: string, answer: string | number) =>
 export const goBack = () =>
   client.post<ApiResponse<InterviewSessionData>>('/api/v1/interview/back')
 
+export const cancelEdit = () =>
+  client.post<ApiResponse<InterviewSessionData>>('/api/v1/interview/cancel-edit')
+
 export const skipQuestion = (question_id: string, reason: string) =>
   client.post<ApiResponse<SkipResponseData>>('/api/v1/interview/skip', { question_id, reason })
 

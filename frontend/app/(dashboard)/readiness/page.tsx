@@ -11,7 +11,7 @@ import { getEstimatorSummary } from '@/lib/api/estimator'
 import useWorkspaceStore from '@/lib/stores/workspace.store'
 import { getFYEndLabel, isFYActive } from '@/lib/utils/fy'
 export default function ReadinessPage() {
-  const { data, isLoading, isError } = useReadiness()
+  const { data, isLoading, isError, recalcError } = useReadiness()
   const { data: estimate, isLoading: estimateLoading } = useQuery({
     queryKey: ['tax-estimate'],
     queryFn: () => getEstimatorSummary().then((r) => r.data.data),
@@ -59,10 +59,13 @@ export default function ReadinessPage() {
           Tax Readiness
         </h1>
         {data.is_stale && (
-          <p className="mt-1 text-xs font-ui text-text-muted flex items-center gap-1">
-            <span className="inline-block w-2 h-2 rounded-full bg-review animate-pulse" />
-            Updating…
-          </p>
+          <div className="mt-1 space-y-1">
+            <p className="text-xs font-ui text-text-muted flex items-center gap-1">
+              <span className="inline-block w-2 h-2 rounded-full bg-review animate-pulse" />
+              Updating…
+            </p>
+            {recalcError && <p className="text-xs font-ui text-risk-high">{recalcError}</p>}
+          </div>
         )}
       </div>
 

@@ -179,7 +179,17 @@ async def test_create_manual_event_stores_metadata(db_session, workspace):
     from app.engines.review import ReviewEngine
 
     engine = ReviewEngine()
-    meta = {"investment_sub_type": "shares", "transaction_type": "buy", "units": 100}
+    meta = {
+        "investment_sub_type": "shares",
+        "transaction_type": "buy",
+        "platform": "CommSec",
+        "stock_code": "CBA",
+        "exchange": "ASX",
+        "units": 100,
+        "price_per_unit": 82.50,
+        "brokerage_fee": 9.95,
+        "purchase_date": "2025-08-15",
+    }
 
     with patch.object(engine._readiness_engine, "recalculate") as mock_recalc:
         mock_recalc.return_value = asyncio.sleep(0)
@@ -226,7 +236,16 @@ async def test_create_manual_event_needs_agent_review_sets_status_on_event_and_r
             frequency="one_off",
             note=None,
             periods=None,
-            metadata={"investment_sub_type": "foreign_income"},
+            metadata={
+                "investment_sub_type": "foreign_income",
+                "country": "United States",
+                "income_type": "Dividends",
+                "foreign_amount": 300.0,
+                "currency": "USD",
+                "exchange_rate": 1.5,
+                "income_date": "2025-03-01",
+                "foreign_tax_paid": 0.0,
+            },
             review_status="needs_agent_review",
             db=db_session,
         )
@@ -240,3 +259,184 @@ async def test_create_manual_event_needs_agent_review_sets_status_on_event_and_r
     )
     item = result.scalar_one()
     assert item.status == "needs_agent_review"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("description", "amount", "date", "metadata", "match_message"),
+    [
+        (
+            "Crypto Buy invalid coin",
+            100.0,
+            "2025-01-01",
+            {
+                "investment_sub_type": "crypto",
+                "transaction_type": "buy",
+                "exchange": "CoinSpot",
+                "coin": "btc!",
+                "amount_units": 1.0,
+                "purchase_price": 100.0,
+                "transaction_fee": 0.0,
+                "purchase_date": "2025-01-01",
+            },
+            "Coin/token",
+        ),
+        (
+            "Crypto Buy zero units",
+            100.0,
+            "2025-01-01",
+            {
+                "investment_sub_type": "crypto",
+                "transaction_type": "buy",
+                "exchange": "CoinSpot",
+                "coin": "BTC",
+                "amount_units": 0.0,
+                "purchase_price": 100.0,
+                "transaction_fee": 0.0,
+                "purchase_date": "2025-01-01",
+            },
+            "amount_units",
+        ),
+        (
+            "Shares Sell invalid stock code",
+            100.0,
+            "2025-02-01",
+            {
+                "investment_sub_type": "shares",
+                "transaction_type": "sell",
+                "platform": "CommSec",
+                "stock_code": "CBA-",
+                "exchange": "ASX",
+                "units": 10,
+                "sale_price_per_unit": 10,
+                "purchase_price_per_unit": 8,
+                "brokerage_fee": 1,
+                "sale_date": "2025-02-01",
+                "purchase_date": "2025-01-01",
+            },
+            "Stock code",
+        ),
+        (
+            "Shares Sell purchase after sale",
+            100.0,
+            "2025-02-01",
+            {
+                "investment_sub_type": "shares",
+                "transaction_type": "sell",
+                "platform": "CommSec",
+                "stock_code": "CBA",
+                "exchange": "ASX",
+                "units": 10,
+                "sale_price_per_unit": 10,
+                "purchase_price_per_unit": 8,
+                "brokerage_fee": 1,
+                "sale_date": "2025-01-01",
+                "purchase_date": "2025-02-01",
+            },
+            "purchase_date",
+        ),
+        (
+            "Foreign Income invalid currency",
+            100.0,
+            "2025-01-01",
+            {
+                "investment_sub_type": "foreign_income",
+                "country": "United States",
+                "income_type": "Dividends",
+                "foreign_amount": 100,
+                "currency": "US1D",
+                "exchange_rate": 1.5,
+                "income_date": "2025-01-01",
+            },
+            "Currency code",
+        ),
+        (
+            "Foreign Income non-positive amount",
+            100.0,
+            "2025-01-01",
+            {
+                "investment_sub_type": "foreign_income",
+                "country": "United States",
+                "income_type": "Dividends",
+                "foreign_amount": 0,
+                "currency": "USD",
+                "exchange_rate": 1.5,
+                "income_date": "2025-01-01",
+            },
+            "foreign_amount",
+        ),
+    ],
+)
+async def test_create_manual_event_rejects_invalid_investment_metadata_and_does_not_persist(
+    db_session, workspace, description, amount, date, metadata, match_message
+):
+    import asyncio
+    from app.engines.review import ReviewEngine
+
+    engine = ReviewEngine()
+    before_events = (await db_session.execute(select(TaxEvent))).scalars().all()
+    before_items = (await db_session.execute(select(ReviewItemModel))).scalars().all()
+
+    with patch.object(engine._readiness_engine, "recalculate") as mock_recalc:
+        mock_recalc.return_value = asyncio.sleep(0)
+        with pytest.raises(ValueError, match=match_message):
+            await engine.create_manual_event(
+                workspace_id=workspace.id,
+                financial_year="2024-25",
+                event_type="investment",
+                category="crypto",
+                description=description,
+                amount=amount,
+                date=date,
+                frequency="one_off",
+                note=None,
+                periods=None,
+                metadata=metadata,
+                db=db_session,
+            )
+
+    after_events = (await db_session.execute(select(TaxEvent))).scalars().all()
+    after_items = (await db_session.execute(select(ReviewItemModel))).scalars().all()
+    assert len(after_events) == len(before_events)
+    assert len(after_items) == len(before_items)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("description", "note", "match_message"),
+    [
+        ("x" * 501, None, "Description"),
+        ("Valid description", "x" * 5001, "Note"),
+    ],
+)
+async def test_create_manual_event_rejects_overlong_description_or_note_and_does_not_persist(
+    db_session, workspace, description, note, match_message
+):
+    import asyncio
+    from app.engines.review import ReviewEngine
+
+    engine = ReviewEngine()
+    before_events = (await db_session.execute(select(TaxEvent))).scalars().all()
+    before_items = (await db_session.execute(select(ReviewItemModel))).scalars().all()
+
+    with patch.object(engine._readiness_engine, "recalculate") as mock_recalc:
+        mock_recalc.return_value = asyncio.sleep(0)
+        with pytest.raises(ValueError, match=match_message):
+            await engine.create_manual_event(
+                workspace_id=workspace.id,
+                financial_year="2024-25",
+                event_type="deduction",
+                category="work_expense",
+                description=description,
+                amount=10.0,
+                date="2025-01-01",
+                frequency="one_off",
+                note=note,
+                periods=None,
+                db=db_session,
+            )
+
+    after_events = (await db_session.execute(select(TaxEvent))).scalars().all()
+    after_items = (await db_session.execute(select(ReviewItemModel))).scalars().all()
+    assert len(after_events) == len(before_events)
+    assert len(after_items) == len(before_items)

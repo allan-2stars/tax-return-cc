@@ -96,6 +96,10 @@ export interface InterviewSessionData {
   answers?: Record<string, string>
   activated_skills?: string[]
   progress: InterviewProgress
+  edit_mode?: boolean
+  edit_target?: string | null
+  edit_flow_completed?: number
+  edit_flow_total?: number
   resumed?: boolean
   needs_restart?: boolean
   missing_platform_ids?: string[]
@@ -107,6 +111,10 @@ export interface AnswerResponseData {
   next_question: InterviewQuestion | null
   activated_skills: string[]
   progress: InterviewProgress
+  edit_mode?: boolean
+  edit_target?: string | null
+  edit_flow_completed?: number
+  edit_flow_total?: number
 }
 
 export interface SkipResponseData {

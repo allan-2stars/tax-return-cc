@@ -219,8 +219,25 @@ test('dependent_count input includes min/max constraints', () => {
   }
   render(<QuestionCard question={q} onAnswer={jest.fn()} onBack={jest.fn()} onSkip={jest.fn()} />)
   const input = screen.getByRole('spinbutton')
-  expect(input).toHaveAttribute('min', '0')
+  expect(input).toHaveAttribute('min', '1')
   expect(input).toHaveAttribute('max', '20')
+})
+
+test('wfh_days input includes min/max constraints', () => {
+  const q: InterviewQuestion = {
+    id: 'wfh_days',
+    ask: 'How many days per week did you regularly work from home?',
+    type: 'number',
+    options: null,
+    branches: null,
+    required: false,
+    why: null,
+    hint: null,
+  }
+  render(<QuestionCard question={q} onAnswer={jest.fn()} onBack={jest.fn()} onSkip={jest.fn()} />)
+  const input = screen.getByRole('spinbutton')
+  expect(input).toHaveAttribute('min', '1')
+  expect(input).toHaveAttribute('max', '7')
 })
 
 test('spouse_rfba_amount currency input includes min/max constraints', () => {
@@ -240,4 +257,57 @@ test('spouse_rfba_amount currency input includes min/max constraints', () => {
   const input = screen.getByRole('spinbutton')
   expect(input).toHaveAttribute('min', '0')
   expect(input).toHaveAttribute('max', '1000000')
+})
+
+test('numeric input is prefilled from currentAnswer', () => {
+  const q: InterviewQuestion = {
+    id: 'dependent_count',
+    ask: 'How many dependent children do you have?',
+    type: 'number',
+    options: null,
+    branches: null,
+    required: false,
+    why: null,
+    hint: null,
+  }
+  render(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    <QuestionCard question={q} onAnswer={jest.fn()} onBack={jest.fn()} onSkip={jest.fn()} {...({ currentAnswer: '3' } as any)} />
+  )
+  const input = screen.getByRole('spinbutton') as HTMLInputElement
+  expect(input.value).toBe('3')
+})
+
+test('choice option matching currentAnswer is visually highlighted', () => {
+  render(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    <QuestionCard question={choiceQ} onAnswer={jest.fn()} onBack={jest.fn()} onSkip={jest.fn()} {...({ currentAnswer: 'yes_sometimes' } as any)} />
+  )
+  const selected = screen.getByRole('button', { name: 'Yes Sometimes' })
+  expect(selected.className).toContain('border-accent')
+})
+
+test('serverError renders inline', () => {
+  render(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    <QuestionCard question={choiceQ} onAnswer={jest.fn()} onBack={jest.fn()} onSkip={jest.fn()} {...({ serverError: 'Value must be at least 1.' } as any)} />
+  )
+  expect(screen.getByText('Value must be at least 1.')).toBeInTheDocument()
+})
+
+test('form uses noValidate to suppress native browser popup', () => {
+  const q: InterviewQuestion = {
+    id: 'dependent_count',
+    ask: 'How many dependent children do you have?',
+    type: 'number',
+    options: null,
+    branches: null,
+    required: false,
+    why: null,
+    hint: null,
+  }
+  render(<QuestionCard question={q} onAnswer={jest.fn()} onBack={jest.fn()} onSkip={jest.fn()} />)
+  const input = screen.getByRole('spinbutton')
+  const form = input.closest('form')
+  expect(form).toHaveAttribute('novalidate')
 })
