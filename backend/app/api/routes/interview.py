@@ -9,6 +9,7 @@ from app.engines.interview import (
     InterviewEngine, InlineQuestion, _QUESTION_BY_ID,
     BRANCH_QUESTIONS, PLATFORM_QUESTIONS, _fy_confirm_options,
 )
+from app.services.evidence_reconcile import EvidenceReconcileService
 from app.errors import error_response
 from app.repositories import auth as auth_repo
 from app.repositories import interview as interview_repo
@@ -17,6 +18,7 @@ from app.skills.base import Question
 router = APIRouter()
 
 _engine = InterviewEngine()
+_reconcile_service = EvidenceReconcileService()
 
 
 # ── Summary constants ─────────────────────────────────────────────────────────
@@ -392,6 +394,7 @@ async def answer_question(
             status_code=422,
             detail=error_response("invalid_answer", str(e), retryable=False),
         )
+    await _reconcile_service.trigger(workspace_id=workspace_id, trigger_source="event_update", db=db)
 
     return {
         "data": {
@@ -418,6 +421,7 @@ async def skip_question(
         raise _no_session_error()
 
     session, next_q = await _engine.skip(session.id, body.question_id, body.reason, db)
+    await _reconcile_service.trigger(workspace_id=workspace_id, trigger_source="event_update", db=db)
     return {
         "data": {
             "session_id": session.id,
@@ -470,6 +474,7 @@ async def cancel_edit(
         raise _no_session_error()
 
     session = await _engine.cancel_edit(session.id, db)
+    await _reconcile_service.trigger(workspace_id=workspace_id, trigger_source="event_update", db=db)
     return {
         "data": {
             "session_id": session.id,
@@ -495,6 +500,7 @@ async def complete_interview(
         raise _no_session_error()
 
     session = await _engine.complete(session.id, db)
+    await _reconcile_service.trigger(workspace_id=workspace_id, trigger_source="event_update", db=db)
     return {
         "data": {
             "session_id": session.id,

@@ -114,6 +114,9 @@ export default function ReadinessPage() {
               ⬜ {data.missing_items_count} piece{data.missing_items_count !== 1 ? 's' : ''} of evidence still missing →
             </Link>
           )}
+          <Link href="/readiness/checklist" className="text-sm font-ui text-text-muted hover:text-text-body transition-colors">
+            View evidence checklist →
+          </Link>
         </div>
 
         {/* CTA */}
@@ -129,6 +132,31 @@ export default function ReadinessPage() {
       {data.breakdown.length > 0 && (
         <div className="bg-surface rounded-lg shadow-sm p-6">
           <SkillBreakdown breakdown={data.breakdown} />
+        </div>
+      )}
+
+      {data.evidence_obligation_summary && (
+        <div className="bg-surface rounded-lg shadow-sm p-6 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-ui text-sm font-semibold text-text-primary">Evidence readiness</h2>
+            <Link href="/readiness/checklist" className="text-xs font-ui text-accent hover:underline">
+              Open checklist
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm font-ui">
+            <p className="text-risk-high">
+              Required missing: {data.evidence_obligation_summary.required_missing}
+            </p>
+            <p className="text-review">
+              Required partial: {data.evidence_obligation_summary.required_partially_matched}
+            </p>
+            <p className="text-ready">
+              Required matched: {data.evidence_obligation_summary.required_matched}
+            </p>
+          </div>
+          <p className="text-xs font-ui text-text-muted">
+            Evidence readiness is shown separately from your overall tax readiness score.
+          </p>
         </div>
       )}
 

@@ -51,6 +51,29 @@ export interface ReadinessData {
   agent_items_count: number
   is_stale: boolean
   calculated_at: string | null
+  evidence_obligation_summary?: {
+    total_obligations: number
+    required_missing: number
+    required_partially_matched: number
+    required_matched: number
+    recommended_missing: number
+    recommended_partially_matched: number
+    recommended_matched: number
+    blocking_evidence_obligations: Array<{
+      id: string
+      obligation_key: string
+      label: string
+      category: string | null
+      required_level: string
+      status: string
+      reason: string | null
+    }>
+  }
+  evidence_freshness?: {
+    evidence_reconciled_at: string | null
+    evidence_reconcile_status: string
+    evidence_reconcile_meta?: Record<string, unknown> | null
+  }
 }
 
 export interface MissingItem {
@@ -64,6 +87,57 @@ export interface MissingItem {
 export interface MissingData {
   available_now: MissingItem[]
   available_after_fy: MissingItem[]
+}
+
+export type EvidenceObligationStatus =
+  | 'missing'
+  | 'partially_matched'
+  | 'matched'
+  | 'waived'
+  | 'not_applicable'
+
+export interface EvidenceMatchDocument {
+  id: string
+  original_filename: string
+  document_type: string | null
+  status: string
+}
+
+export interface EvidenceMatchTaxEvent {
+  id: string
+  event_type: string
+  category: string
+  status: string
+}
+
+export interface EvidenceMatchItem {
+  id: string
+  match_type: 'document' | 'tax_event' | 'manual'
+  status: 'candidate' | 'accepted' | 'rejected'
+  confidence: number | null
+  reason: string | null
+  document: EvidenceMatchDocument | null
+  tax_event: EvidenceMatchTaxEvent | null
+}
+
+export interface EvidenceObligation {
+  id: string
+  workspace_id: string
+  financial_year: string
+  source_type: string
+  source_id: string | null
+  obligation_key: string
+  category: string | null
+  label: string
+  description: string | null
+  required_level: 'required' | 'recommended' | 'optional'
+  status: EvidenceObligationStatus
+  reason: string | null
+  rule_version?: string | null
+  matches: EvidenceMatchItem[]
+  metadata_json: Record<string, unknown>
+  created_at: string | null
+  updated_at: string | null
 }
 
 export interface RecalculateData {
@@ -256,6 +330,41 @@ export interface ExportEligibility {
   can_export: boolean
   blocking_reasons: string[]
   warnings: string[]
+  eligibility_preview?: {
+    evidence_required_total: number
+    evidence_required_blocking_total: number
+    evidence_required_missing_total: number
+    evidence_required_partial_total: number
+    blocking_evidence_obligations: Array<{
+      id: string
+      obligation_key: string
+      label: string
+      category: string | null
+      required_level: string
+      status: string
+      reason: string | null
+      rule_version?: string | null
+    }>
+    would_block_export: boolean
+  } | null
+  evidence_export_status?: {
+    would_block_export: boolean
+    blocking_required_count: number
+    missing_required_count: number
+    partial_required_count: number
+    blocking_evidence_obligations: Array<{
+      id: string
+      obligation_key: string
+      label: string
+      category: string | null
+      required_level: string
+      status: string
+      reason: string | null
+      rule_version?: string | null
+    }>
+    mode: 'soft_block'
+    message: string
+  }
 }
 
 export type ExportStatus = 'generating' | 'ready' | 'expired' | 'failed'

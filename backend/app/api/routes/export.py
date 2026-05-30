@@ -7,12 +7,15 @@ from datetime import datetime, timedelta, timezone
 
 from app.api.dependencies import require_auth
 from app.db.base import get_db
+from app.db.models import Workspace
 from app.engines.export import ExportEngine
 from app.errors import error_response
+from app.services.export_eligibility import ExportEligibilityService
 
 router = APIRouter()
 
 _engine = ExportEngine()
+_eligibility_service = ExportEligibilityService()
 
 
 class GenerateRequest(BaseModel):
@@ -48,11 +51,45 @@ async def get_eligibility(
     db: AsyncSession = Depends(get_db),
 ):
     result = await _engine.check_eligibility(workspace_id, db)
+    ws = await db.get(Workspace, workspace_id)
+    preview = None
+    if ws:
+        preview_obj = await _eligibility_service.build_preview(
+            workspace_id=workspace_id,
+            financial_year=ws.financial_year,
+            db=db,
+        )
+        preview = {
+            "evidence_required_total": preview_obj.evidence_required_total,
+            "evidence_required_blocking_total": preview_obj.evidence_required_blocking_total,
+            "evidence_required_missing_total": preview_obj.evidence_required_missing_total,
+            "evidence_required_partial_total": preview_obj.evidence_required_partial_total,
+            "blocking_evidence_obligations": preview_obj.blocking_evidence_obligations,
+            "would_block_export": preview_obj.would_block_export,
+        }
+    evidence_export_status = {
+        "would_block_export": bool(preview["would_block_export"]) if preview else False,
+        "blocking_required_count": int(preview["evidence_required_blocking_total"]) if preview else 0,
+        "missing_required_count": int(preview["evidence_required_missing_total"]) if preview else 0,
+        "partial_required_count": int(preview["evidence_required_partial_total"]) if preview else 0,
+        "blocking_evidence_obligations": preview["blocking_evidence_obligations"] if preview else [],
+        "mode": "soft_block",
+        "message": (
+            "Evidence requirements are currently satisfied."
+            if not (preview and preview["would_block_export"])
+            else (
+                "Export is allowed for now, but required evidence is incomplete and may block export "
+                "in a future hardening milestone."
+            )
+        ),
+    }
     return {
         "data": {
             "can_export": result.can_export,
             "blocking_reasons": result.blocking_reasons,
             "warnings": result.warnings,
+            "eligibility_preview": preview,
+            "evidence_export_status": evidence_export_status,
         }
     }
 

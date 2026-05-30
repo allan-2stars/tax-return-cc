@@ -147,6 +147,10 @@ def _mock_zipper():
     return mock_pz, mock_zf
 
 
+async def _run_export_inline(coro):
+    await coro
+
+
 # ── 1. eligibility blocked — interview not complete ───────────────────────────
 
 @pytest.mark.asyncio
@@ -367,9 +371,12 @@ async def test_generate_package_structure_correct(workspace, db_session, tmp_pat
     with patch("app.engines.export.HTML") as mock_html, \
          patch("app.engines.export.pyzipper", mock_pz):
         mock_html.return_value.write_pdf.return_value = b"PDF"
-        engine = ExportEngine(export_path=str(tmp_path), storage=mock_storage)
+        engine = ExportEngine(
+            export_path=str(tmp_path),
+            storage=mock_storage,
+            export_task_runner=_run_export_inline,
+        )
         record = await engine.generate(workspace.id, "test-password", db_session)
-        await asyncio.sleep(0.05)
 
     await db_session.refresh(record)
     assert record.status == "ready"
@@ -439,9 +446,12 @@ async def test_export_zip_contains_all_required_files(workspace, db_session, tmp
     with patch("app.engines.export.HTML") as mock_html, \
          patch("app.engines.export.pyzipper", mock_pz):
         mock_html.return_value.write_pdf.return_value = b"PDF"
-        engine = ExportEngine(export_path=str(tmp_path), storage=MagicMock())
+        engine = ExportEngine(
+            export_path=str(tmp_path),
+            storage=MagicMock(),
+            export_task_runner=_run_export_inline,
+        )
         await engine.generate(workspace.id, "test-password", db_session)
-        await asyncio.sleep(0.05)
 
     written_names = {args[0] for args, _ in mock_zf.writestr.call_args_list}
     for req in REQUIRED_FILES:

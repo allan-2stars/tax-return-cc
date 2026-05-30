@@ -1,10 +1,12 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_auth
 from app.db.base import get_db
+from app.db.models import EvidenceObligation, TaxProfile, Workspace
 from app.engines.readiness import ReadinessEngine, _get_fy_end_date
 from app.repositories import readiness as readiness_repo
 from app.repositories import profiles as profile_repo
@@ -34,6 +36,57 @@ def _score_to_dict(score) -> dict:
     }
 
 
+async def _resolve_financial_year(workspace_id: str, db: AsyncSession) -> str:
+    profile = await db.scalar(select(TaxProfile).where(TaxProfile.workspace_id == workspace_id))
+    if profile:
+        return profile.financial_year
+    workspace = await db.scalar(select(Workspace).where(Workspace.id == workspace_id))
+    return workspace.financial_year if workspace else "2024-25"
+
+
+async def _evidence_obligation_summary(workspace_id: str, db: AsyncSession) -> dict:
+    financial_year = await _resolve_financial_year(workspace_id, db)
+    obligations = (
+        await db.execute(
+            select(EvidenceObligation).where(
+                EvidenceObligation.workspace_id == workspace_id,
+                EvidenceObligation.financial_year == financial_year,
+            )
+        )
+    ).scalars().all()
+
+    required = [o for o in obligations if o.required_level == "required"]
+    recommended = [o for o in obligations if o.required_level == "recommended"]
+
+    def _count(items, status: str) -> int:
+        return sum(1 for i in items if i.status == status)
+
+    blocking = [
+        {
+            "id": o.id,
+            "obligation_key": o.obligation_key,
+            "label": o.label,
+            "category": o.category,
+            "required_level": o.required_level,
+            "status": o.status,
+            "reason": o.reason,
+        }
+        for o in required
+        if o.status in {"missing", "partially_matched"}
+    ]
+
+    return {
+        "total_obligations": len(obligations),
+        "required_missing": _count(required, "missing"),
+        "required_partially_matched": _count(required, "partially_matched"),
+        "required_matched": _count(required, "matched"),
+        "recommended_missing": _count(recommended, "missing"),
+        "recommended_partially_matched": _count(recommended, "partially_matched"),
+        "recommended_matched": _count(recommended, "matched"),
+        "blocking_evidence_obligations": blocking,
+    }
+
+
 # ── GET /readiness ────────────────────────────────────────────────────────────
 
 @router.get("/readiness")
@@ -41,6 +94,17 @@ async def get_readiness(
     workspace_id: str = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
+    evidence_summary = await _evidence_obligation_summary(workspace_id, db)
+    workspace = await db.scalar(select(Workspace).where(Workspace.id == workspace_id))
+    freshness = {
+        "evidence_reconciled_at": (
+            workspace.evidence_reconciled_at.isoformat()
+            if workspace and workspace.evidence_reconciled_at
+            else None
+        ),
+        "evidence_reconcile_status": workspace.evidence_reconcile_status if workspace else "idle",
+        "evidence_reconcile_meta": workspace.evidence_reconcile_meta if workspace else None,
+    }
     existing = await readiness_repo.get_score(db, workspace_id)
     if not existing:
         return {
@@ -52,6 +116,8 @@ async def get_readiness(
                 "agent_items_count": 0,
                 "is_stale": True,
                 "calculated_at": None,
+                "evidence_obligation_summary": evidence_summary,
+                "evidence_freshness": freshness,
             }
         }
     return {
@@ -65,6 +131,8 @@ async def get_readiness(
             "calculated_at": (
                 existing.calculated_at.isoformat() if existing.calculated_at else None
             ),
+            "evidence_obligation_summary": evidence_summary,
+            "evidence_freshness": freshness,
         }
     }
 

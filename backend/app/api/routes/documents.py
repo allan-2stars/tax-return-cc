@@ -10,6 +10,7 @@ from app.api.dependencies import require_auth
 from app.config import settings
 from app.db.base import AsyncSessionLocal, get_db
 from app.engines.evidence import EvidenceEngine
+from app.services.evidence_reconcile import EvidenceReconcileService
 from app.errors import AppError, DuplicateDocumentError, error_response
 from app.db.models import Workspace
 from app.repositories import documents as doc_repo
@@ -18,6 +19,7 @@ from app.storage import get_storage_backend
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+_reconcile_service = EvidenceReconcileService()
 
 _SSE_POLL_INTERVAL = 1.5   # seconds between DB polls
 _SSE_TIMEOUT = 300          # 5-minute max hold — prevents stuck jobs from leaking connections
@@ -57,7 +59,17 @@ async def _run_extraction(document_id: str) -> None:
             readiness_engine=readiness_engine,
             review_engine=review_engine,
         )
+        workspace_id = None
+        doc = await doc_repo.get_by_id(db, document_id)
+        if doc:
+            workspace_id = doc.workspace_id
         await engine.extract_and_finalize(document_id)
+        if workspace_id:
+            await _reconcile_service.trigger(
+                workspace_id=workspace_id,
+                trigger_source="document_upload",
+                db=db,
+            )
 
 
 @router.post("/documents/upload")
@@ -237,4 +249,5 @@ async def archive_document(
             detail=error_response("not_found", "Document not found.", retryable=False),
         )
     await doc_repo.archive_by_id(db, document_id)
+    await _reconcile_service.trigger(workspace_id=workspace_id, trigger_source="document_delete", db=db)
     return {"status": "ok", "data": {"document_id": document_id}}

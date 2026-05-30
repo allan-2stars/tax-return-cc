@@ -3,6 +3,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Awaitable, Callable
 
 import jinja2
 import pyzipper
@@ -217,9 +218,11 @@ class ExportEngine:
         self,
         export_path: str | None = None,
         storage=None,
+        export_task_runner: Callable[[Awaitable[None]], Awaitable[None]] | None = None,
     ) -> None:
         self._export_path = export_path or settings.EXPORT_PATH
         self._storage = storage
+        self._export_task_runner = export_task_runner
 
     # ── check eligibility ─────────────────────────────────────────────────────
 
@@ -367,16 +370,18 @@ class ExportEngine:
             payload={"workspace_id": workspace_id, "fy": fy, "export_id": record.id},
         )
 
-        asyncio.create_task(
-            _run_export(
-                export_id=record.id,
-                workspace_id=workspace_id,
-                password=password,
-                export_path=self._export_path,
-                storage=self._storage,
-                job_id=job.id,
-            )
+        export_coro = _run_export(
+            export_id=record.id,
+            workspace_id=workspace_id,
+            password=password,
+            export_path=self._export_path,
+            storage=self._storage,
+            job_id=job.id,
         )
+        if self._export_task_runner is not None:
+            await self._export_task_runner(export_coro)
+        else:
+            asyncio.create_task(export_coro)
 
         return record
 

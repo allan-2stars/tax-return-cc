@@ -44,6 +44,16 @@ const MOCK_DATA = {
   agent_items_count: 1,
   is_stale: false,
   calculated_at: '2026-05-20T10:00:00+00:00',
+  evidence_obligation_summary: {
+    total_obligations: 3,
+    required_missing: 1,
+    required_partially_matched: 1,
+    required_matched: 1,
+    recommended_missing: 0,
+    recommended_partially_matched: 0,
+    recommended_matched: 0,
+    blocking_evidence_obligations: [],
+  },
 }
 
 beforeEach(() => jest.clearAllMocks())
@@ -104,6 +114,16 @@ describe('ReadinessPage', () => {
     expect(screen.getByText(/3.*need.*your review|your review.*3/i)).toBeInTheDocument()
     expect(screen.getByText(/1.*agent|agent.*1/i)).toBeInTheDocument()
     expect(screen.getByText(/2.*missing|missing.*2/i)).toBeInTheDocument()
+  })
+
+  it('renders evidence readiness summary with checklist link', () => {
+    ;(mockUseReadiness as jest.Mock).mockReturnValue({ isLoading: false, data: MOCK_DATA, isError: false })
+    wrap(<ReadinessPage />)
+    expect(screen.getByRole('heading', { name: /evidence readiness/i })).toBeInTheDocument()
+    expect(screen.getByText(/required missing:\s*1/i)).toBeInTheDocument()
+    expect(screen.getByText(/required partial:\s*1/i)).toBeInTheDocument()
+    expect(screen.getByText(/required matched:\s*1/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /open checklist/i })).toHaveAttribute('href', '/readiness/checklist')
   })
 
   it('shows error state when query fails', () => {

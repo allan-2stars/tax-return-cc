@@ -99,6 +99,32 @@ export default function ExportPage() {
         />
       )}
 
+      {eligibility?.evidence_export_status && (
+        eligibility.evidence_export_status.would_block_export ? (
+          <section className="rounded-lg border border-review bg-review-bg p-4 space-y-2">
+            <p className="text-sm font-ui font-semibold text-text-primary">Evidence soft block warning</p>
+            <p className="text-sm font-ui text-text-muted">
+              {eligibility.evidence_export_status.message}
+            </p>
+            <p className="text-sm font-ui text-text-body">
+              Blocking required: {eligibility.evidence_export_status.blocking_required_count}
+              {' · '}
+              Missing required: {eligibility.evidence_export_status.missing_required_count}
+              {' · '}
+              Partial required: {eligibility.evidence_export_status.partial_required_count}
+            </p>
+            <a href="/readiness/checklist" className="text-sm font-ui text-accent underline">
+              Review evidence checklist
+            </a>
+          </section>
+        ) : (
+          <section className="rounded-lg border border-ready bg-ready-bg p-4">
+            <p className="text-sm font-ui font-semibold text-ready">Evidence status: ready</p>
+            <p className="text-sm font-ui text-text-muted">{eligibility.evidence_export_status.message}</p>
+          </section>
+        )
+      )}
+
       {showForm && (
         <form onSubmit={handleSubmit} className="space-y-4 max-w-sm">
           <p className="text-sm font-ui text-text-muted">

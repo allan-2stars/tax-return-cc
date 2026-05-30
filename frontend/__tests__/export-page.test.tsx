@@ -32,7 +32,20 @@ const mockGenerateExport = exportApi.generateExport as jest.Mock
 const mockGetExportStatus = exportApi.getExportStatus as jest.Mock
 const mockGetExportHistory = exportApi.getExportHistory as jest.Mock
 
-const readyEligibility: ExportEligibility = { can_export: true, blocking_reasons: [], warnings: [] }
+const readyEligibility: ExportEligibility = {
+  can_export: true,
+  blocking_reasons: [],
+  warnings: [],
+  evidence_export_status: {
+    would_block_export: false,
+    blocking_required_count: 0,
+    missing_required_count: 0,
+    partial_required_count: 0,
+    blocking_evidence_obligations: [],
+    mode: 'soft_block',
+    message: 'Evidence requirements are currently satisfied.',
+  },
+}
 const emptyHistory: ExportRecord[] = []
 
 function wrap(ui: React.ReactElement) {
@@ -46,6 +59,43 @@ beforeEach(() => {
 })
 
 describe('ExportPage', () => {
+  it('renders soft-block warning panel when evidence would block export in future', async () => {
+    mockGetEligibility.mockResolvedValue({
+      data: {
+        data: {
+          can_export: true,
+          blocking_reasons: [],
+          warnings: [],
+          evidence_export_status: {
+            would_block_export: true,
+            blocking_required_count: 3,
+            missing_required_count: 2,
+            partial_required_count: 1,
+            blocking_evidence_obligations: [],
+            mode: 'soft_block',
+            message:
+              'Export is allowed for now, but required evidence is incomplete and may block export in a future hardening milestone.',
+          },
+        },
+      },
+    })
+
+    wrap(<ExportPage />)
+    expect(await screen.findByText(/evidence soft block warning/i)).toBeInTheDocument()
+    expect(screen.getByText(/blocking required: 3/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /review evidence checklist/i })).toHaveAttribute(
+      'href',
+      '/readiness/checklist'
+    )
+  })
+
+  it('renders evidence ready state when soft-block is false', async () => {
+    mockGetEligibility.mockResolvedValue({ data: { data: readyEligibility } })
+    wrap(<ExportPage />)
+    expect(await screen.findByText(/evidence status: ready/i)).toBeInTheDocument()
+    expect(screen.getByText(/evidence requirements are currently satisfied/i)).toBeInTheDocument()
+  })
+
   it('shows journey-incomplete blocking reason from backend eligibility', async () => {
     mockGetEligibility.mockResolvedValue({
       data: {

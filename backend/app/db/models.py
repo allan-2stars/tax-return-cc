@@ -28,6 +28,9 @@ class Workspace(Base):
     name: Mapped[str] = mapped_column(String(255))
     financial_year: Mapped[str] = mapped_column(String(10))
     status: Mapped[str] = mapped_column(String(20), default="active")
+    evidence_reconciled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    evidence_reconcile_status: Mapped[str] = mapped_column(String(20), default="idle")
+    evidence_reconcile_meta: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
@@ -319,3 +322,41 @@ class EncryptedDraft(Base):
     form_type: Mapped[str] = mapped_column(String(30))
     encrypted_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_saved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class EvidenceObligation(Base):
+    __tablename__ = "evidence_obligations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(String(36), ForeignKey("workspaces.id"), index=True)
+    financial_year: Mapped[str] = mapped_column(String(10), index=True)
+    source_type: Mapped[str] = mapped_column(String(20))
+    source_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    obligation_key: Mapped[str] = mapped_column(String(100), index=True)
+    category: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    label: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    required_level: Mapped[str] = mapped_column(String(20), default="required")
+    status: Mapped[str] = mapped_column(String(30), default="missing")
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rule_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class EvidenceMatch(Base):
+    __tablename__ = "evidence_matches"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(String(36), ForeignKey("workspaces.id"), index=True)
+    obligation_id: Mapped[str] = mapped_column(String(36), ForeignKey("evidence_obligations.id"), index=True)
+    document_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("documents.id"), index=True, nullable=True)
+    tax_event_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("tax_events.id"), index=True, nullable=True)
+    match_type: Mapped[str] = mapped_column(String(20))
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="candidate")
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)

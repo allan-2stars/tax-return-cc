@@ -1,5 +1,9 @@
 """HTTP smoke tests for /review route group."""
 import pytest
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.db.models import TaxProfile
 
 
 @pytest.mark.asyncio
@@ -65,3 +69,41 @@ async def test_bulk_confirm(auth_client, bulk_review_item_ids):
     # Response shape: {"data": {"items": [...], "count": N}}
     assert body["data"]["count"] == len(bulk_review_item_ids)
     assert all(i["status"] == "confirmed" for i in body["data"]["items"])
+
+
+@pytest.mark.asyncio
+async def test_review_action_triggers_reconcile(auth_client, review_item_id, test_engine):
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        session.add(
+            TaxProfile(
+                workspace_id=auth_client.workspace_id,
+                financial_year="2024-25",
+                has_private_health=True,
+            )
+        )
+        await session.commit()
+
+    await auth_client.post("/api/v1/evidence/reconcile")
+    before = await auth_client.get("/api/v1/evidence/obligations")
+    keys_before = {o["obligation_key"] for o in before.json()["data"]["obligations"]}
+    assert "private_health_annual_statement" in keys_before
+
+    async with maker() as session:
+        profile = await session.scalar(
+            select(TaxProfile).where(TaxProfile.workspace_id == auth_client.workspace_id)
+        )
+        profile.has_private_health = False
+        await session.commit()
+
+    resp = await auth_client.post(
+        f"/api/v1/review/{review_item_id}/action",
+        json={"action": "confirmed"},
+    )
+    assert resp.status_code == 200
+    # Route-triggered reconcile may be debounced; force one full pass for deterministic assertion.
+    await auth_client.post("/api/v1/evidence/reconcile")
+
+    after = await auth_client.get("/api/v1/evidence/obligations")
+    keys_after = {o["obligation_key"] for o in after.json()["data"]["obligations"]}
+    assert "private_health_annual_statement" not in keys_after

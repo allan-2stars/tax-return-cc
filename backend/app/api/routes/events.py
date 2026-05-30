@@ -11,10 +11,12 @@ from app.engines.evidence import EvidenceEngine
 from app.engines.review import ReviewEngine
 from app.errors import AppError, error_response
 from app.storage import get_storage_backend
+from app.services.evidence_reconcile import EvidenceReconcileService
 
 router = APIRouter()
 
 _review_engine = ReviewEngine()
+_reconcile_service = EvidenceReconcileService()
 
 
 class _Period(BaseModel):
@@ -81,6 +83,7 @@ async def create_manual_event(
             status_code=422,
             detail=error_response("invalid_event", str(e), retryable=False),
         )
+    await _reconcile_service.trigger(workspace_id=workspace_id, trigger_source="event_create", db=db)
 
     return {"data": {"items": [_event_dict(e) for e in events], "count": len(events)}}
 
@@ -111,5 +114,6 @@ async def attach_receipt(
             status_code=422,
             detail=error_response(code, msg, retryable=False),
         )
+    await _reconcile_service.trigger(workspace_id=workspace_id, trigger_source="event_update", db=db)
 
     return {"data": {"document_id": doc.id}}

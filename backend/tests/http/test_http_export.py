@@ -13,6 +13,11 @@ async def test_eligibility_blocked(auth_client):
     body = resp.json()
     assert body["data"]["can_export"] is False
     assert len(body["data"]["blocking_reasons"]) > 0
+    assert "eligibility_preview" in body["data"]
+    status = body["data"]["evidence_export_status"]
+    assert status["mode"] == "soft_block"
+    assert isinstance(status["would_block_export"], bool)
+    assert "message" in status
 
 
 @pytest.mark.asyncio
@@ -22,6 +27,13 @@ async def test_eligibility_ready(eligible_client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["data"]["can_export"] is True
+    preview = body["data"]["eligibility_preview"]
+    assert isinstance(preview["would_block_export"], bool)
+    assert "evidence_required_total" in preview
+    status = body["data"]["evidence_export_status"]
+    assert status["mode"] == "soft_block"
+    assert status["would_block_export"] is False
+    assert "satisfied" in status["message"].lower()
 
 
 @pytest.mark.asyncio
@@ -129,3 +141,36 @@ async def test_status_masks_arbitrary_job_errors(auth_client, test_engine):
     resp = await auth_client.get(f"/api/v1/export/{record.id}/status")
     assert resp.status_code == 200
     assert resp.json()["data"]["error_message"] == "Export failed. Please generate again."
+
+
+@pytest.mark.asyncio
+async def test_eligibility_includes_soft_block_when_required_evidence_incomplete(auth_client, test_engine):
+    from app.db.models import EvidenceObligation
+    from app.services.evidence_rules import CURRENT_EVIDENCE_RULE_VERSION
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        session.add(
+            EvidenceObligation(
+                workspace_id=auth_client.workspace_id,
+                financial_year="2024-25",
+                source_type="profile",
+                obligation_key="private_health_annual_statement",
+                category="private_health",
+                label="PHI",
+                required_level="required",
+                status="missing",
+                rule_version=CURRENT_EVIDENCE_RULE_VERSION,
+            )
+        )
+        await session.commit()
+
+    resp = await auth_client.get("/api/v1/export/eligibility")
+    assert resp.status_code == 200
+    status = resp.json()["data"]["evidence_export_status"]
+    assert status["mode"] == "soft_block"
+    assert status["would_block_export"] is True
+    assert status["missing_required_count"] == 1
+    assert status["blocking_required_count"] >= 1
+    assert "allowed for now" in status["message"].lower()
+    assert status["blocking_evidence_obligations"][0]["rule_version"] == CURRENT_EVIDENCE_RULE_VERSION

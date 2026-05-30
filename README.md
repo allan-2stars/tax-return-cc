@@ -54,3 +54,8 @@ make smoke-proxy  # frontend + proxy + (optional) direct backend health checks
 ```
 
 See `make help` for the full list.
+
+## Evidence Intelligence docs
+
+- `docs/EVIDENCE_INTELLIGENCE.md` — obligation/match lifecycle, reconcile triggers, limitations
+- `docs/RELEASE_NOTES_11B.md` — 11B milestone release notes

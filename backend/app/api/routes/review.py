@@ -9,10 +9,12 @@ from app.engines.review import ReviewEngine, UserAction
 from app.errors import error_response
 from app.repositories import interview as interview_repo
 from app.repositories import profiles as profile_repo
+from app.services.evidence_reconcile import EvidenceReconcileService
 
 router = APIRouter()
 
 _engine = ReviewEngine()
+_reconcile_service = EvidenceReconcileService()
 
 
 # ── Request bodies ────────────────────────────────────────────────────────────
@@ -153,6 +155,7 @@ async def take_action(
             status_code=404,
             detail=error_response("item_not_found", str(e), retryable=False),
         )
+    await _reconcile_service.trigger(workspace_id=workspace_id, trigger_source="event_update", db=db)
 
     return {"data": _item_dict(item)}
 
@@ -221,6 +224,7 @@ async def bulk_action(
             status_code=422,
             detail=error_response("bulk_action_error", str(e), retryable=False),
         )
+    await _reconcile_service.trigger(workspace_id=workspace_id, trigger_source="event_update", db=db)
 
     return {"data": {"items": [_item_dict(i) for i in results], "count": len(results)}}
 
