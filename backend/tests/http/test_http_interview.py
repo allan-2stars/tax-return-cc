@@ -260,6 +260,102 @@ async def test_dependent_count_accepts_1_to_20(auth_client):
     assert resp.status_code == 200, resp.text
 
 
+@pytest.mark.asyncio
+async def test_skip_conditional_question_propagates_and_returns_summary(auth_client):
+    """Skipping a conditional follow-up should safely end that branch and return to summary."""
+    await auth_client.post("/api/v1/interview/start")
+    for qid, answer in [
+        ("fy_confirm", "2024-25"),
+        ("residency", "resident"),
+        ("employment_type", "employee"),
+        ("has_spouse", "no"),
+        ("has_dependents", "no"),
+        ("lodger_type", "self"),
+        ("wfh", "yes_regular"),
+    ]:
+        resp = await auth_client.post(
+            "/api/v1/interview/answer",
+            json={"question_id": qid, "answer": answer},
+        )
+        assert resp.status_code == 200, resp.text
+
+    assert resp.json()["data"]["next_question"]["id"] == "wfh_method"
+
+    skip_resp = await auth_client.post(
+        "/api/v1/interview/skip",
+        json={"question_id": "wfh_method", "reason": "skip_for_now"},
+    )
+    assert skip_resp.status_code == 200, skip_resp.text
+    body = skip_resp.json()["data"]
+    assert body["state"] == "awaiting_evidence"
+    assert body["next_question"] is None
+
+    session_resp = await auth_client.get("/api/v1/interview/session")
+    assert session_resp.status_code == 200, session_resp.text
+    session = session_resp.json()["data"]
+    assert session["state"] == "awaiting_evidence"
+    assert session["current_question"] is None
+    assert session["answers"]["wfh"] == "yes_regular"
+    assert "wfh_method" not in session["answers"]
+    assert "wfh_days" not in session["answers"]
+
+
+@pytest.mark.asyncio
+async def test_skip_conditional_child_preserves_unrelated_answers(auth_client):
+    """Skipping a branch child must not wipe unrelated completed platform answers."""
+    await auth_client.post("/api/v1/interview/start")
+    for qid, answer in [
+        ("fy_confirm", "2024-25"),
+        ("residency", "resident"),
+        ("employment_type", "employee"),
+        ("has_spouse", "yes"),
+        ("spouse_income_range", "45000_120000"),
+        ("spouse_novated_lease", "no"),
+        ("has_dependents", "no"),
+        ("lodger_type", "self"),
+        ("wfh", "yes_regular"),
+    ]:
+        resp = await auth_client.post(
+            "/api/v1/interview/answer",
+            json={"question_id": qid, "answer": answer},
+        )
+        assert resp.status_code == 200, resp.text
+
+    resp = await auth_client.post(
+        "/api/v1/interview/skip",
+        json={"question_id": "wfh_method", "reason": "skip_for_now"},
+    )
+    assert resp.status_code == 200, resp.text
+
+    session_resp = await auth_client.get("/api/v1/interview/session")
+    assert session_resp.status_code == 200, session_resp.text
+    answers = session_resp.json()["data"]["answers"]
+    assert answers["residency"] == "resident"
+    assert answers["spouse_income_range"] == "45000_120000"
+    assert answers["spouse_novated_lease"] == "no"
+
+
+@pytest.mark.asyncio
+async def test_skip_platform_question_keeps_valid_session_and_marks_incomplete(auth_client):
+    """Skipping an early platform question must not produce invalid in_progress/null state."""
+    await auth_client.post("/api/v1/interview/start")
+    resp = await auth_client.post(
+        "/api/v1/interview/skip",
+        json={"question_id": "fy_confirm", "reason": "skip_for_now"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()["data"]
+    assert body["next_question"] is not None
+    assert body["next_question"]["id"] == "residency"
+
+    session_resp = await auth_client.get("/api/v1/interview/session")
+    assert session_resp.status_code == 200, session_resp.text
+    session = session_resp.json()["data"]
+    assert not (session["state"] == "in_progress" and session["current_question"] is None)
+    incomplete_ids = {q["question_id"] for q in session.get("incomplete_questions", [])}
+    assert "fy_confirm" in incomplete_ids
+
+
 async def _reach_wfh_days_question(auth_client):
     await auth_client.post("/api/v1/interview/start")
     for qid, answer in [

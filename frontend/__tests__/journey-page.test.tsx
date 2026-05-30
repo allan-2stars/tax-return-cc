@@ -21,6 +21,7 @@ const mockGoBack = interviewApi.goBack as jest.Mock
 const mockCancelEdit = interviewApi.cancelEdit as jest.Mock
 const mockUseInterviewStore = useInterviewStore as jest.Mock
 const mockSetNewSkillPending = jest.fn()
+let invalidateSpy: jest.SpyInstance
 
 function wrap(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -46,11 +47,16 @@ const QUESTION = {
 
 beforeEach(() => {
   jest.clearAllMocks()
+  invalidateSpy = jest.spyOn(QueryClient.prototype, 'invalidateQueries')
   mockUseInterviewStore.mockReturnValue({
     newSkillPending: null,
     setNewSkillPending: mockSetNewSkillPending,
   })
   mockGetYoySuggestions.mockResolvedValue({ data: { data: [] } })
+})
+
+afterEach(() => {
+  invalidateSpy.mockRestore()
 })
 
 test('shows loading state initially', () => {
@@ -71,13 +77,50 @@ test('shows QuestionCard when state is in_progress', async () => {
   await waitFor(() => expect(screen.getByText('Did you work from home?')).toBeInTheDocument())
 })
 
-test('back in edit mode cancels edit and returns to summary instead of normal back', async () => {
+test('back in normal flow uses goBack and does not cancel edit', async () => {
   mockGetSession.mockResolvedValue(SESSION('in_progress', QUESTION, {
-    edit_mode: true,
-    edit_target: 'wfh',
-    edit_flow_completed: 0,
-    edit_flow_total: 1,
+    edit_mode: false,
   }))
+  mockGoBack.mockResolvedValue({
+    data: { data: {
+      session_id: 'abc',
+      state: 'in_progress',
+      current_question: {
+        id: 'lodger_type',
+        ask: 'How are you planning to lodge your return?',
+        type: 'single_choice',
+        options: ['self', 'agent'],
+        branches: null,
+        required: false,
+        why: null,
+        hint: null,
+      },
+      progress: { completed: 0, total: 5 },
+      edit_mode: false,
+      edit_target: null,
+      edit_flow_completed: 0,
+      edit_flow_total: 0,
+    } },
+  })
+
+  const user = userEvent.setup()
+  wrap(<JourneyPage />)
+  await waitFor(() => expect(screen.getByText('Did you work from home?')).toBeInTheDocument())
+  await user.click(screen.getByRole('button', { name: /back/i }))
+
+  await waitFor(() => expect(mockGoBack).toHaveBeenCalled())
+  expect(mockCancelEdit).not.toHaveBeenCalled()
+})
+
+test('back in edit mode cancels edit and returns to summary instead of normal back', async () => {
+  mockGetSession
+    .mockResolvedValueOnce(SESSION('in_progress', QUESTION, {
+      edit_mode: true,
+      edit_target: 'wfh',
+      edit_flow_completed: 0,
+      edit_flow_total: 1,
+    }))
+    .mockResolvedValue(SESSION('awaiting_evidence'))
   mockCancelEdit.mockResolvedValue({
     data: { data: {
       state: 'awaiting_evidence',
@@ -102,6 +145,45 @@ test('back in edit mode cancels edit and returns to summary instead of normal ba
   await waitFor(() => expect(screen.getByText(/you're all set up/i)).toBeInTheDocument())
 })
 
+test('back in edit mode traverses mini-flow via normal back when not at edit root', async () => {
+  mockGetSession.mockResolvedValue(SESSION('in_progress', QUESTION, {
+    edit_mode: true,
+    edit_target: 'wfh',
+    edit_flow_completed: 1,
+    edit_flow_total: 2,
+  }))
+  mockGoBack.mockResolvedValue({
+    data: { data: {
+      session_id: 'abc',
+      state: 'in_progress',
+      current_question: {
+        id: 'wfh_method',
+        ask: 'Which WFH calculation method are you using?',
+        type: 'single_choice',
+        options: ['fixed_rate', 'actual_cost'],
+        branches: null,
+        required: false,
+        why: null,
+        hint: null,
+      },
+      progress: { completed: 4, total: 6 },
+      edit_mode: true,
+      edit_target: 'wfh',
+      edit_flow_completed: 0,
+      edit_flow_total: 1,
+    } },
+  })
+
+  const user = userEvent.setup()
+  wrap(<JourneyPage />)
+
+  await waitFor(() => expect(screen.getByText('Did you work from home?')).toBeInTheDocument())
+  await user.click(screen.getByRole('button', { name: /back/i }))
+
+  await waitFor(() => expect(mockGoBack).toHaveBeenCalled())
+  expect(mockCancelEdit).not.toHaveBeenCalled()
+})
+
 test('progress dots use edit mini-flow total when editing one question', async () => {
   mockGetSession.mockResolvedValue(SESSION('in_progress', QUESTION, {
     edit_mode: true,
@@ -121,6 +203,24 @@ test('shows completion screen when state is awaiting_evidence', async () => {
   mockGetSession.mockResolvedValue(SESSION('awaiting_evidence'))
   wrap(<JourneyPage />)
   await waitFor(() => expect(screen.getByText(/you're all set up/i)).toBeInTheDocument())
+})
+
+test('in-progress with no current question but incomplete questions renders safe summary state', async () => {
+  mockGetSession.mockResolvedValue({
+    data: {
+      data: {
+        state: 'in_progress',
+        current_question: null,
+        activated_skills: ['employee_tax_au'],
+        progress: { completed: 1, total: 5 },
+        incomplete_questions: [
+          { question_id: 'fy_confirm', question_label: 'Financial year', editable: true },
+        ],
+      },
+    },
+  })
+  wrap(<JourneyPage />)
+  await waitFor(() => expect(screen.getByText(/some questions still need answers/i)).toBeInTheDocument())
 })
 
 test('shows restart journey screen when needs_restart is true', async () => {
@@ -173,7 +273,9 @@ test('returns to completion screen immediately when answer response state is awa
   const mockCompleteInterview = interviewApi.completeInterview as jest.Mock
   const mockInvalidateQueries = jest.fn()
 
-  mockGetSession.mockResolvedValue(SESSION('in_progress', QUESTION))
+  mockGetSession
+    .mockResolvedValueOnce(SESSION('in_progress', QUESTION))
+    .mockResolvedValue(SESSION('awaiting_evidence'))
   mockAnswerQuestion.mockResolvedValue({
     data: { data: {
       state: 'awaiting_evidence',
@@ -198,7 +300,9 @@ test('calls completeInterview and shows completion screen when last answer exhau
   const mockAnswerQuestion = interviewApi.answerQuestion as jest.Mock
   const mockCompleteInterview = interviewApi.completeInterview as jest.Mock
 
-  mockGetSession.mockResolvedValue(SESSION('in_progress', QUESTION))
+  mockGetSession
+    .mockResolvedValueOnce(SESSION('in_progress', QUESTION))
+    .mockResolvedValue(SESSION('awaiting_evidence'))
   mockAnswerQuestion.mockResolvedValue({
     data: { data: {
       state: 'in_progress',
@@ -219,4 +323,38 @@ test('calls completeInterview and shows completion screen when last answer exhau
 
   await waitFor(() => expect(mockCompleteInterview).toHaveBeenCalled())
   await waitFor(() => expect(screen.getByText(/you're all set up/i)).toBeInTheDocument())
+})
+
+test('skip invalidates session/summary/readiness/export eligibility caches', async () => {
+  const mockSkipQuestion = interviewApi.skipQuestion as jest.Mock
+  mockGetSession.mockResolvedValue(SESSION('in_progress', QUESTION))
+  mockSkipQuestion.mockResolvedValue({
+    data: { data: {
+      state: 'in_progress',
+      next_question: {
+        id: 'lodger_type',
+        ask: 'How are you planning to lodge your return?',
+        type: 'single_choice',
+        options: ['self', 'agent'],
+        branches: null,
+        required: false,
+        why: null,
+        hint: null,
+      },
+      progress: { completed: 2, total: 5 },
+    } },
+  })
+
+  const user = userEvent.setup()
+  wrap(<JourneyPage />)
+  await waitFor(() => expect(screen.getByText('Did you work from home?')).toBeInTheDocument())
+  await user.click(screen.getByRole('button', { name: /skip for now/i }))
+
+  await waitFor(() => expect(mockSkipQuestion).toHaveBeenCalled())
+  await waitFor(() => {
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['interview', 'session'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['interview', 'summary'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['readiness'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['export-eligibility'] })
+  })
 })

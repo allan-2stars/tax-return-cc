@@ -103,6 +103,8 @@ export interface InterviewSessionData {
   resumed?: boolean
   needs_restart?: boolean
   missing_platform_ids?: string[]
+  incomplete_questions?: { question_id: string; question_label: string; editable: boolean }[]
+  has_incomplete_questions?: boolean
 }
 
 export interface AnswerResponseData {

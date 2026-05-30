@@ -72,6 +72,7 @@ function CryptoBuySubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) 
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+      <button type="button" onClick={onBack} className="text-sm font-ui text-text-muted">← Back</button>
       <div>
         <label htmlFor="cb-exchange" className="text-sm font-ui text-text-body block mb-1">Exchange / Wallet</label>
         <input id="cb-exchange" type="text" placeholder="CoinSpot, Binance, Coinbase…"
@@ -131,14 +132,12 @@ function CryptoBuySubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) 
       </div>
       {error && <p role="alert" className="text-sm font-ui text-risk-high">{error}</p>}
       <div className="flex gap-3">
-        <button type="button" onClick={onBack}
-          className="min-h-11 px-4 text-sm font-ui text-text-muted">Back</button>
         <button type="submit" disabled={pending}
           className="min-h-11 px-5 rounded-md bg-accent text-white text-sm font-ui font-semibold disabled:opacity-50">
           {pending ? 'Saving…' : 'Add item'}
         </button>
-        <button type="button" onClick={onCancel} className="min-h-11 px-4 text-sm font-ui text-text-muted">Cancel</button>
       </div>
+      <button type="button" onClick={onCancel} className="text-sm font-ui text-text-muted">Cancel</button>
     </form>
   )
 }
@@ -193,6 +192,7 @@ function CryptoSellSubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps)
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+      <button type="button" onClick={onBack} className="text-sm font-ui text-text-muted">← Back</button>
       <div>
         <label htmlFor="cs-exchange" className="text-sm font-ui text-text-body block mb-1">Exchange / Wallet</label>
         <input id="cs-exchange" type="text"
@@ -298,14 +298,12 @@ function CryptoSellSubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps)
       </div>
       {error && <p role="alert" className="text-sm font-ui text-risk-high">{error}</p>}
       <div className="flex gap-3">
-        <button type="button" onClick={onBack}
-          className="min-h-11 px-4 text-sm font-ui text-text-muted">Back</button>
         <button type="submit" disabled={pending}
           className="min-h-11 px-5 rounded-md bg-accent text-white text-sm font-ui font-semibold disabled:opacity-50">
           {pending ? 'Saving…' : 'Add item'}
         </button>
-        <button type="button" onClick={onCancel} className="min-h-11 px-4 text-sm font-ui text-text-muted">Cancel</button>
       </div>
+      <button type="button" onClick={onCancel} className="text-sm font-ui text-text-muted">Cancel</button>
     </form>
   )
 }
@@ -343,6 +341,7 @@ function CryptoStakingSubForm({ onSuccess, onBack, onCancel }: InvestmentFormPro
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+      <button type="button" onClick={onBack} className="text-sm font-ui text-text-muted">← Back</button>
       <div className="rounded-md bg-surface-raised px-4 py-3 text-sm font-ui text-text-muted">
         Complex crypto income — your tax agent should review this
       </div>
@@ -392,14 +391,12 @@ function CryptoStakingSubForm({ onSuccess, onBack, onCancel }: InvestmentFormPro
       </div>
       {error && <p role="alert" className="text-sm font-ui text-risk-high">{error}</p>}
       <div className="flex gap-3">
-        <button type="button" onClick={onBack}
-          className="min-h-11 px-4 text-sm font-ui text-text-muted">Back</button>
         <button type="submit" disabled={pending}
           className="min-h-11 px-5 rounded-md bg-accent text-white text-sm font-ui font-semibold disabled:opacity-50">
           {pending ? 'Saving…' : 'Add item'}
         </button>
-        <button type="button" onClick={onCancel} className="min-h-11 px-4 text-sm font-ui text-text-muted">Cancel</button>
       </div>
+      <button type="button" onClick={onCancel} className="text-sm font-ui text-text-muted">Cancel</button>
     </form>
   )
 }
@@ -424,6 +421,7 @@ export default function CryptoForm({ onSuccess, onBack, onCancel }: InvestmentFo
             Staking / DeFi income
           </button>
         </div>
+        <button type="button" onClick={onCancel} className="text-sm font-ui text-text-muted">Cancel</button>
       </div>
     )
   }

@@ -108,7 +108,19 @@ test('backend 422 detail.message is shown inline as serverError', async () => {
 })
 
 test('serverError clears after successful answer', async () => {
-  mockGetSession.mockResolvedValue(SESSION(Q1))
+  mockGetSession
+    .mockResolvedValueOnce(SESSION(Q1))
+    .mockResolvedValue({
+      data: {
+        data: {
+          state: 'in_progress',
+          current_question: Q2,
+          answers: { dependent_count: '3' },
+          activated_skills: ['employee_tax_au'],
+          progress: { completed: 2, total: 5 },
+        },
+      },
+    })
   mockAnswerQuestion
     .mockRejectedValueOnce({
       response: {
@@ -141,7 +153,19 @@ test('serverError clears after successful answer', async () => {
 })
 
 test('serverError clears when question changes', async () => {
-  mockGetSession.mockResolvedValue(SESSION(Q1))
+  mockGetSession
+    .mockResolvedValueOnce(SESSION(Q1))
+    .mockResolvedValue({
+      data: {
+        data: {
+          state: 'in_progress',
+          current_question: Q2,
+          answers: { dependent_count: '3' },
+          activated_skills: ['employee_tax_au'],
+          progress: { completed: 2, total: 5 },
+        },
+      },
+    })
   mockAnswerQuestion.mockRejectedValue({
     response: {
       status: 422,

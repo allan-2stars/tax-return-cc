@@ -37,6 +37,9 @@ export default function InterviewSummary({ onEdit }: InterviewSummaryProps) {
     try {
       await jumpToQuestion(questionId, true)
       queryClient.invalidateQueries({ queryKey: ['interview', 'session'] })
+      queryClient.invalidateQueries({ queryKey: ['interview', 'summary'] })
+      queryClient.invalidateQueries({ queryKey: ['readiness'] })
+      queryClient.invalidateQueries({ queryKey: ['export-eligibility'] })
       onEdit()
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -52,6 +55,27 @@ export default function InterviewSummary({ onEdit }: InterviewSummaryProps) {
   return (
     <div>
       <h2 className="font-display text-xl text-text-primary mb-4">Your answers</h2>
+
+      {Array.isArray(data.incomplete_questions) && data.incomplete_questions.length > 0 && (
+        <div className="mb-5 space-y-2">
+          <p className="font-ui text-sm text-risk-high">Some questions still need answers.</p>
+          <div className="border border-border rounded-md divide-y divide-border">
+            {data.incomplete_questions.map((q) => (
+              <div key={q.question_id} className="px-4 py-2 text-sm flex items-center justify-between gap-3">
+                <span className="font-ui text-text-body">{q.question_label}</span>
+                <button
+                  type="button"
+                  onClick={() => handleEdit(q.question_id)}
+                  disabled={jumping !== null}
+                  className="text-accent font-ui text-sm hover:text-accent-hover transition-colors"
+                >
+                  Resume
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {data.sections.map((section, sectionIndex) => (
         <div key={section.title}>

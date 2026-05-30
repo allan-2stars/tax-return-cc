@@ -14,7 +14,6 @@ const TYPE_OPTIONS: { value: ManualEventType; label: string; description: string
   { value: 'income', label: 'Income', description: 'Wages, allowances, interest' },
   { value: 'deduction', label: 'Deduction', description: 'Work expenses, subscriptions' },
   { value: 'investment', label: 'Investment', description: 'Dividends, capital gains, crypto' },
-  { value: 'wfh', label: 'Work from home', description: 'Working from home expenses' },
   { value: 'other', label: 'Other', description: 'Anything else' },
 ]
 
@@ -22,7 +21,7 @@ const TYPE_CATEGORIES: Record<ManualEventType, string[]> = {
   income: ['payg_income', 'allowance', 'lump_sum', 'bank_interest', 'investment_income_basic'],
   deduction: [
     'work_expense', 'work_subscription', 'work_equipment', 'vehicle', 'travel',
-    'uniform', 'self_education', 'other_deduction', 'donation',
+    'uniform', 'self_education', 'other_deduction', 'donation', 'wfh_deduction',
   ],
   investment: ['dividend', 'capital_gain', 'capital_loss', 'crypto'],
   wfh: ['wfh_deduction'],
@@ -98,7 +97,7 @@ export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
     return (
       <div className="space-y-4">
         <h2 className="font-display text-xl font-semibold text-text-primary">
-          What type of item?
+          What would you like to add?
         </h2>
         <div className="space-y-2">
           {TYPE_OPTIONS.map((opt) => (
@@ -157,6 +156,13 @@ export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          className="text-sm font-ui text-text-muted"
+          onClick={onCancel}
+        >
+          Cancel
+        </button>
       </div>
     )
   }
@@ -378,14 +384,14 @@ export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
         >
           {pending ? 'Saving…' : 'Add item'}
         </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="min-h-11 px-4 text-sm font-ui text-text-muted"
-        >
-          Cancel
-        </button>
       </div>
+      <button
+        type="button"
+        onClick={onCancel}
+        className="text-sm font-ui text-text-muted"
+      >
+        Cancel
+      </button>
     </form>
   )
 }

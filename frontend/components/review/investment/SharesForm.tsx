@@ -109,6 +109,7 @@ function SharesBuySubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) 
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+      <button type="button" onClick={onBack} className="text-sm font-ui text-text-muted">← Back</button>
       <div>
         <label htmlFor="sb-platform" className="text-sm font-ui text-text-body block mb-1">Platform / Broker</label>
         <input id="sb-platform" type="text" placeholder="CommSec, Nabtrade, moomoo…"
@@ -167,15 +168,13 @@ function SharesBuySubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) 
       </div>
       {error && <p role="alert" className="text-sm font-ui text-risk-high">{error}</p>}
       <div className="flex gap-3">
-        <button type="button" onClick={onBack}
-          className="min-h-11 px-4 text-sm font-ui text-text-muted">Back</button>
         <button type="submit" disabled={pending}
           className="min-h-11 px-5 rounded-md bg-accent text-white text-sm font-ui font-semibold disabled:opacity-50">
           {pending ? 'Saving…' : 'Add item'}
         </button>
-        <button type="button" onClick={onCancel}
-          className="min-h-11 px-4 text-sm font-ui text-text-muted">Cancel</button>
       </div>
+      <button type="button" onClick={onCancel}
+        className="text-sm font-ui text-text-muted">Cancel</button>
     </form>
   )
 }
@@ -232,6 +231,7 @@ function SharesSellSubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps)
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+      <button type="button" onClick={onBack} className="text-sm font-ui text-text-muted">← Back</button>
       <div>
         <label htmlFor="ss-platform" className="text-sm font-ui text-text-body block mb-1">Platform / Broker</label>
         <input id="ss-platform" type="text"
@@ -326,15 +326,13 @@ function SharesSellSubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps)
       </div>
       {error && <p role="alert" className="text-sm font-ui text-risk-high">{error}</p>}
       <div className="flex gap-3">
-        <button type="button" onClick={onBack}
-          className="min-h-11 px-4 text-sm font-ui text-text-muted">Back</button>
         <button type="submit" disabled={pending}
           className="min-h-11 px-5 rounded-md bg-accent text-white text-sm font-ui font-semibold disabled:opacity-50">
           {pending ? 'Saving…' : 'Add item'}
         </button>
-        <button type="button" onClick={onCancel}
-          className="min-h-11 px-4 text-sm font-ui text-text-muted">Cancel</button>
       </div>
+      <button type="button" onClick={onCancel}
+        className="text-sm font-ui text-text-muted">Cancel</button>
     </form>
   )
 }
@@ -375,6 +373,7 @@ function SharesDividendSubForm({ onSuccess, onBack, onCancel }: InvestmentFormPr
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+      <button type="button" onClick={onBack} className="text-sm font-ui text-text-muted">← Back</button>
       <div>
         <label htmlFor="sd-company" className="text-sm font-ui text-text-body block mb-1">Company name</label>
         <input id="sd-company" type="text"
@@ -427,15 +426,13 @@ function SharesDividendSubForm({ onSuccess, onBack, onCancel }: InvestmentFormPr
       </div>
       {error && <p role="alert" className="text-sm font-ui text-risk-high">{error}</p>}
       <div className="flex gap-3">
-        <button type="button" onClick={onBack}
-          className="min-h-11 px-4 text-sm font-ui text-text-muted">Back</button>
         <button type="submit" disabled={pending}
           className="min-h-11 px-5 rounded-md bg-accent text-white text-sm font-ui font-semibold disabled:opacity-50">
           {pending ? 'Saving…' : 'Add item'}
         </button>
-        <button type="button" onClick={onCancel}
-          className="min-h-11 px-4 text-sm font-ui text-text-muted">Cancel</button>
       </div>
+      <button type="button" onClick={onCancel}
+        className="text-sm font-ui text-text-muted">Cancel</button>
     </form>
   )
 }
@@ -456,6 +453,7 @@ export default function SharesForm({ onSuccess, onBack, onCancel }: InvestmentFo
             </button>
           ))}
         </div>
+        <button type="button" onClick={onCancel} className="text-sm font-ui text-text-muted">Cancel</button>
       </div>
     )
   }

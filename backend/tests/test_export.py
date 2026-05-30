@@ -98,16 +98,21 @@ async def _create_document(
 
 
 async def _create_interview_session(
-    db, workspace_id: str, state: str = "complete"
+    db,
+    workspace_id: str,
+    state: str = "complete",
+    answers: dict | None = None,
+    skipped_steps: list | None = None,
 ) -> InterviewSession:
     sess = InterviewSession(
         workspace_id=workspace_id,
         financial_year="2024-25",
         state=state,
-        answers={},
+        answers=answers or {},
         activated_skills=[],
         pending_queue=[],
         completed_steps=[],
+        skipped_steps=skipped_steps or [],
     )
     db.add(sess)
     await db.commit()
@@ -156,6 +161,46 @@ async def test_check_eligibility_blocked_interview_not_complete(workspace, db_se
 
     assert result.can_export is False
     assert any("interview" in r.lower() for r in result.blocking_reasons)
+
+
+@pytest.mark.asyncio
+async def test_check_eligibility_blocked_when_journey_has_incomplete_required_questions(workspace, db_session):
+    from app.engines.export import ExportEngine
+
+    await _create_interview_session(
+        db_session,
+        workspace.id,
+        state="awaiting_evidence",
+        answers={"residency": "resident"},
+        skipped_steps=[{"question_id": "fy_confirm", "reason": "skip_for_now"}],
+    )
+    await _create_event(db_session, workspace.id, status="confirmed")
+
+    engine = ExportEngine()
+    result = await engine.check_eligibility(workspace.id, db_session)
+
+    assert result.can_export is False
+    assert any("complete your tax journey" in r.lower() for r in result.blocking_reasons)
+
+
+@pytest.mark.asyncio
+async def test_check_eligibility_allows_when_skipped_question_later_answered(workspace, db_session):
+    from app.engines.export import ExportEngine
+
+    await _create_interview_session(
+        db_session,
+        workspace.id,
+        state="awaiting_evidence",
+        answers={"fy_confirm": "2024-25", "residency": "resident"},
+        skipped_steps=[{"question_id": "fy_confirm", "reason": "skip_for_now"}],
+    )
+    await _create_event(db_session, workspace.id, status="confirmed")
+
+    engine = ExportEngine()
+    result = await engine.check_eligibility(workspace.id, db_session)
+
+    assert result.can_export is True
+    assert not any("complete your tax journey" in r.lower() for r in result.blocking_reasons)
 
 
 # ── 2. eligibility blocked — no confirmed events ──────────────────────────────

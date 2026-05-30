@@ -155,9 +155,42 @@ def _current_question(session: InterviewSession) -> dict | None:
 
 
 def _progress(session: InterviewSession) -> dict:
-    completed = len(session.completed_steps or []) + len(session.skipped_steps or [])
+    completed = len(session.completed_steps or [])
     total = completed + len(session.pending_queue or []) + (1 if session.current_step else 0)
     return {"completed": completed, "total": total}
+
+
+def _incomplete_questions(session: InterviewSession) -> list[dict]:
+    answers = session.answers or {}
+    skipped_ids = [
+        (s.get("question_id") if isinstance(s, dict) else s)
+        for s in (session.skipped_steps or [])
+    ]
+    active_conditional_ids: set[str] = set()
+    for q in _QUESTION_BY_ID.values():
+        if not q.branches:
+            continue
+        ans = answers.get(q.id)
+        if ans is None:
+            continue
+        active_conditional_ids.update((q.branches or {}).get(ans, []))
+
+    rows: list[dict] = []
+    seen: set[str] = set()
+    platform_ids = set(_ORDERED_PLATFORM_IDS)
+    for qid in skipped_ids:
+        if qid in seen or answers.get(qid) is not None:
+            continue
+        if qid not in platform_ids and qid not in active_conditional_ids:
+            continue
+        seen.add(qid)
+        q = _QUESTION_BY_ID.get(qid)
+        rows.append({
+            "question_id": qid,
+            "question_label": _QUESTION_DISPLAY_LABELS.get(qid, q.ask if q else qid),
+            "editable": True,
+        })
+    return rows
 
 
 def _edit_progress(session: InterviewSession) -> dict:
@@ -256,6 +289,7 @@ async def get_session(
     needs_restart = (
         session.state in ("awaiting_evidence", "complete") and len(missing_platform_ids) > 0
     )
+    incomplete_questions = _incomplete_questions(session)
     return {
         "data": {
             "state": session.state,
@@ -264,6 +298,8 @@ async def get_session(
             "answers": session.answers or {},
             "activated_skills": session.activated_skills or [],
             "progress": _progress(session),
+            "incomplete_questions": incomplete_questions,
+            "has_incomplete_questions": len(incomplete_questions) > 0,
             **_edit_fields(session),
             "needs_restart": needs_restart,
             "missing_platform_ids": missing_platform_ids,
@@ -539,7 +575,7 @@ async def get_summary(
             title = _SKILL_SECTION_TITLES.get(skill_id, skill_id)
             sections.append({"title": title, "answers": skill_answers})
 
-    return {"data": {"sections": sections}}
+    return {"data": {"sections": sections, "incomplete_questions": _incomplete_questions(session)}}
 
 
 # ── POST /interview/jump ──────────────────────────────────────────────────────

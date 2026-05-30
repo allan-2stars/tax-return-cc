@@ -7,6 +7,7 @@ jest.mock('@/lib/api/interview')
 
 const mockGetInterviewSummary = interviewApi.getInterviewSummary as jest.Mock
 const mockJumpToQuestion = interviewApi.jumpToQuestion as jest.Mock
+let invalidateSpy: jest.SpyInstance
 
 function wrap(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -35,11 +36,17 @@ const SUMMARY_DATA = {
       ],
     },
   ],
+  incomplete_questions: [],
 }
 
 beforeEach(() => {
   jest.clearAllMocks()
+  invalidateSpy = jest.spyOn(QueryClient.prototype, 'invalidateQueries')
   mockJumpToQuestion.mockResolvedValue({ data: { data: { state: 'in_progress' } } })
+})
+
+afterEach(() => {
+  invalidateSpy.mockRestore()
 })
 
 test('renders answered questions with formatted labels', async () => {
@@ -66,6 +73,10 @@ test('Edit button calls jumpToQuestion with question_id', async () => {
 
   await waitFor(() => expect(mockJumpToQuestion).toHaveBeenCalledWith('residency', true))
   await waitFor(() => expect(onEdit).toHaveBeenCalled())
+  expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['interview', 'session'] })
+  expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['interview', 'summary'] })
+  expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['readiness'] })
+  expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['export-eligibility'] })
 })
 
 test('answer value is right-aligned in a three-column grid row', async () => {
@@ -97,4 +108,28 @@ test('does not render Edit button for non-editable answers', async () => {
   wrap(<InterviewSummary onEdit={jest.fn()} />)
   await waitFor(() => expect(screen.getByText('Financial year')).toBeInTheDocument())
   expect(screen.queryByRole('button', { name: /edit/i })).not.toBeInTheDocument()
+})
+
+test('renders incomplete questions section and Resume action', async () => {
+  mockGetInterviewSummary.mockResolvedValue({
+    data: {
+      data: {
+        ...SUMMARY_DATA,
+        incomplete_questions: [
+          {
+            question_id: 'wfh',
+            question_label: 'Did you work from home during this financial year?',
+            editable: true,
+          },
+        ],
+      },
+    },
+  })
+  const onEdit = jest.fn()
+  wrap(<InterviewSummary onEdit={onEdit} />)
+
+  await waitFor(() => expect(screen.getByText(/some questions still need answers/i)).toBeInTheDocument())
+  fireEvent.click(screen.getByRole('button', { name: /resume/i }))
+  await waitFor(() => expect(mockJumpToQuestion).toHaveBeenCalledWith('wfh', true))
+  await waitFor(() => expect(onEdit).toHaveBeenCalled())
 })

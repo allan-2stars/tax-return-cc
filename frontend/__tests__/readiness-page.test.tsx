@@ -21,8 +21,15 @@ jest.mock('@/lib/api/estimator', () => ({
   getEstimatorSummary: jest.fn(() => new Promise(() => {})),
   __esModule: true,
 }))
+jest.mock('@/lib/api/interview', () => ({
+  getSession: jest.fn(() => Promise.resolve({
+    data: { data: { state: 'awaiting_evidence', has_incomplete_questions: false, incomplete_questions: [] } },
+  })),
+  __esModule: true,
+}))
 
 import { useReadiness as mockUseReadiness } from '@/lib/hooks/useReadiness'
+import { getSession as mockGetSession } from '@/lib/api/interview'
 
 function wrap(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -103,5 +110,21 @@ describe('ReadinessPage', () => {
     ;(mockUseReadiness as jest.Mock).mockReturnValue({ isLoading: false, data: undefined, isError: true })
     wrap(<ReadinessPage />)
     expect(screen.getByText(/unable to load tax readiness/i)).toBeInTheDocument()
+  })
+
+  it('shows journey-incomplete warning with link to journey', async () => {
+    ;(mockUseReadiness as jest.Mock).mockReturnValue({ isLoading: false, data: MOCK_DATA, isError: false })
+    ;(mockGetSession as jest.Mock).mockResolvedValue({
+      data: {
+        data: {
+          state: 'awaiting_evidence',
+          has_incomplete_questions: true,
+          incomplete_questions: [{ question_id: 'fy_confirm', question_label: 'Financial year', editable: true }],
+        },
+      },
+    })
+    wrap(<ReadinessPage />)
+    expect(await screen.findByText(/complete your tax journey before final export/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /continue your tax journey/i })).toHaveAttribute('href', '/journey')
   })
 })

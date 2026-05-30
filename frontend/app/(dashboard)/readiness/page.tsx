@@ -8,6 +8,7 @@ import TaxEstimate from '@/components/readiness/TaxEstimate'
 import Disclaimer from '@/components/shared/Disclaimer'
 import { useReadiness } from '@/lib/hooks/useReadiness'
 import { getEstimatorSummary } from '@/lib/api/estimator'
+import { getSession } from '@/lib/api/interview'
 import useWorkspaceStore from '@/lib/stores/workspace.store'
 import { getFYEndLabel, isFYActive } from '@/lib/utils/fy'
 export default function ReadinessPage() {
@@ -15,6 +16,10 @@ export default function ReadinessPage() {
   const { data: estimate, isLoading: estimateLoading } = useQuery({
     queryKey: ['tax-estimate'],
     queryFn: () => getEstimatorSummary().then((r) => r.data.data),
+  })
+  const { data: interviewSession } = useQuery({
+    queryKey: ['interview', 'session'],
+    queryFn: () => getSession().then((r) => r.data.data),
   })
   const { financialYear } = useWorkspaceStore()
 
@@ -71,6 +76,13 @@ export default function ReadinessPage() {
 
       {/* Readiness ring + sub-indicators */}
       <div className="bg-surface rounded-lg shadow-sm p-6 flex flex-col items-center gap-6">
+        {interviewSession?.has_incomplete_questions && (
+          <div className="w-full rounded-md border border-review bg-review-bg px-4 py-3">
+            <p className="text-sm font-ui text-text-body">
+              Complete your Tax Journey before final export.
+            </p>
+          </div>
+        )}
         <ReadinessRing percentage={data.percentage} />
 
         {/* State messages */}

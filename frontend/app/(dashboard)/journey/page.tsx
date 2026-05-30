@@ -41,6 +41,13 @@ export default function JourneyPage() {
       (old): InterviewSessionData | undefined => (old ? { ...old, ...p } : undefined)
     )
 
+  const invalidateJourneyDerived = () => {
+    queryClient.invalidateQueries({ queryKey: ['interview', 'session'] })
+    queryClient.invalidateQueries({ queryKey: ['interview', 'summary'] })
+    queryClient.invalidateQueries({ queryKey: ['readiness'] })
+    queryClient.invalidateQueries({ queryKey: ['export-eligibility'] })
+  }
+
   const startMutation = useMutation({
     mutationFn: startInterview,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['interview', 'session'] }),
@@ -73,7 +80,7 @@ export default function JourneyPage() {
           edit_flow_completed: d.edit_flow_completed,
           edit_flow_total: d.edit_flow_total,
         })
-        queryClient.invalidateQueries({ queryKey: ['interview', 'summary'] })
+        invalidateJourneyDerived()
         return
       }
 
@@ -85,6 +92,7 @@ export default function JourneyPage() {
           activated_skills: d.activated_skills,
           progress: d.progress,
         })
+        invalidateJourneyDerived()
         return
       }
 
@@ -98,6 +106,7 @@ export default function JourneyPage() {
         edit_flow_completed: d.edit_flow_completed,
         edit_flow_total: d.edit_flow_total,
       })
+      invalidateJourneyDerived()
     },
     onError: (err: unknown) => {
       const message = (err as { response?: { status?: number; data?: { detail?: { message?: string } } } })
@@ -115,7 +124,7 @@ export default function JourneyPage() {
     mutationFn: cancelEdit,
     onSuccess: (res) => {
       patch(res.data.data)
-      queryClient.invalidateQueries({ queryKey: ['interview', 'summary'] })
+      invalidateJourneyDerived()
     },
   })
 
@@ -125,6 +134,7 @@ export default function JourneyPage() {
     onSuccess: (res) => {
       const d = res.data.data
       patch({ state: d.state, current_question: d.next_question, progress: d.progress })
+      invalidateJourneyDerived()
     },
   })
 
@@ -144,6 +154,10 @@ export default function JourneyPage() {
         total: data.edit_flow_total ?? 1,
       }
     : data.progress
+
+  const isAtEditRoot = Boolean(
+    data.edit_mode && (data.edit_flow_completed ?? 0) === 0
+  )
 
   return (
     <div className="max-w-xl mx-auto px-4 py-8 space-y-6">
@@ -189,13 +203,26 @@ export default function JourneyPage() {
           <QuestionCard
             question={data.current_question}
             onAnswer={(qid, ans) => answerMutation.mutate({ question_id: qid, answer: ans })}
-            onBack={() => data.edit_mode ? cancelEditMutation.mutate() : backMutation.mutate()}
+            onBack={() => {
+              if (isAtEditRoot) {
+                cancelEditMutation.mutate()
+                return
+              }
+              backMutation.mutate()
+            }}
             onSkip={(qid) => skipMutation.mutate({ question_id: qid, reason: 'user_skipped' })}
             isSubmitting={isBusy}
             currentAnswer={data.answers?.[data.current_question.id]}
             serverError={serverError}
             editMode={data.edit_mode}
           />
+        </div>
+      )}
+
+      {(data.state === 'in_progress' || data.state === 'paused') && !data.current_question && (
+        <div className="space-y-6">
+          <p className="font-ui text-sm text-risk-high">Some questions still need answers.</p>
+          <InterviewSummary onEdit={() => {}} />
         </div>
       )}
 

@@ -46,6 +46,22 @@ beforeEach(() => {
 })
 
 describe('ExportPage', () => {
+  it('shows journey-incomplete blocking reason from backend eligibility', async () => {
+    mockGetEligibility.mockResolvedValue({
+      data: {
+        data: {
+          can_export: false,
+          blocking_reasons: ['Complete your Tax Journey before generating export.'],
+          warnings: [],
+        },
+      },
+    })
+
+    wrap(<ExportPage />)
+    expect(await screen.findByText(/complete your tax journey before generating export/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/export password/i)).not.toBeInTheDocument()
+  })
+
   it('clears password field immediately after generate', async () => {
     mockGetEligibility.mockResolvedValue({ data: { data: readyEligibility } })
     mockGenerateExport.mockResolvedValue({

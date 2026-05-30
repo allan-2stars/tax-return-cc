@@ -525,3 +525,57 @@ async def test_summary_yes_no_strings_formatted(auth_client):
                     f"Question '{ans['question_id']}': raw '{val}' should be "
                     f"formatted as 'Yes'/'No', got '{label}'"
                 )
+
+
+@pytest.mark.asyncio
+async def test_summary_excludes_skipped_answer_and_lists_incomplete(auth_client):
+    """Skipped questions should not appear in completed answers, but should appear as incomplete."""
+    await _complete_full_interview(auth_client)
+
+    resp = await auth_client.post(
+        "/api/v1/interview/jump",
+        json={"question_id": "wfh_days", "edit_mode": True},
+    )
+    assert resp.status_code == 200, resp.text
+    resp = await auth_client.post(
+        "/api/v1/interview/skip",
+        json={"question_id": "wfh_days", "reason": "skip_for_now"},
+    )
+    assert resp.status_code == 200, resp.text
+
+    summary = await auth_client.get("/api/v1/interview/summary")
+    assert summary.status_code == 200, summary.text
+    body = summary.json()["data"]
+
+    completed_ids = set()
+    for section in body["sections"]:
+        for ans in section["answers"]:
+            completed_ids.add(ans["question_id"])
+    assert "wfh_days" not in completed_ids
+
+    incomplete_ids = {q["question_id"] for q in body.get("incomplete_questions", [])}
+    assert "wfh_days" in incomplete_ids
+
+
+@pytest.mark.asyncio
+async def test_jump_to_skipped_question_succeeds(auth_client):
+    """Resume/Edit on skipped question must jump safely."""
+    await _complete_full_interview(auth_client)
+
+    resp = await auth_client.post(
+        "/api/v1/interview/jump",
+        json={"question_id": "wfh_days", "edit_mode": True},
+    )
+    assert resp.status_code == 200, resp.text
+    resp = await auth_client.post(
+        "/api/v1/interview/skip",
+        json={"question_id": "wfh_days", "reason": "skip_for_now"},
+    )
+    assert resp.status_code == 200, resp.text
+
+    jump = await auth_client.post(
+        "/api/v1/interview/jump",
+        json={"question_id": "wfh_days", "edit_mode": True},
+    )
+    assert jump.status_code == 200, jump.text
+    assert jump.json()["data"]["current_question"]["id"] == "wfh_days"

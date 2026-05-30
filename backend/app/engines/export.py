@@ -11,6 +11,7 @@ from weasyprint import HTML
 from app.config import settings
 from app.repositories import exports as exports_repo
 from app.repositories import jobs as jobs_repo
+from app.engines.interview import BRANCH_QUESTIONS, PLATFORM_QUESTIONS, _QUESTION_BY_ID
 
 _DISCLAIMER_TEXT = (
     "This tool helps organise your tax information and prepare a review package. "
@@ -245,6 +246,32 @@ class ExportEngine:
                 "Interview must be complete before exporting. "
                 "Please finish the interview first."
             )
+        else:
+            # Check 1b: unresolved required/in-scope skipped questions block final export.
+            answers = session.answers or {}
+            skipped_ids = [
+                (s.get("question_id") if isinstance(s, dict) else s)
+                for s in (session.skipped_steps or [])
+            ]
+            active_conditional_ids: set[str] = set()
+            for q in _QUESTION_BY_ID.values():
+                if not q.branches:
+                    continue
+                ans = answers.get(q.id)
+                if ans is None:
+                    continue
+                active_conditional_ids.update((q.branches or {}).get(ans, []))
+
+            required_ids = {q.id for q in PLATFORM_QUESTIONS + BRANCH_QUESTIONS}
+            unresolved = [
+                qid for qid in skipped_ids
+                if answers.get(qid) is None and (qid in required_ids or qid in active_conditional_ids)
+            ]
+            if unresolved:
+                blocking.append(
+                    "Complete your Tax Journey before generating export. "
+                    "Some required questions are still unanswered."
+                )
 
         # Check 2: at least one confirmed event
         events = await events_repo.get_by_workspace(db, workspace_id)

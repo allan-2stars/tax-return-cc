@@ -496,10 +496,57 @@ class InterviewEngine:
         db: AsyncSession,
     ) -> tuple[InterviewSession, Question | None]:
         session = await interview_repo.get_by_id(db, session_id)
+        current_id = (session.current_step or {}).get("id")
+        if current_id != question_id:
+            raise ValueError(f"Expected skip for {current_id!r}, got {question_id!r}")
 
         skipped = list(session.skipped_steps or [])
         skipped.append({"question_id": question_id, "reason": reason})
         session.skipped_steps = skipped
+        answers = dict(session.answers or {})
+        answers.pop(question_id, None)
+        session.answers = answers
+        session.completed_steps = [qid for qid in (session.completed_steps or []) if qid != question_id]
+
+        # Conditional follow-up skip: collapse the active branch mini-flow and
+        # return to summary safely, without touching unrelated completed answers.
+        branch_target_ids: set[str] = set()
+        for q in _QUESTION_BY_ID.values():
+            if q.branches:
+                for targets in q.branches.values():
+                    branch_target_ids.update(targets)
+
+        if question_id in branch_target_ids:
+            branch_scope: set[str] = {question_id}
+            for entry in reversed(session.branch_path or []):
+                inserted = set(entry.get("branches_inserted", []))
+                if question_id in inserted:
+                    branch_scope = inserted
+                    break
+
+            pending = [qid for qid in (session.pending_queue or []) if qid not in branch_scope]
+            answers = dict(session.answers or {})
+            for qid in branch_scope:
+                answers.pop(qid, None)
+            session.answers = answers
+
+            completed = [qid for qid in (session.completed_steps or []) if qid not in branch_scope]
+            session.completed_steps = completed
+
+            existing_skips = {
+                (s.get("question_id") if isinstance(s, dict) else s) for s in (session.skipped_steps or [])
+            }
+            for qid in sorted(branch_scope):
+                if qid not in existing_skips:
+                    skipped.append({"question_id": qid, "reason": "branch_not_applicable"})
+            session.skipped_steps = skipped
+
+            session.state = "awaiting_evidence"
+            session.current_step = None
+            session.pending_queue = []
+            session = await interview_repo.save(db, session)
+            await self._readiness_engine.mark_stale(session.workspace_id, db)
+            return session, None
 
         pending = list(session.pending_queue or [])
         if pending:
@@ -559,7 +606,11 @@ class InterviewEngine:
     ) -> tuple[InterviewSession, Question]:
         session = await interview_repo.get_by_id(db, session_id)
 
-        if question_id not in (session.completed_steps or []):
+        skipped_ids = {
+            (s.get("question_id") if isinstance(s, dict) else s)
+            for s in (session.skipped_steps or [])
+        }
+        if question_id not in (session.completed_steps or []) and question_id not in skipped_ids:
             raise ValueError(f"Question {question_id!r} not in completed steps")
 
         # Re-register skill questions that may be absent after a server restart.

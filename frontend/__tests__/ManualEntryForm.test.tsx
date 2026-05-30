@@ -8,13 +8,18 @@ const mockCreate = eventsApi.createManualEvent as jest.Mock
 beforeEach(() => jest.clearAllMocks())
 
 describe('ManualEntryForm', () => {
-  it('step 1 renders 5 type options', () => {
+  it('step 1 heading uses improved wording', () => {
+    render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
+    expect(screen.getByText(/what would you like to add\?/i)).toBeInTheDocument()
+  })
+
+  it('step 1 renders 4 top-level type options and excludes Work from home', () => {
     render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
     expect(screen.getByText(/income/i)).toBeInTheDocument()
     expect(screen.getByText(/deduction/i)).toBeInTheDocument()
     expect(screen.getByText(/investment/i)).toBeInTheDocument()
-    expect(screen.getByText(/work from home/i)).toBeInTheDocument()
     expect(screen.getByText(/other/i)).toBeInTheDocument()
+    expect(screen.queryByText(/work from home/i)).not.toBeInTheDocument()
   })
 
   it('step 2 shows correct fields for Deduction', () => {
@@ -28,6 +33,7 @@ describe('ManualEntryForm', () => {
     const options = Array.from(select.options).map((o) => o.value)
     expect(options).toContain('work_expense')
     expect(options).toContain('work_subscription')
+    expect(options).toContain('wfh_deduction')
     expect(options).not.toContain('payg_income')
   })
 
@@ -64,9 +70,11 @@ describe('ManualEntryForm', () => {
   it('clicking Investment shows investment sub-type selector', () => {
     render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
     fireEvent.click(screen.getByText(/^investment$/i))
+    expect(screen.getByRole('button', { name: /^← Back$/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /shares \/ ETF/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /cryptocurrency/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /bank interest/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^cancel$/i })).toBeInTheDocument()
   })
 
   it('selecting Shares/ETF sub-type renders SharesForm', () => {
@@ -141,14 +149,22 @@ describe('ManualEntryForm', () => {
   it('Income simple form: Back returns to previous step', () => {
     render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
     fireEvent.click(screen.getByText(/^income$/i))
-    fireEvent.click(screen.getByRole('button', { name: /back/i }))
-    expect(screen.getByText(/what type of item\?/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^← Back$/i }))
+    expect(screen.getByText(/what would you like to add\?/i)).toBeInTheDocument()
   })
 
   it('Deduction simple form: Back returns to previous step', () => {
     render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
     fireEvent.click(screen.getByText(/^deduction$/i))
-    fireEvent.click(screen.getByRole('button', { name: /back/i }))
-    expect(screen.getByText(/what type of item\?/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^← Back$/i }))
+    expect(screen.getByText(/what would you like to add\?/i)).toBeInTheDocument()
+  })
+
+  it('manual entry flow has no bare "Back" button label', () => {
+    render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
+    fireEvent.click(screen.getByText(/^investment$/i))
+    fireEvent.click(screen.getByRole('button', { name: /shares \/ ETF/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^buy$/i }))
+    expect(screen.queryByRole('button', { name: /^Back$/ })).not.toBeInTheDocument()
   })
 })
