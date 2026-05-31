@@ -463,3 +463,25 @@ async def test_reconcile_document_archive_clears_candidates_but_preserves_manual
     ).scalars().all()
     assert len(matches) == 1
     assert matches[0].status == "rejected"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_creates_wfh_obligation_from_wfh_deduction_event_without_profile_flag(db_session, workspace):
+    await _create_profile(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        has_private_health=False,
+        has_wfh=False,
+    )
+    await _create_event(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        category="wfh_deduction",
+    )
+
+    obligations = await reconcile_evidence_obligations(workspace.id, workspace.financial_year, db_session)
+    wfh = next((o for o in obligations if o.obligation_key == "wfh_evidence_log"), None)
+    assert wfh is not None
+    assert wfh.source_type == "tax_event"

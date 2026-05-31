@@ -40,6 +40,7 @@ describe('ManualEntryForm', () => {
   it('monthly recurring calculates FY total correctly', () => {
     render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
     fireEvent.click(screen.getByText(/deduction/i))
+    fireEvent.change(screen.getByLabelText(/category/i), { target: { value: 'work_subscription' } })
 
     fireEvent.click(screen.getByText(/monthly/i))
 
@@ -54,6 +55,7 @@ describe('ManualEntryForm', () => {
   it('variable pricing with two periods calculates total correctly', () => {
     render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
     fireEvent.click(screen.getByText(/deduction/i))
+    fireEvent.change(screen.getByLabelText(/category/i), { target: { value: 'work_subscription' } })
     fireEvent.click(screen.getByText(/monthly/i))
 
     fireEvent.change(screen.getByLabelText(/period 1 months/i), { target: { value: '6' } })
@@ -166,5 +168,79 @@ describe('ManualEntryForm', () => {
     fireEvent.click(screen.getByRole('button', { name: /shares \/ ETF/i }))
     fireEvent.click(screen.getByRole('button', { name: /^buy$/i }))
     expect(screen.queryByRole('button', { name: /^Back$/ })).not.toBeInTheDocument()
+  })
+
+  it('donation category renders tax-specific fields', () => {
+    render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
+    fireEvent.click(screen.getByText(/^deduction$/i))
+    fireEvent.change(screen.getByLabelText(/category/i), { target: { value: 'donation' } })
+    expect(screen.getByLabelText(/charity name/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/ABN/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/DGR confirmed/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/donation amount/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/donation date/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/receipt available/i)).toBeInTheDocument()
+  })
+
+  it('work_expense category renders tax-specific fields', () => {
+    render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
+    fireEvent.click(screen.getByText(/^deduction$/i))
+    fireEvent.change(screen.getByLabelText(/category/i), { target: { value: 'work_expense' } })
+    expect(screen.getByLabelText(/expense type/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/vendor/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^amount/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/purchase date/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/work-related percentage/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/receipt available/i)).toBeInTheDocument()
+  })
+
+  it('wfh_deduction category renders tax-specific fields', () => {
+    render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
+    fireEvent.click(screen.getByText(/^deduction$/i))
+    fireEvent.change(screen.getByLabelText(/category/i), { target: { value: 'wfh_deduction' } })
+    expect(screen.getByLabelText(/method/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/financial year/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/hours/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/actual cost amount/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/evidence available/i)).toBeInTheDocument()
+  })
+
+  it('donation submits expected metadata payload', async () => {
+    mockCreate.mockResolvedValue({ data: { data: { items: [], count: 0 } } })
+    const onSuccess = jest.fn()
+    render(<ManualEntryForm onSuccess={onSuccess} onCancel={jest.fn()} />)
+    fireEvent.click(screen.getByText(/^deduction$/i))
+    fireEvent.change(screen.getByLabelText(/category/i), { target: { value: 'donation' } })
+    fireEvent.change(screen.getByLabelText(/charity name/i), { target: { value: 'Red Cross' } })
+    fireEvent.change(screen.getByLabelText(/ABN/i), { target: { value: '12 345 678 901' } })
+    fireEvent.click(screen.getByLabelText(/DGR confirmed/i))
+    fireEvent.change(screen.getByLabelText(/donation amount/i), { target: { value: '150' } })
+    fireEvent.change(screen.getByLabelText(/donation date/i), { target: { value: '2025-01-10' } })
+    fireEvent.click(screen.getByLabelText(/receipt available/i))
+
+    fireEvent.click(screen.getByRole('button', { name: /add item/i }))
+    await waitFor(() => expect(mockCreate).toHaveBeenCalled())
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: 'donation',
+        metadata: expect.objectContaining({
+          schema_version: '2026.1',
+          charity_name: 'Red Cross',
+          dgr_confirmed: true,
+          donation_amount: 150,
+          donation_date: '2025-01-10',
+          receipt_available: true,
+        }),
+      })
+    )
+    expect(onSuccess).toHaveBeenCalled()
+  })
+
+  it('shows validation error for donation when required fields missing', async () => {
+    render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
+    fireEvent.click(screen.getByText(/^deduction$/i))
+    fireEvent.change(screen.getByLabelText(/category/i), { target: { value: 'donation' } })
+    fireEvent.click(screen.getByRole('button', { name: /add item/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/charity name is required/i)
   })
 })

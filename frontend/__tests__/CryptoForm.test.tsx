@@ -66,3 +66,28 @@ test('staking form: validation shows error on empty submit', async () => {
   const alerts = await screen.findAllByRole('alert')
   expect(alerts.length).toBeGreaterThan(0)
 })
+
+test('buy form submits acquisition category', async () => {
+  mockCreate.mockResolvedValue({ data: { data: { items: [], count: 0 } } })
+  const user = userEvent.setup()
+  render(<CryptoForm onSuccess={jest.fn()} onBack={jest.fn()} onCancel={jest.fn()} />)
+  await user.click(screen.getByRole('button', { name: /^buy$/i }))
+
+  await user.type(screen.getByLabelText(/exchange \/ wallet/i), 'CoinSpot')
+  await user.type(screen.getByLabelText(/coin \/ token/i), 'BTC')
+  await user.type(screen.getByLabelText(/amount \(units\)/i), '1')
+  await user.type(screen.getByLabelText(/purchase price \(AUD\)/i), '100000')
+  await user.type(screen.getByLabelText(/transaction fee/i), '100')
+  fireEvent.change(screen.getByLabelText(/purchase date/i), { target: { value: '2025-01-10' } })
+
+  await user.click(screen.getByRole('button', { name: /add item/i }))
+
+  await waitFor(() =>
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event_type: 'investment',
+        category: 'crypto_acquisition',
+      })
+    )
+  )
+})

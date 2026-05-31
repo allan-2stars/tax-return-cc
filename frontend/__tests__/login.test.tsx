@@ -24,10 +24,17 @@ jest.mock('@/lib/stores/workspace.store', () => ({
 
 import { login as mockLogin, getSession as mockGetSession } from '@/lib/api/auth'
 
+let consoleErrorSpy: jest.SpyInstance
+
 beforeEach(() => {
+  consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
   jest.clearAllMocks()
   // Default: session endpoint returns 401 — show login form
   ;(mockGetSession as jest.Mock).mockRejectedValue({ response: { data: { error_code: 'not_authenticated' } } })
+})
+
+afterEach(() => {
+  consoleErrorSpy.mockRestore()
 })
 
 describe('LoginPage', () => {
@@ -49,6 +56,9 @@ describe('LoginPage', () => {
     await user.click(screen.getByRole('button', { name: /log in/i }))
     expect(screen.getByRole('button', { name: /logging in/i })).toBeDisabled()
     resolveLogin({ data: { data: { workspace_id: 'w', financial_year: '2024-25', is_unlocked: false } } })
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith('/readiness')
+    })
   })
 
   it('shows error message on wrong password', async () => {

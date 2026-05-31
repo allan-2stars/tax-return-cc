@@ -233,7 +233,7 @@ async def reconcile_evidence_obligations(
                 reason="Private Health Insurance is enabled in your profile.",
             )
         )
-    if profile and profile.has_wfh:
+    if (profile and profile.has_wfh) or any(e.category in {"wfh_deduction", "work_from_home", "wfh"} for e in events):
         rules.append(
             _new_rule(
                 obligation_key="wfh_evidence_log",
@@ -241,8 +241,12 @@ async def reconcile_evidence_obligations(
                 label="WFH Hours or Diary Evidence",
                 description="Provide WFH hours records, diary, or timesheet evidence.",
                 required_level="required",
-                source_type="profile",
-                reason="Work from home is enabled in your profile.",
+                source_type="profile" if (profile and profile.has_wfh) else "tax_event",
+                reason=(
+                    "Work from home is enabled in your profile."
+                    if (profile and profile.has_wfh)
+                    else "Work from home deduction events are present."
+                ),
             )
         )
     if any(e.category == "donation" for e in events):

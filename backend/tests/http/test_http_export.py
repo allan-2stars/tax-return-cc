@@ -30,10 +30,16 @@ async def test_eligibility_ready(eligible_client):
     preview = body["data"]["eligibility_preview"]
     assert isinstance(preview["would_block_export"], bool)
     assert "evidence_required_total" in preview
+    assert "evidence_required_matched_total" in preview
+    assert "evidence_recommended_missing_total" in preview
     status = body["data"]["evidence_export_status"]
     assert status["mode"] == "soft_block"
     assert status["would_block_export"] is False
     assert "satisfied" in status["message"].lower()
+    assert "evidence_required_missing_count" in body["data"]
+    assert "evidence_required_partial_count" in body["data"]
+    assert "evidence_required_matched_count" in body["data"]
+    assert "evidence_recommended_missing_count" in body["data"]
 
 
 @pytest.mark.asyncio
@@ -174,3 +180,32 @@ async def test_eligibility_includes_soft_block_when_required_evidence_incomplete
     assert status["blocking_required_count"] >= 1
     assert "allowed for now" in status["message"].lower()
     assert status["blocking_evidence_obligations"][0]["rule_version"] == CURRENT_EVIDENCE_RULE_VERSION
+    assert resp.json()["data"]["can_export"] is False  # still blocked by other hard blockers, not evidence
+
+
+@pytest.mark.asyncio
+async def test_eligibility_missing_evidence_does_not_block_export_when_other_checks_pass(eligible_client, test_engine):
+    from app.db.models import EvidenceObligation
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        session.add(
+            EvidenceObligation(
+                workspace_id=eligible_client.workspace_id,
+                financial_year="2024-25",
+                source_type="tax_event",
+                obligation_key="work_expense_receipt",
+                category="work_expense",
+                label="Work expense receipt",
+                required_level="required",
+                status="missing",
+            )
+        )
+        await session.commit()
+
+    resp = await eligible_client.get("/api/v1/export/eligibility")
+    assert resp.status_code == 200
+    body = resp.json()["data"]
+    assert body["can_export"] is True
+    assert body["evidence_export_status"]["would_block_export"] is True
+    assert body["evidence_required_missing_count"] >= 1

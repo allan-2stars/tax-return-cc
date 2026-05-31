@@ -17,6 +17,7 @@ const DEDUCTION_CATEGORIES = new Set([
   'wfh_deduction',
 ])
 const INVESTMENT_CATEGORIES = new Set([
+  'shares_acquisition', 'crypto_acquisition',
   'crypto', 'crypto_income', 'crypto_gain', 'crypto_loss',
   'capital_gain', 'capital_loss', 'dividend',
   'foreign_income', 'managed_fund_distribution',

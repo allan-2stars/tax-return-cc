@@ -7,12 +7,15 @@ from typing import Awaitable, Callable
 
 import jinja2
 import pyzipper
+from sqlalchemy import select
 from weasyprint import HTML
 
 from app.config import settings
+from app.db.models import EvidenceObligation
 from app.repositories import exports as exports_repo
 from app.repositories import jobs as jobs_repo
 from app.engines.interview import BRANCH_QUESTIONS, PLATFORM_QUESTIONS, _QUESTION_BY_ID
+from app.services.evidence_rules import CURRENT_EVIDENCE_RULE_VERSION
 
 _DISCLAIMER_TEXT = (
     "This tool helps organise your tax information and prepare a review package. "
@@ -80,6 +83,14 @@ async def _run_export(
             ]
             documents = await doc_repo.get_ready_docs(db, workspace_id)
             audit_logs = await audit_repo.get_by_workspace(db, workspace_id)
+            obligations = (
+                await db.execute(
+                    select(EvidenceObligation).where(
+                        EvidenceObligation.workspace_id == workspace_id,
+                        EvidenceObligation.financial_year == fy,
+                    )
+                )
+            ).scalars().all()
 
             generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
@@ -143,6 +154,10 @@ async def _run_export(
                 zf.writestr("05-AUDIT-LOG.json", json.dumps(
                     [_audit_dict(a) for a in audit_logs], default=str
                 ))
+                zf.writestr(
+                    "05A-EVIDENCE-STATUS.json",
+                    json.dumps(_evidence_status_dict(fy, obligations), default=str),
+                )
                 zf.writestr("06-SCHEMA-VERSION.txt", _SCHEMA_VERSION)
                 zf.writestr("07-DISCLAIMER.txt", _DISCLAIMER_TEXT)
 
@@ -208,6 +223,48 @@ def _audit_dict(a) -> dict:
         "actor": a.actor,
         "created_at": a.created_at.isoformat() if a.created_at else None,
         "note": a.note,
+    }
+
+
+def _obligation_dict(obligation) -> dict:
+    return {
+        "id": obligation.id,
+        "label": obligation.label,
+        "category": obligation.category,
+        "required_level": obligation.required_level,
+        "status": obligation.status,
+        "reason": obligation.reason,
+        "rule_version": obligation.rule_version,
+    }
+
+
+def _evidence_status_dict(financial_year: str, obligations: list) -> dict:
+    required = [o for o in obligations if o.required_level == "required"]
+    recommended = [o for o in obligations if o.required_level == "recommended"]
+    required_missing = [o for o in required if o.status == "missing"]
+    required_partial = [o for o in required if o.status == "partially_matched"]
+    required_matched = [o for o in required if o.status == "matched"]
+    recommended_missing = [o for o in recommended if o.status == "missing"]
+    recommended_partial = [o for o in recommended if o.status == "partially_matched"]
+    recommended_matched = [o for o in recommended if o.status == "matched"]
+
+    return {
+        "financial_year": financial_year,
+        "current_rule_version": CURRENT_EVIDENCE_RULE_VERSION,
+        "summary": {
+            "required_missing_count": len(required_missing),
+            "required_partial_count": len(required_partial),
+            "required_matched_count": len(required_matched),
+            "recommended_missing_count": len(recommended_missing),
+            "recommended_partial_count": len(recommended_partial),
+            "recommended_matched_count": len(recommended_matched),
+        },
+        "incomplete_required_obligations": [
+            _obligation_dict(o) for o in (required_missing + required_partial)
+        ],
+        "incomplete_recommended_obligations": [
+            _obligation_dict(o) for o in (recommended_missing + recommended_partial)
+        ],
     }
 
 

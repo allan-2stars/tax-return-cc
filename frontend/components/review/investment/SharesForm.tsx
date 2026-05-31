@@ -91,7 +91,7 @@ function SharesBuySubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) 
     setPending(true); setError(null)
     try {
       await createManualEvent({
-        event_type: 'investment', category: 'capital_gain',
+        event_type: 'investment', category: 'shares_acquisition',
         description: `Shares Buy: ${u} × ${data.stock_code.toUpperCase()} @ $${p.toFixed(2)}`,
         amount: u * p + b, date: data.purchase_date,
         frequency: 'one_off', note: data.note?.trim() || null, periods: null,

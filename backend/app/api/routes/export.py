@@ -60,10 +60,15 @@ async def get_eligibility(
             db=db,
         )
         preview = {
+            "evidence_total": preview_obj.evidence_total,
             "evidence_required_total": preview_obj.evidence_required_total,
             "evidence_required_blocking_total": preview_obj.evidence_required_blocking_total,
             "evidence_required_missing_total": preview_obj.evidence_required_missing_total,
             "evidence_required_partial_total": preview_obj.evidence_required_partial_total,
+            "evidence_required_matched_total": preview_obj.evidence_required_matched_total,
+            "evidence_recommended_missing_total": preview_obj.evidence_recommended_missing_total,
+            "evidence_recommended_partial_total": preview_obj.evidence_recommended_partial_total,
+            "evidence_recommended_matched_total": preview_obj.evidence_recommended_matched_total,
             "blocking_evidence_obligations": preview_obj.blocking_evidence_obligations,
             "would_block_export": preview_obj.would_block_export,
         }
@@ -89,6 +94,11 @@ async def get_eligibility(
             "blocking_reasons": result.blocking_reasons,
             "warnings": result.warnings,
             "eligibility_preview": preview,
+            "evidence_required_missing_count": int(preview["evidence_required_missing_total"]) if preview else 0,
+            "evidence_required_partial_count": int(preview["evidence_required_partial_total"]) if preview else 0,
+            "evidence_required_matched_count": int(preview["evidence_required_matched_total"]) if preview else 0,
+            "evidence_recommended_missing_count": int(preview["evidence_recommended_missing_total"]) if preview else 0,
+            "blocking_evidence_obligations": preview["blocking_evidence_obligations"] if preview else [],
             "evidence_export_status": evidence_export_status,
         }
     }

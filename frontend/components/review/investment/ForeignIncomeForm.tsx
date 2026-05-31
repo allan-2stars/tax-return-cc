@@ -12,6 +12,7 @@ interface ForeignIncomeFields {
   country: string; income_type: string
   foreign_amount: string; currency: string; exchange_rate: string
   income_date: string; foreign_tax_paid: string; note: string
+  fx_source: string; source_document_reference: string
 }
 
 export default function ForeignIncomeForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) {
@@ -43,11 +44,14 @@ export default function ForeignIncomeForm({ onSuccess, onBack, onCancel }: Inves
         frequency: 'one_off', note: data.note?.trim() || null, periods: null,
         review_status: 'needs_agent_review',
         metadata: {
+          schema_version: '2026.1',
           investment_sub_type: 'foreign_income',
           country: data.country, income_type: data.income_type,
           foreign_amount: fa, currency: data.currency.toUpperCase(),
           exchange_rate: rate, aud_amount: aud,
           income_date: data.income_date, foreign_tax_paid: ftp,
+          fx_source: data.fx_source?.trim() || null,
+          source_document_reference: data.source_document_reference?.trim() || null,
         },
       })
       onSuccess()
@@ -144,6 +148,18 @@ export default function ForeignIncomeForm({ onSuccess, onBack, onCancel }: Inves
         <input id="fi-note" type="text"
           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-ui"
           {...register('note')} />
+      </div>
+      <div>
+        <label htmlFor="fi-fx-source" className="text-sm font-ui text-text-body block mb-1">FX source (optional)</label>
+        <input id="fi-fx-source" type="text" placeholder="ATO annual average, bank rate, etc."
+          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-ui"
+          {...register('fx_source')} />
+      </div>
+      <div>
+        <label htmlFor="fi-source-ref" className="text-sm font-ui text-text-body block mb-1">Source document reference (optional)</label>
+        <input id="fi-source-ref" type="text" placeholder="Statement ID, broker report reference"
+          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-ui"
+          {...register('source_document_reference')} />
       </div>
       {error && <p role="alert" className="text-sm font-ui text-risk-high">{error}</p>}
       <div className="flex gap-3">

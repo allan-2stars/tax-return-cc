@@ -52,6 +52,25 @@ export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
   const [note, setNote] = useState('')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [donationCharityName, setDonationCharityName] = useState('')
+  const [donationAbn, setDonationAbn] = useState('')
+  const [donationDgrConfirmed, setDonationDgrConfirmed] = useState(false)
+  const [donationAmount, setDonationAmount] = useState('')
+  const [donationDate, setDonationDate] = useState('')
+  const [donationReceiptAvailable, setDonationReceiptAvailable] = useState(false)
+
+  const [workExpenseType, setWorkExpenseType] = useState('')
+  const [workExpenseVendor, setWorkExpenseVendor] = useState('')
+  const [workExpenseAmount, setWorkExpenseAmount] = useState('')
+  const [workExpensePurchaseDate, setWorkExpensePurchaseDate] = useState('')
+  const [workExpensePercentage, setWorkExpensePercentage] = useState('')
+  const [workExpenseReceiptAvailable, setWorkExpenseReceiptAvailable] = useState(false)
+
+  const [wfhMethod, setWfhMethod] = useState<'fixed_rate' | 'actual_cost'>('fixed_rate')
+  const [wfhFinancialYear, setWfhFinancialYear] = useState(financialYear ?? '')
+  const [wfhHours, setWfhHours] = useState('')
+  const [wfhAmount, setWfhAmount] = useState('')
+  const [wfhEvidenceAvailable, setWfhEvidenceAvailable] = useState(false)
 
   const isMonthly = frequency === 'monthly'
   const monthlyTotal = periods.reduce((sum, p) => sum + p.months * p.amount_per_month, 0)
@@ -65,14 +84,128 @@ export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
   }
 
   const dateValidation = validateDate(date, financialYear ?? null)
+  const donationDateValidation = validateDate(donationDate, financialYear ?? null)
+  const workExpenseDateValidation = validateDate(workExpensePurchaseDate, financialYear ?? null)
+  const isTaxSpecificDeduction = eventType === 'deduction' && ['donation', 'work_expense', 'wfh_deduction'].includes(category)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!eventType) return
-    if (dateValidation.error) return
+    if (!isTaxSpecificDeduction && dateValidation.error) return
     setPending(true)
     setError(null)
     try {
+      if (eventType === 'deduction' && category === 'donation') {
+        if (!donationCharityName.trim()) {
+          setError('Charity name is required.')
+          return
+        }
+        if (!donationAmount || parseFloat(donationAmount) <= 0) {
+          setError('Donation amount must be greater than 0.')
+          return
+        }
+        if (donationDateValidation.error) {
+          setError(donationDateValidation.error)
+          return
+        }
+        await createManualEvent({
+          event_type: eventType,
+          category,
+          description: `Donation: ${donationCharityName}`,
+          amount: parseFloat(donationAmount),
+          date: donationDate,
+          frequency: 'one_off',
+          note: note.trim() || null,
+          periods: null,
+          metadata: {
+            schema_version: '2026.1',
+            charity_name: donationCharityName.trim(),
+            abn: donationAbn.trim() || null,
+            dgr_confirmed: donationDgrConfirmed,
+            donation_amount: parseFloat(donationAmount),
+            donation_date: donationDate,
+            receipt_available: donationReceiptAvailable,
+          },
+        })
+        onSuccess()
+        return
+      }
+      if (eventType === 'deduction' && category === 'work_expense') {
+        const pct = parseFloat(workExpensePercentage || '0')
+        if (!workExpenseType.trim()) {
+          setError('Expense type is required.')
+          return
+        }
+        if (!workExpenseAmount || parseFloat(workExpenseAmount) <= 0) {
+          setError('Amount must be greater than 0.')
+          return
+        }
+        if (workExpenseDateValidation.error) {
+          setError(workExpenseDateValidation.error)
+          return
+        }
+        if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
+          setError('Work-related percentage must be between 1 and 100.')
+          return
+        }
+        await createManualEvent({
+          event_type: eventType,
+          category,
+          description: `Work expense: ${workExpenseType}`,
+          amount: parseFloat(workExpenseAmount),
+          date: workExpensePurchaseDate,
+          frequency: 'one_off',
+          note: note.trim() || null,
+          periods: null,
+          metadata: {
+            schema_version: '2026.1',
+            expense_type: workExpenseType.trim(),
+            vendor: workExpenseVendor.trim() || null,
+            amount: parseFloat(workExpenseAmount),
+            purchase_date: workExpensePurchaseDate,
+            work_related_percentage: pct,
+            receipt_available: workExpenseReceiptAvailable,
+          },
+        })
+        onSuccess()
+        return
+      }
+      if (eventType === 'deduction' && category === 'wfh_deduction') {
+        const parsedAmount = parseFloat(wfhAmount || '0') || 0
+        const parsedHours = parseFloat(wfhHours || '0') || 0
+        if (!wfhFinancialYear.trim()) {
+          setError('Financial year is required.')
+          return
+        }
+        if (wfhMethod === 'actual_cost' && parsedAmount < 0) {
+          setError('Actual cost amount must be greater than or equal to 0.')
+          return
+        }
+        if (wfhMethod === 'fixed_rate' && wfhHours && parsedHours <= 0) {
+          setError('Hours must be greater than 0.')
+          return
+        }
+        await createManualEvent({
+          event_type: eventType,
+          category,
+          description: `WFH deduction (${wfhMethod.replace('_', ' ')})`,
+          amount: parsedAmount,
+          date: new Date().toISOString().slice(0, 10),
+          frequency: 'annual',
+          note: note.trim() || null,
+          periods: null,
+          metadata: {
+            schema_version: '2026.1',
+            method: wfhMethod,
+            financial_year: wfhFinancialYear.trim(),
+            hours: wfhHours ? parsedHours : null,
+            amount: parsedAmount,
+            evidence_available: wfhEvidenceAvailable,
+          },
+        })
+        onSuccess()
+        return
+      }
       await createManualEvent({
         event_type: eventType,
         category,
@@ -224,10 +357,107 @@ export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
           onChange={(e) => setDescription(e.target.value)}
           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-ui"
           aria-label="Description"
-          required
+          required={!isTaxSpecificDeduction}
         />
       </div>
+      {eventType === 'deduction' && category === 'donation' && (
+        <div className="space-y-3">
+          <div>
+            <label htmlFor="donation-charity" className="text-sm font-ui text-text-body block mb-1">Charity name</label>
+            <input id="donation-charity" type="text" value={donationCharityName} onChange={(e) => setDonationCharityName(e.target.value)}
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-ui" aria-label="Charity name" />
+          </div>
+          <div>
+            <label htmlFor="donation-abn" className="text-sm font-ui text-text-body block mb-1">ABN</label>
+            <input id="donation-abn" type="text" value={donationAbn} onChange={(e) => setDonationAbn(e.target.value)}
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-ui" aria-label="ABN" />
+          </div>
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input type="checkbox" checked={donationDgrConfirmed} onChange={(e) => setDonationDgrConfirmed(e.target.checked)} aria-label="DGR confirmed" />
+            <span className="text-sm font-ui text-text-body">DGR confirmed</span>
+          </label>
+          <div>
+            <label htmlFor="donation-amount" className="text-sm font-ui text-text-body block mb-1">Donation amount</label>
+            <input id="donation-amount" type="number" min="0" step="0.01" value={donationAmount} onChange={(e) => setDonationAmount(e.target.value)}
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono" aria-label="Donation amount" />
+          </div>
+          <div>
+            <label htmlFor="donation-date" className="text-sm font-ui text-text-body block mb-1">Donation date</label>
+            <input id="donation-date" type="date" value={donationDate} onChange={(e) => setDonationDate(e.target.value)}
+              className={`w-full rounded-md border bg-surface px-3 py-2 text-sm font-mono ${donationDateValidation.error ? 'border-risk-high' : 'border-border'}`} aria-label="Donation date" />
+          </div>
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input type="checkbox" checked={donationReceiptAvailable} onChange={(e) => setDonationReceiptAvailable(e.target.checked)} aria-label="Receipt available" />
+            <span className="text-sm font-ui text-text-body">Receipt available</span>
+          </label>
+        </div>
+      )}
+      {eventType === 'deduction' && category === 'work_expense' && (
+        <div className="space-y-3">
+          <div>
+            <label htmlFor="work-expense-type" className="text-sm font-ui text-text-body block mb-1">Expense type</label>
+            <input id="work-expense-type" type="text" value={workExpenseType} onChange={(e) => setWorkExpenseType(e.target.value)}
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-ui" aria-label="Expense type" />
+          </div>
+          <div>
+            <label htmlFor="work-expense-vendor" className="text-sm font-ui text-text-body block mb-1">Vendor</label>
+            <input id="work-expense-vendor" type="text" value={workExpenseVendor} onChange={(e) => setWorkExpenseVendor(e.target.value)}
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-ui" aria-label="Vendor" />
+          </div>
+          <div>
+            <label htmlFor="work-expense-amount" className="text-sm font-ui text-text-body block mb-1">Amount</label>
+            <input id="work-expense-amount" type="number" min="0" step="0.01" value={workExpenseAmount} onChange={(e) => setWorkExpenseAmount(e.target.value)}
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono" aria-label="Amount" />
+          </div>
+          <div>
+            <label htmlFor="work-expense-date" className="text-sm font-ui text-text-body block mb-1">Purchase date</label>
+            <input id="work-expense-date" type="date" value={workExpensePurchaseDate} onChange={(e) => setWorkExpensePurchaseDate(e.target.value)}
+              className={`w-full rounded-md border bg-surface px-3 py-2 text-sm font-mono ${workExpenseDateValidation.error ? 'border-risk-high' : 'border-border'}`} aria-label="Purchase date" />
+          </div>
+          <div>
+            <label htmlFor="work-expense-pct" className="text-sm font-ui text-text-body block mb-1">Work-related percentage</label>
+            <input id="work-expense-pct" type="number" min="1" max="100" step="1" value={workExpensePercentage} onChange={(e) => setWorkExpensePercentage(e.target.value)}
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono" aria-label="Work-related percentage" />
+          </div>
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input type="checkbox" checked={workExpenseReceiptAvailable} onChange={(e) => setWorkExpenseReceiptAvailable(e.target.checked)} aria-label="Receipt available" />
+            <span className="text-sm font-ui text-text-body">Receipt available</span>
+          </label>
+        </div>
+      )}
+      {eventType === 'deduction' && category === 'wfh_deduction' && (
+        <div className="space-y-3">
+          <div>
+            <label htmlFor="wfh-method" className="text-sm font-ui text-text-body block mb-1">Method</label>
+            <select id="wfh-method" value={wfhMethod} onChange={(e) => setWfhMethod(e.target.value as 'fixed_rate' | 'actual_cost')}
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-ui" aria-label="Method">
+              <option value="fixed_rate">fixed_rate</option>
+              <option value="actual_cost">actual_cost</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="wfh-financial-year" className="text-sm font-ui text-text-body block mb-1">Financial year</label>
+            <input id="wfh-financial-year" type="text" value={wfhFinancialYear} onChange={(e) => setWfhFinancialYear(e.target.value)}
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-ui" aria-label="Financial year" />
+          </div>
+          <div>
+            <label htmlFor="wfh-hours" className="text-sm font-ui text-text-body block mb-1">Hours</label>
+            <input id="wfh-hours" type="number" min="0" step="1" value={wfhHours} onChange={(e) => setWfhHours(e.target.value)}
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono" aria-label="Hours" />
+          </div>
+          <div>
+            <label htmlFor="wfh-amount" className="text-sm font-ui text-text-body block mb-1">Actual cost amount</label>
+            <input id="wfh-amount" type="number" min="0" step="0.01" value={wfhAmount} onChange={(e) => setWfhAmount(e.target.value)}
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono" aria-label="Actual cost amount" />
+          </div>
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input type="checkbox" checked={wfhEvidenceAvailable} onChange={(e) => setWfhEvidenceAvailable(e.target.checked)} aria-label="Evidence available" />
+            <span className="text-sm font-ui text-text-body">Evidence available</span>
+          </label>
+        </div>
+      )}
 
+      {!isTaxSpecificDeduction && (
       <div>
         <p className="text-sm font-ui text-text-body mb-1">Frequency</p>
         <div className="flex gap-2 flex-wrap">
@@ -247,8 +477,9 @@ export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
           ))}
         </div>
       </div>
+      )}
 
-      {!isMonthly && (
+      {!isTaxSpecificDeduction && !isMonthly && (
         <div>
           <label htmlFor="manual-amount" className="text-sm font-ui text-text-body block mb-1">
             Amount (AUD)
@@ -267,7 +498,7 @@ export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
         </div>
       )}
 
-      {isMonthly && (
+      {!isTaxSpecificDeduction && isMonthly && (
         <div className="space-y-3">
           <p className="text-sm font-ui text-text-body">Pricing periods</p>
           {periods.map((period, idx) => (
@@ -335,6 +566,7 @@ export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
         </div>
       )}
 
+      {!isTaxSpecificDeduction && (
       <div>
         <label htmlFor="manual-date" className="text-sm font-ui text-text-body block mb-1">
           Date
@@ -357,6 +589,7 @@ export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
           <p className="text-sm font-ui text-review mt-1">⚠ {dateValidation.warning}</p>
         )}
       </div>
+      )}
 
       <div>
         <label htmlFor="manual-note" className="text-sm font-ui text-text-body block mb-1">
@@ -373,7 +606,7 @@ export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
       </div>
 
       {error && (
-        <p className="text-sm font-ui text-risk-high">{error}</p>
+        <p role="alert" className="text-sm font-ui text-risk-high">{error}</p>
       )}
 
       <div className="flex gap-3">

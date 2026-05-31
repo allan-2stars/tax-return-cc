@@ -140,6 +140,7 @@ class ReviewEngine:
         import uuid as _uuid
 
         self._validate_manual_event(
+            category=category,
             description=description,
             amount=amount,
             date_value=date,
@@ -270,6 +271,7 @@ class ReviewEngine:
 
     def _validate_manual_event(
         self,
+        category: str,
         description: str,
         amount: float,
         date_value: str,
@@ -282,14 +284,23 @@ class ReviewEngine:
         self._require_max_text(note, 5000, "Note")
         self._parse_iso_date(date_value, "date")
 
+        meta = metadata or {}
+        is_tax_specific_wfh = (
+            category == "wfh_deduction"
+            and isinstance(meta, dict)
+            and str(meta.get("schema_version", "")).strip() != ""
+        )
+
         if frequency == "monthly" and periods:
             for idx, period in enumerate(periods):
                 self._require_positive(period.get("months"), f"periods[{idx}].months")
                 self._require_positive(period.get("amount_per_month"), f"periods[{idx}].amount_per_month")
         else:
-            self._require_positive(amount, "amount")
+            if is_tax_specific_wfh:
+                self._require_non_negative(amount, "amount")
+            else:
+                self._require_positive(amount, "amount")
 
-        meta = metadata or {}
         for key, raw_value in meta.items():
             if isinstance(raw_value, str) and len(raw_value) > 100:
                 raise ValueError(f"{key} must be at most 100 characters.")
@@ -303,8 +314,17 @@ class ReviewEngine:
             self._validate_crypto_metadata(meta)
         elif investment_sub_type == "bank_interest":
             self._validate_bank_interest_metadata(meta)
+        elif investment_sub_type == "managed_fund":
+            self._validate_managed_fund_metadata(meta)
         elif investment_sub_type == "foreign_income":
             self._validate_foreign_income_metadata(meta)
+
+        if category == "donation" and str(meta.get("schema_version", "")).strip() != "":
+            self._validate_donation_metadata(meta)
+        if category == "work_expense" and str(meta.get("schema_version", "")).strip() != "":
+            self._validate_work_expense_metadata(meta)
+        if category == "wfh_deduction" and str(meta.get("schema_version", "")).strip() != "":
+            self._validate_wfh_deduction_metadata(meta)
 
     def _validate_shares_metadata(self, metadata: dict) -> None:
         tx_type = self._require_short_text_field(metadata, "transaction_type", required=True).lower()
@@ -358,16 +378,86 @@ class ReviewEngine:
         self._require_short_text_field(metadata, "bank_name", required=True)
         self._require_short_text_field(metadata, "account_type", required=True)
         self._require_positive(metadata.get("interest_amount"), "interest_amount")
+        self._require_short_text_field(metadata, "financial_year", required=False)
+        period_start_raw = metadata.get("statement_period_start")
+        period_end_raw = metadata.get("statement_period_end")
+        if period_start_raw is not None and str(period_start_raw).strip() != "":
+            period_start = self._parse_iso_date(str(period_start_raw), "statement_period_start")
+            if period_end_raw is None or str(period_end_raw).strip() == "":
+                raise ValueError("statement_period_end is required when statement_period_start is provided.")
+            period_end = self._parse_iso_date(str(period_end_raw), "statement_period_end")
+            if period_start > period_end:
+                raise ValueError("statement_period_start must be on or before statement_period_end.")
+        elif period_end_raw is not None and str(period_end_raw).strip() != "":
+            self._parse_iso_date(str(period_end_raw), "statement_period_end")
+
+    def _validate_managed_fund_metadata(self, metadata: dict) -> None:
+        self._require_short_text_field(metadata, "fund_name", required=True)
+        self._require_short_text_field(metadata, "fund_manager", required=False)
+        self._require_positive(metadata.get("distribution_amount"), "distribution_amount")
+        self._require_non_negative(metadata.get("capital_gains_component", 0), "capital_gains_component")
+        self._require_non_negative(metadata.get("foreign_income_component", 0), "foreign_income_component")
+        tfn_withholding = metadata.get("tfn_withholding")
+        if tfn_withholding is None:
+            tfn_withholding = metadata.get("tfn_withholding_tax", 0)
+        self._require_non_negative(tfn_withholding, "tfn_withholding")
+        self._parse_iso_date(str(metadata.get("distribution_date", "")), "distribution_date")
+
+    def _require_bool_field(self, metadata: dict, field: str) -> bool:
+        value = metadata.get(field)
+        if not isinstance(value, bool):
+            raise ValueError(f"{field} must be a boolean.")
+        return value
+
+    def _validate_donation_metadata(self, metadata: dict) -> None:
+        self._require_short_text_field(metadata, "charity_name", required=True)
+        abn = self._require_short_text_field(metadata, "abn", required=False)
+        if abn and not re.fullmatch(r"[0-9 ]{11,14}", abn):
+            raise ValueError("abn must contain 11 digits (spaces allowed).")
+        self._require_bool_field(metadata, "dgr_confirmed")
+        self._require_positive(metadata.get("donation_amount"), "donation_amount")
+        self._parse_iso_date(str(metadata.get("donation_date", "")), "donation_date")
+        self._require_bool_field(metadata, "receipt_available")
+
+    def _validate_work_expense_metadata(self, metadata: dict) -> None:
+        self._require_short_text_field(metadata, "expense_type", required=True)
+        self._require_short_text_field(metadata, "vendor", required=False)
+        self._require_positive(metadata.get("amount"), "amount")
+        self._parse_iso_date(str(metadata.get("purchase_date", "")), "purchase_date")
+        work_pct = self._require_positive(metadata.get("work_related_percentage"), "work_related_percentage")
+        if work_pct > 100:
+            raise ValueError("work_related_percentage must be less than or equal to 100.")
+        self._require_bool_field(metadata, "receipt_available")
+
+    def _validate_wfh_deduction_metadata(self, metadata: dict) -> None:
+        method = self._require_short_text_field(metadata, "method", required=True).lower()
+        if method not in {"fixed_rate", "actual_cost"}:
+            raise ValueError("method must be one of: fixed_rate, actual_cost.")
+        self._require_short_text_field(metadata, "financial_year", required=True)
+        self._require_bool_field(metadata, "evidence_available")
+        if metadata.get("hours") is not None:
+            self._require_positive(metadata.get("hours"), "hours")
+        if metadata.get("amount") is not None:
+            self._require_non_negative(metadata.get("amount"), "amount")
 
     def _validate_foreign_income_metadata(self, metadata: dict) -> None:
         self._require_short_text_field(metadata, "country", required=True)
+        self._require_short_text_field(metadata, "income_type", required=True)
         currency = self._require_short_text_field(metadata, "currency", required=True).upper()
         if not re.fullmatch(r"[A-Z]{3}", currency):
             raise ValueError("Currency code must match ^[A-Z]{3}$.")
-        self._require_positive(metadata.get("foreign_amount"), "foreign_amount")
-        self._require_positive(metadata.get("exchange_rate"), "exchange_rate")
+        foreign_amount = self._require_positive(metadata.get("foreign_amount"), "foreign_amount")
+        exchange_rate = self._require_positive(metadata.get("exchange_rate"), "exchange_rate")
+        aud_amount = metadata.get("aud_amount")
+        if aud_amount is not None:
+            aud_amount_num = self._require_positive(aud_amount, "aud_amount")
+            expected_aud = foreign_amount * exchange_rate
+            if abs(aud_amount_num - expected_aud) > 0.01:
+                raise ValueError("aud_amount must match foreign_amount * exchange_rate.")
         if metadata.get("foreign_tax_paid") is not None:
             self._require_non_negative(metadata.get("foreign_tax_paid"), "foreign_tax_paid")
+        self._require_short_text_field(metadata, "fx_source", required=False)
+        self._require_short_text_field(metadata, "source_document_reference", required=False)
         self._parse_iso_date(str(metadata.get("income_date", "")), "income_date")
 
     # ── queue ─────────────────────────────────────────────────────────────────

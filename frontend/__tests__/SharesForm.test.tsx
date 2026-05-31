@@ -70,3 +70,29 @@ test('dividend form renders ← Back and no bare bottom Back', async () => {
   expect(screen.getByRole('button', { name: /^← Back$/i })).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /^Back$/ })).not.toBeInTheDocument()
 })
+
+test('buy form submits acquisition category', async () => {
+  mockCreate.mockResolvedValue({ data: { data: { items: [], count: 0 } } })
+  const user = userEvent.setup()
+  render(<SharesForm onSuccess={jest.fn()} onBack={jest.fn()} onCancel={jest.fn()} />)
+  await user.click(screen.getByRole('button', { name: /^buy$/i }))
+
+  await user.type(screen.getByLabelText(/platform \/ broker/i), 'CommSec')
+  await user.type(screen.getByLabelText(/stock code/i), 'CBA')
+  await user.selectOptions(screen.getByLabelText(/^exchange$/i), 'ASX')
+  await user.type(screen.getByLabelText(/number of units/i), '100')
+  await user.type(screen.getByLabelText(/price per unit/i), '82.5')
+  await user.type(screen.getByLabelText(/brokerage fee/i), '9.95')
+  fireEvent.change(screen.getByLabelText(/purchase date/i), { target: { value: '2025-01-10' } })
+
+  await user.click(screen.getByRole('button', { name: /add item/i }))
+
+  await waitFor(() =>
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event_type: 'investment',
+        category: 'shares_acquisition',
+      })
+    )
+  )
+})

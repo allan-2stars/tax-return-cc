@@ -36,6 +36,10 @@ const readyEligibility: ExportEligibility = {
   can_export: true,
   blocking_reasons: [],
   warnings: [],
+  evidence_required_missing_count: 0,
+  evidence_required_partial_count: 0,
+  evidence_required_matched_count: 2,
+  evidence_recommended_missing_count: 0,
   evidence_export_status: {
     would_block_export: false,
     blocking_required_count: 0,
@@ -65,8 +69,12 @@ describe('ExportPage', () => {
         data: {
           can_export: true,
           blocking_reasons: [],
-          warnings: [],
-          evidence_export_status: {
+            warnings: [],
+            evidence_required_missing_count: 2,
+            evidence_required_partial_count: 1,
+            evidence_required_matched_count: 0,
+            evidence_recommended_missing_count: 1,
+            evidence_export_status: {
             would_block_export: true,
             blocking_required_count: 3,
             missing_required_count: 2,
@@ -81,19 +89,23 @@ describe('ExportPage', () => {
     })
 
     wrap(<ExportPage />)
-    expect(await screen.findByText(/evidence soft block warning/i)).toBeInTheDocument()
-    expect(screen.getByText(/blocking required: 3/i)).toBeInTheDocument()
+    expect(await screen.findByText(/evidence preview/i)).toBeInTheDocument()
+    expect(screen.getByText(/export is allowed, but evidence may be incomplete/i)).toBeInTheDocument()
+    expect(screen.getByText(/required missing: 2/i)).toBeInTheDocument()
+    expect(screen.getByText(/recommended missing: 1/i)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /review evidence checklist/i })).toHaveAttribute(
       'href',
       '/readiness/checklist'
     )
+    expect(screen.getByRole('button', { name: /generate review pack/i })).toBeEnabled()
   })
 
   it('renders evidence ready state when soft-block is false', async () => {
     mockGetEligibility.mockResolvedValue({ data: { data: readyEligibility } })
     wrap(<ExportPage />)
-    expect(await screen.findByText(/evidence status: ready/i)).toBeInTheDocument()
+    expect(await screen.findByText(/evidence preview/i)).toBeInTheDocument()
     expect(screen.getByText(/evidence requirements are currently satisfied/i)).toBeInTheDocument()
+    expect(screen.getByText(/required matched: 2/i)).toBeInTheDocument()
   })
 
   it('shows journey-incomplete blocking reason from backend eligibility', async () => {

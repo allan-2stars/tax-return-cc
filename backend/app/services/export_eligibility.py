@@ -10,10 +10,15 @@ from app.db.models import EvidenceObligation
 
 @dataclass
 class ExportEligibilityPreview:
+    evidence_total: int
     evidence_required_total: int
     evidence_required_blocking_total: int
     evidence_required_missing_total: int
     evidence_required_partial_total: int
+    evidence_required_matched_total: int
+    evidence_recommended_missing_total: int
+    evidence_recommended_partial_total: int
+    evidence_recommended_matched_total: int
     blocking_evidence_obligations: list[dict]
     would_block_export: bool
 
@@ -31,14 +36,19 @@ class ExportEligibilityService:
                 select(EvidenceObligation).where(
                     EvidenceObligation.workspace_id == workspace_id,
                     EvidenceObligation.financial_year == financial_year,
-                    EvidenceObligation.required_level == "required",
                 )
             )
         ).scalars().all()
 
-        missing = [o for o in obligations if o.status == "missing"]
-        partial = [o for o in obligations if o.status == "partially_matched"]
-        blocking = missing + partial
+        required = [o for o in obligations if o.required_level == "required"]
+        recommended = [o for o in obligations if o.required_level == "recommended"]
+        required_missing = [o for o in required if o.status == "missing"]
+        required_partial = [o for o in required if o.status == "partially_matched"]
+        required_matched = [o for o in required if o.status == "matched"]
+        recommended_missing = [o for o in recommended if o.status == "missing"]
+        recommended_partial = [o for o in recommended if o.status == "partially_matched"]
+        recommended_matched = [o for o in recommended if o.status == "matched"]
+        blocking = required_missing + required_partial
         blocking_rows = [
             {
                 "id": o.id,
@@ -54,10 +64,15 @@ class ExportEligibilityService:
         ]
 
         return ExportEligibilityPreview(
-            evidence_required_total=len(obligations),
+            evidence_total=len(obligations),
+            evidence_required_total=len(required),
             evidence_required_blocking_total=len(blocking),
-            evidence_required_missing_total=len(missing),
-            evidence_required_partial_total=len(partial),
+            evidence_required_missing_total=len(required_missing),
+            evidence_required_partial_total=len(required_partial),
+            evidence_required_matched_total=len(required_matched),
+            evidence_recommended_missing_total=len(recommended_missing),
+            evidence_recommended_partial_total=len(recommended_partial),
+            evidence_recommended_matched_total=len(recommended_matched),
             blocking_evidence_obligations=blocking_rows,
             would_block_export=len(blocking) > 0,
         )

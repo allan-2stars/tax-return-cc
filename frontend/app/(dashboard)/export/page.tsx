@@ -100,29 +100,35 @@ export default function ExportPage() {
       )}
 
       {eligibility?.evidence_export_status && (
-        eligibility.evidence_export_status.would_block_export ? (
-          <section className="rounded-lg border border-review bg-review-bg p-4 space-y-2">
-            <p className="text-sm font-ui font-semibold text-text-primary">Evidence soft block warning</p>
-            <p className="text-sm font-ui text-text-muted">
-              {eligibility.evidence_export_status.message}
-            </p>
+        <section
+          className={`rounded-lg p-4 space-y-2 ${
+            eligibility.evidence_export_status.would_block_export
+              ? 'border border-review bg-review-bg'
+              : 'border border-ready bg-ready-bg'
+          }`}
+        >
+          <p className="text-sm font-ui font-semibold text-text-primary">Evidence Preview</p>
+          {eligibility.evidence_export_status.would_block_export && (
             <p className="text-sm font-ui text-text-body">
-              Blocking required: {eligibility.evidence_export_status.blocking_required_count}
-              {' · '}
-              Missing required: {eligibility.evidence_export_status.missing_required_count}
-              {' · '}
-              Partial required: {eligibility.evidence_export_status.partial_required_count}
+              Export is allowed, but evidence may be incomplete.
             </p>
-            <a href="/readiness/checklist" className="text-sm font-ui text-accent underline">
-              Review evidence checklist
-            </a>
-          </section>
-        ) : (
-          <section className="rounded-lg border border-ready bg-ready-bg p-4">
-            <p className="text-sm font-ui font-semibold text-ready">Evidence status: ready</p>
-            <p className="text-sm font-ui text-text-muted">{eligibility.evidence_export_status.message}</p>
-          </section>
-        )
+          )}
+          <p className="text-sm font-ui text-text-muted">
+            {eligibility.evidence_export_status.message}
+          </p>
+          <p className="text-sm font-ui text-text-body">
+            Required missing: {eligibility.evidence_required_missing_count ?? eligibility.evidence_export_status.missing_required_count}
+            {' · '}
+            Required partially matched: {eligibility.evidence_required_partial_count ?? eligibility.evidence_export_status.partial_required_count}
+            {' · '}
+            Required matched: {eligibility.evidence_required_matched_count ?? 0}
+            {' · '}
+            Recommended missing: {eligibility.evidence_recommended_missing_count ?? 0}
+          </p>
+          <a href="/readiness/checklist" className="text-sm font-ui text-accent underline">
+            Review evidence checklist
+          </a>
+        </section>
       )}
 
       {showForm && (

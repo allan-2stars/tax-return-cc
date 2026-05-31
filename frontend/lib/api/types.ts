@@ -330,11 +330,30 @@ export interface ExportEligibility {
   can_export: boolean
   blocking_reasons: string[]
   warnings: string[]
+  evidence_required_missing_count?: number
+  evidence_required_partial_count?: number
+  evidence_required_matched_count?: number
+  evidence_recommended_missing_count?: number
+  blocking_evidence_obligations?: Array<{
+    id: string
+    obligation_key: string
+    label: string
+    category: string | null
+    required_level: string
+    status: string
+    reason: string | null
+    rule_version?: string | null
+  }>
   eligibility_preview?: {
+    evidence_total?: number
     evidence_required_total: number
     evidence_required_blocking_total: number
     evidence_required_missing_total: number
     evidence_required_partial_total: number
+    evidence_required_matched_total?: number
+    evidence_recommended_missing_total?: number
+    evidence_recommended_partial_total?: number
+    evidence_recommended_matched_total?: number
     blocking_evidence_obligations: Array<{
       id: string
       obligation_key: string

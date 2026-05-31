@@ -54,7 +54,7 @@ function CryptoBuySubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) 
     setPending(true); setError(null)
     try {
       await createManualEvent({
-        event_type: 'investment', category: 'crypto',
+        event_type: 'investment', category: 'crypto_acquisition',
         description: `Crypto Buy: ${data.amount_units} ${data.coin.toUpperCase()}`,
         amount: price + fee, date: data.purchase_date,
         frequency: 'one_off', note: data.note?.trim() || null, periods: null,

@@ -66,8 +66,13 @@ async def test_export_eligibility_preview_blocks_on_required_missing_and_partial
         db=db_session,
     )
     assert preview.evidence_required_total == 2
+    assert preview.evidence_total == 3
     assert preview.evidence_required_missing_total == 1
     assert preview.evidence_required_partial_total == 1
+    assert preview.evidence_required_matched_total == 0
+    assert preview.evidence_recommended_missing_total == 1
+    assert preview.evidence_recommended_partial_total == 0
+    assert preview.evidence_recommended_matched_total == 0
     assert preview.evidence_required_blocking_total == 2
     assert preview.would_block_export is True
     assert len(preview.blocking_evidence_obligations) == 2
@@ -96,7 +101,9 @@ async def test_export_eligibility_preview_not_blocking_when_required_matched(db_
         db=db_session,
     )
     assert preview.evidence_required_total == 1
+    assert preview.evidence_total == 1
     assert preview.evidence_required_blocking_total == 0
     assert preview.evidence_required_missing_total == 0
     assert preview.evidence_required_partial_total == 0
+    assert preview.evidence_required_matched_total == 1
     assert preview.would_block_export is False

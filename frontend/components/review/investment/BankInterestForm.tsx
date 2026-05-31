@@ -2,18 +2,24 @@
 import { useForm } from 'react-hook-form'
 import { useState } from 'react'
 import { createManualEvent } from '@/lib/api/events'
+import useWorkspaceStore from '@/lib/stores/workspace.store'
 
 interface InvestmentFormProps { onSuccess: () => void; onBack: () => void; onCancel: () => void }
 
 interface BankInterestFields {
   bank_name: string; account_type: string
-  interest_amount: string; in_payg: boolean; note: string
+  interest_amount: string
+  statement_period_start: string
+  statement_period_end: string
+  in_payg: boolean
+  note: string
 }
 
 export default function BankInterestForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) {
   const { register, handleSubmit, formState: { errors } } = useForm<BankInterestFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { financialYear } = useWorkspaceStore()
 
   async function onSubmit(data: BankInterestFields) {
     const amt = parseFloat(data.interest_amount)
@@ -22,13 +28,17 @@ export default function BankInterestForm({ onSuccess, onBack, onCancel }: Invest
       await createManualEvent({
         event_type: 'investment', category: 'bank_interest',
         description: `Bank Interest: ${data.bank_name} (${data.account_type})`,
-        amount: amt, date: new Date().toISOString().slice(0, 10),
+        amount: amt, date: data.statement_period_end,
         frequency: 'annual', note: data.note?.trim() || null, periods: null,
         possible_duplicate: data.in_payg,
         metadata: {
           investment_sub_type: 'bank_interest',
           bank_name: data.bank_name, account_type: data.account_type,
-          interest_amount: amt, in_payg: data.in_payg,
+          interest_amount: amt,
+          statement_period_start: data.statement_period_start,
+          statement_period_end: data.statement_period_end,
+          financial_year: financialYear ?? null,
+          in_payg: data.in_payg,
         },
       })
       onSuccess()
@@ -72,6 +82,20 @@ export default function BankInterestForm({ onSuccess, onBack, onCancel }: Invest
         <input type="checkbox" className="mt-0.5" {...register('in_payg')} />
         <span className="text-sm font-ui text-text-body">This interest is already in my PAYG summary</span>
       </label>
+      <div>
+        <label htmlFor="bi-period-start" className="text-sm font-ui text-text-body block mb-1">Statement period start</label>
+        <input id="bi-period-start" type="date"
+          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono"
+          {...register('statement_period_start', { required: 'Statement period start is required.' })} />
+        {errors.statement_period_start && <p role="alert" className="text-sm font-ui text-risk-high mt-1">{errors.statement_period_start.message}</p>}
+      </div>
+      <div>
+        <label htmlFor="bi-period-end" className="text-sm font-ui text-text-body block mb-1">Statement period end</label>
+        <input id="bi-period-end" type="date"
+          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono"
+          {...register('statement_period_end', { required: 'Statement period end is required.' })} />
+        {errors.statement_period_end && <p role="alert" className="text-sm font-ui text-risk-high mt-1">{errors.statement_period_end.message}</p>}
+      </div>
       <div>
         <label htmlFor="bi-note" className="text-sm font-ui text-text-body block mb-1">Note (optional)</label>
         <input id="bi-note" type="text"

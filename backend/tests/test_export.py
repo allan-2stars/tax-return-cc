@@ -2,6 +2,7 @@
 Tests for M9 Export Engine — TDD (all tests written before implementation).
 """
 import asyncio
+import json
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
@@ -19,6 +20,7 @@ from app.db.models import (
     TaxEvent,
     Workspace,
 )
+from app.services.evidence_rules import CURRENT_EVIDENCE_RULE_VERSION
 
 
 # ── fixtures ──────────────────────────────────────────────────────────────────
@@ -436,6 +438,7 @@ async def test_export_zip_contains_all_required_files(workspace, db_session, tmp
         "03-MISSING-ITEMS.pdf",
         "04-AI-REASONING.json",
         "05-AUDIT-LOG.json",
+        "05A-EVIDENCE-STATUS.json",
         "06-SCHEMA-VERSION.txt",
         "07-DISCLAIMER.txt",
         "evidence/manifest.json",
@@ -456,3 +459,12 @@ async def test_export_zip_contains_all_required_files(workspace, db_session, tmp
     written_names = {args[0] for args, _ in mock_zf.writestr.call_args_list}
     for req in REQUIRED_FILES:
         assert req in written_names, f"Missing required file in zip: {req}"
+
+    evidence_status_calls = [
+        args for args, _ in mock_zf.writestr.call_args_list if args[0] == "05A-EVIDENCE-STATUS.json"
+    ]
+    assert len(evidence_status_calls) == 1
+    payload = evidence_status_calls[0][1]
+    data = payload if isinstance(payload, dict) else json.loads(payload)
+    assert data["current_rule_version"] == CURRENT_EVIDENCE_RULE_VERSION
+    assert "summary" in data

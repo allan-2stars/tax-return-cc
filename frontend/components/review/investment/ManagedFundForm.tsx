@@ -42,7 +42,7 @@ export default function ManagedFundForm({ onSuccess, onBack, onCancel }: Investm
           fund_name: data.fund_name, fund_manager: data.fund_manager || null,
           distribution_amount: dist, capital_gains_component: cg,
           foreign_income_component: parseFloat(data.foreign_income_component || '0') || 0,
-          tfn_withholding_tax: parseFloat(data.tfn_withholding_tax || '0') || 0,
+          tfn_withholding: parseFloat(data.tfn_withholding_tax || '0') || 0,
           distribution_date: data.distribution_date,
         },
       })
