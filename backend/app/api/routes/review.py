@@ -10,6 +10,7 @@ from app.errors import error_response
 from app.repositories import interview as interview_repo
 from app.repositories import profiles as profile_repo
 from app.services.evidence_reconcile import EvidenceReconcileService
+from app.services.explanations import build_tax_item_explanation
 
 router = APIRouter()
 
@@ -44,6 +45,7 @@ class AskRequest(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _item_dict(item: ReviewItem) -> dict:
+    explanation_category = (item.category or (item.tax_event.category if item.tax_event else None))
     return {
         "id": item.id,
         "workspace_id": item.workspace_id,
@@ -69,6 +71,12 @@ def _item_dict(item: ReviewItem) -> dict:
         "review_duration_seconds": item.review_duration_seconds,
         "group_id": item.tax_event.group_id if item.tax_event else None,
         "group_display": item.tax_event.group_display if item.tax_event else None,
+        "explanation": build_tax_item_explanation(
+            target_type="review_item",
+            target_id=item.id,
+            category=explanation_category,
+            source="review",
+        ),
     }
 
 

@@ -54,6 +54,39 @@ const MOCK_DATA = {
     recommended_matched: 0,
     blocking_evidence_obligations: [],
   },
+  readiness_2_0: {
+    overall: { state: 'warning', score: 62, label: 'Needs Attention' },
+    journey: {
+      is_complete: true,
+      has_incomplete_questions: false,
+      required_blockers_count: 0,
+      incomplete_questions: [],
+      state: 'ready',
+    },
+    review: {
+      unconfirmed_total: 3,
+      needs_user_review_count: 2,
+      needs_agent_review_count: 1,
+      confirmed_count: 1,
+      rejected_or_flagged_count: 0,
+      state: 'warning',
+    },
+    evidence: {
+      required_missing_count: 1,
+      required_partial_count: 1,
+      required_matched_count: 1,
+      recommended_missing_count: 0,
+      candidate_match_count: 1,
+      accepted_match_count: 1,
+      rejected_match_count: 0,
+      blocking_obligations: [],
+      state: 'blocked',
+      current_rule_version: '2026.1',
+    },
+    blocking_reasons: ['Required evidence is incomplete.'],
+    warnings: ['Some items still need your review.'],
+    last_calculated_at: '2026-06-01T10:00:00+00:00',
+  },
 }
 
 beforeEach(() => jest.clearAllMocks())
@@ -69,6 +102,7 @@ describe('ReadinessPage', () => {
     ;(mockUseReadiness as jest.Mock).mockReturnValue({ isLoading: false, data: MOCK_DATA, isError: false })
     wrap(<ReadinessPage />)
     expect(screen.getByText('72%')).toBeInTheDocument()
+    expect(screen.getByText(/overall preparation score/i)).toBeInTheDocument()
   })
 
   it('shows stale indicator when is_stale is true', () => {
@@ -112,18 +146,65 @@ describe('ReadinessPage', () => {
     ;(mockUseReadiness as jest.Mock).mockReturnValue({ isLoading: false, data: MOCK_DATA, isError: false })
     wrap(<ReadinessPage />)
     expect(screen.getByText(/3.*need.*your review|your review.*3/i)).toBeInTheDocument()
-    expect(screen.getByText(/1.*agent|agent.*1/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/1.*agent|agent.*1/i).length).toBeGreaterThan(0)
     expect(screen.getByText(/2.*missing|missing.*2/i)).toBeInTheDocument()
   })
 
   it('renders evidence readiness summary with checklist link', () => {
     ;(mockUseReadiness as jest.Mock).mockReturnValue({ isLoading: false, data: MOCK_DATA, isError: false })
     wrap(<ReadinessPage />)
-    expect(screen.getByRole('heading', { name: /evidence readiness/i })).toBeInTheDocument()
-    expect(screen.getByText(/required missing:\s*1/i)).toBeInTheDocument()
-    expect(screen.getByText(/required partial:\s*1/i)).toBeInTheDocument()
-    expect(screen.getByText(/required matched:\s*1/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/evidence readiness/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/required missing:\s*1/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/required partial:\s*1/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/required matched:\s*1/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('link', { name: /open checklist/i })[0]).toHaveAttribute('href', '/readiness/checklist')
+  })
+
+  it('reduces duplicate evidence messaging when readiness_2_0 is present', () => {
+    ;(mockUseReadiness as jest.Mock).mockReturnValue({ isLoading: false, data: MOCK_DATA, isError: false })
+    wrap(<ReadinessPage />)
+    expect(screen.queryByRole('link', { name: /view evidence checklist/i })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /open checklist/i })).toHaveAttribute('href', '/readiness/checklist')
+  })
+
+  it('renders Journey/Review/Evidence readiness cards with action links', () => {
+    ;(mockUseReadiness as jest.Mock).mockReturnValue({ isLoading: false, data: MOCK_DATA, isError: false })
+    wrap(<ReadinessPage />)
+    expect(screen.getByText(/journey readiness/i)).toBeInTheDocument()
+    expect(screen.getByText(/review readiness/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/evidence readiness/i).length).toBeGreaterThan(0)
+    expect(screen.getByRole('link', { name: /go to journey/i })).toHaveAttribute('href', '/journey')
+    expect(screen.getByRole('link', { name: /go to review/i })).toHaveAttribute('href', '/review')
+    expect(screen.getAllByRole('link', { name: /open checklist/i })[0]).toHaveAttribute('href', '/readiness/checklist')
+  })
+
+  it('renders blocked/warning/ready states from readiness_2_0', () => {
+    ;(mockUseReadiness as jest.Mock).mockReturnValue({
+      isLoading: false,
+      data: {
+        ...MOCK_DATA,
+        readiness_2_0: {
+          ...MOCK_DATA.readiness_2_0,
+          journey: { ...MOCK_DATA.readiness_2_0.journey, state: 'blocked' },
+          review: { ...MOCK_DATA.readiness_2_0.review, state: 'warning' },
+          evidence: { ...MOCK_DATA.readiness_2_0.evidence, state: 'ready' },
+        },
+      },
+      isError: false,
+    })
+    wrap(<ReadinessPage />)
+    expect(screen.getByText(/state: blocked/i)).toBeInTheDocument()
+    expect(screen.getByText(/state: warning/i)).toBeInTheDocument()
+    expect(screen.getByText(/state: ready/i)).toBeInTheDocument()
+  })
+
+  it('renders blockers and warnings section', () => {
+    ;(mockUseReadiness as jest.Mock).mockReturnValue({ isLoading: false, data: MOCK_DATA, isError: false })
+    wrap(<ReadinessPage />)
+    expect(screen.getByText(/blockers \(must resolve before considered ready\)/i)).toBeInTheDocument()
+    expect(screen.getByText(/required evidence is incomplete/i)).toBeInTheDocument()
+    expect(screen.getByText(/warnings \(should review before export\)/i)).toBeInTheDocument()
+    expect(screen.getByText(/some items still need your review/i)).toBeInTheDocument()
   })
 
   it('shows error state when query fails', () => {

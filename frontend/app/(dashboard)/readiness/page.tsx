@@ -11,6 +11,12 @@ import { getEstimatorSummary } from '@/lib/api/estimator'
 import { getSession } from '@/lib/api/interview'
 import useWorkspaceStore from '@/lib/stores/workspace.store'
 import { getFYEndLabel, isFYActive } from '@/lib/utils/fy'
+
+function readinessStateClasses(state: 'blocked' | 'warning' | 'ready') {
+  if (state === 'blocked') return 'border-risk-high bg-review-bg text-risk-high'
+  if (state === 'warning') return 'border-review bg-review-bg text-review'
+  return 'border-ready bg-ready-bg text-ready'
+}
 export default function ReadinessPage() {
   const { data, isLoading, isError, recalcError } = useReadiness()
   const { data: estimate, isLoading: estimateLoading } = useQuery({
@@ -84,6 +90,7 @@ export default function ReadinessPage() {
           </div>
         )}
         <ReadinessRing percentage={data.percentage} />
+        <p className="text-xs font-ui text-text-muted">Overall preparation score</p>
 
         {/* State messages */}
         {data.percentage === 0 && (
@@ -114,9 +121,11 @@ export default function ReadinessPage() {
               ⬜ {data.missing_items_count} piece{data.missing_items_count !== 1 ? 's' : ''} of evidence still missing →
             </Link>
           )}
-          <Link href="/readiness/checklist" className="text-sm font-ui text-text-muted hover:text-text-body transition-colors">
-            View evidence checklist →
-          </Link>
+          {!data.readiness_2_0 && (
+            <Link href="/readiness/checklist" className="text-sm font-ui text-text-muted hover:text-text-body transition-colors">
+              View evidence checklist →
+            </Link>
+          )}
         </div>
 
         {/* CTA */}
@@ -128,6 +137,63 @@ export default function ReadinessPage() {
         </Link>
       </div>
 
+      {data.readiness_2_0 && (
+        <div className="bg-surface rounded-lg shadow-sm p-6 space-y-4">
+          <h2 className="font-ui text-sm font-semibold text-text-primary">Readiness dimensions</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className={`rounded-md border p-3 space-y-2 ${readinessStateClasses(data.readiness_2_0.journey.state)}`}>
+              <p className="text-sm font-ui font-semibold text-text-primary">Journey readiness</p>
+              <p className="text-xs font-ui">State: {data.readiness_2_0.journey.state}</p>
+              <p className="text-xs font-ui">Required blockers: {data.readiness_2_0.journey.required_blockers_count}</p>
+              <p className="text-xs font-ui text-text-muted">Complete required journey questions to proceed cleanly.</p>
+              <Link href="/journey" className="text-xs font-ui text-accent hover:underline">Go to Journey</Link>
+            </div>
+            <div className={`rounded-md border p-3 space-y-2 ${readinessStateClasses(data.readiness_2_0.review.state)}`}>
+              <p className="text-sm font-ui font-semibold text-text-primary">Review readiness</p>
+              <p className="text-xs font-ui">State: {data.readiness_2_0.review.state}</p>
+              <p className="text-xs font-ui">Unconfirmed: {data.readiness_2_0.review.unconfirmed_total}</p>
+              <p className="text-xs font-ui">Needs agent review: {data.readiness_2_0.review.needs_agent_review_count}</p>
+              <p className="text-xs font-ui text-text-muted">Resolve review items before final export submission.</p>
+              <Link href="/review" className="text-xs font-ui text-accent hover:underline">Go to Review</Link>
+            </div>
+            <div className={`rounded-md border p-3 space-y-2 ${readinessStateClasses(data.readiness_2_0.evidence.state)}`}>
+              <p className="text-sm font-ui font-semibold text-text-primary">Evidence readiness</p>
+              <p className="text-xs font-ui">State: {data.readiness_2_0.evidence.state}</p>
+              <p className="text-xs font-ui">Required missing: {data.readiness_2_0.evidence.required_missing_count}</p>
+              <p className="text-xs font-ui">Required partial: {data.readiness_2_0.evidence.required_partial_count}</p>
+              <p className="text-xs font-ui">Required matched: {data.readiness_2_0.evidence.required_matched_count}</p>
+              <p className="text-xs font-ui text-text-muted">Confirm required evidence matches and resolve missing items.</p>
+              <Link href="/readiness/checklist" className="text-xs font-ui text-accent hover:underline">Open checklist</Link>
+            </div>
+          </div>
+
+          {(data.readiness_2_0.blocking_reasons.length > 0 || data.readiness_2_0.warnings.length > 0) && (
+            <div className="space-y-2">
+              {data.readiness_2_0.blocking_reasons.length > 0 && (
+                <div className="rounded-md border border-risk-high bg-review-bg px-3 py-2">
+                  <p className="text-xs font-ui font-semibold text-text-primary">
+                    Blockers (must resolve before considered ready)
+                  </p>
+                  {data.readiness_2_0.blocking_reasons.map((reason) => (
+                    <p key={reason} className="text-xs font-ui text-risk-high">{reason}</p>
+                  ))}
+                </div>
+              )}
+              {data.readiness_2_0.warnings.length > 0 && (
+                <div className="rounded-md border border-review bg-review-bg px-3 py-2">
+                  <p className="text-xs font-ui font-semibold text-text-primary">
+                    Warnings (should review before export)
+                  </p>
+                  {data.readiness_2_0.warnings.map((warning) => (
+                    <p key={warning} className="text-xs font-ui text-review">{warning}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Per-skill breakdown */}
       {data.breakdown.length > 0 && (
         <div className="bg-surface rounded-lg shadow-sm p-6">
@@ -135,7 +201,7 @@ export default function ReadinessPage() {
         </div>
       )}
 
-      {data.evidence_obligation_summary && (
+      {!data.readiness_2_0 && data.evidence_obligation_summary && (
         <div className="bg-surface rounded-lg shadow-sm p-6 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-ui text-sm font-semibold text-text-primary">Evidence readiness</h2>

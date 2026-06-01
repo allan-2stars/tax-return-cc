@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import EvidenceChecklist from '@/components/readiness/EvidenceChecklist'
 import type { EvidenceObligation } from '@/lib/api/types'
 
@@ -16,6 +16,19 @@ const obligations: EvidenceObligation[] = [
     required_level: 'required',
     status: 'missing',
     reason: 'Private Health Insurance is enabled in your profile.',
+    explanation: {
+      explanation_id: 'evidence_obligation:o1',
+      target_type: 'evidence_obligation',
+      target_id: 'o1',
+      category: 'evidence_requirement',
+      plain_english_summary: 'A private health statement is expected.',
+      why_it_matters: 'It helps verify private health details.',
+      what_user_should_check: 'Check policy period and statement year.',
+      evidence_expected: ['private health annual statement'],
+      confidence_level: 'high',
+      rule_version: '2026.1',
+      source: 'rule',
+    },
     matches: [],
     metadata_json: {},
     created_at: null,
@@ -34,6 +47,19 @@ const obligations: EvidenceObligation[] = [
     required_level: 'recommended',
     status: 'partially_matched',
     reason: 'Bank interest events are present.',
+    explanation: {
+      explanation_id: 'evidence_obligation:o2',
+      target_type: 'evidence_obligation',
+      target_id: 'o2',
+      category: 'evidence_requirement',
+      plain_english_summary: 'A bank interest statement is recommended.',
+      why_it_matters: 'It helps validate interest totals.',
+      what_user_should_check: 'Check bank name, period, and amount.',
+      evidence_expected: ['bank interest statement'],
+      confidence_level: 'medium',
+      rule_version: '2026.1',
+      source: 'rule',
+    },
     matches: [
       {
         id: 'm1',
@@ -67,6 +93,19 @@ const obligations: EvidenceObligation[] = [
     required_level: 'required',
     status: 'matched',
     reason: 'Work-related expense events are present.',
+    explanation: {
+      explanation_id: 'evidence_obligation:o3',
+      target_type: 'evidence_obligation',
+      target_id: 'o3',
+      category: 'evidence_requirement',
+      plain_english_summary: 'A work expense receipt is expected.',
+      why_it_matters: 'It supports deduction review quality.',
+      what_user_should_check: 'Check vendor, date, and amount.',
+      evidence_expected: ['receipt', 'invoice'],
+      confidence_level: 'high',
+      rule_version: '2026.1',
+      source: 'rule',
+    },
     matches: [
       {
         id: 'm2',
@@ -118,6 +157,18 @@ describe('EvidenceChecklist', () => {
     render(<EvidenceChecklist obligations={obligations} />)
     expect(screen.getByText(/Matched by:/i)).toBeInTheDocument()
     expect(screen.getByText(/work_expense \(deduction, confirmed\)/i)).toBeInTheDocument()
+  })
+
+  it('renders explanation and rule version when expanded', () => {
+    render(<EvidenceChecklist obligations={obligations} />)
+    expect(screen.getByText(/a private health statement is expected/i)).toBeInTheDocument()
+    const toggles = screen.getAllByRole('button', { name: /why this matters/i })
+    expect(toggles.length).toBeGreaterThan(0)
+    fireEvent.click(toggles[0])
+    const details = screen.getByTestId('evidence-explanation-o2')
+    expect(within(details).getByText(/rule version:/i)).toBeInTheDocument()
+    expect(within(details).getByText(/2026\.1/i)).toBeInTheDocument()
+    expect(within(details).getByText(/expected evidence:/i)).toBeInTheDocument()
   })
 
   it('renders rejected match wording', () => {

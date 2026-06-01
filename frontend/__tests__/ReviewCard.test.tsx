@@ -27,6 +27,19 @@ const baseItem: ReviewItem = {
   review_duration_seconds: null,
   group_id: null,
   group_display: null,
+  explanation: {
+    explanation_id: 'review_item:item-1',
+    target_type: 'review_item',
+    target_id: 'item-1',
+    category: 'deduction',
+    plain_english_summary: 'This work item was captured for review.',
+    why_it_matters: 'It can affect deduction totals.',
+    what_user_should_check: 'Confirm amount, date, and category.',
+    evidence_expected: ['receipt', 'invoice'],
+    confidence_level: 'medium',
+    rule_version: null,
+    source: 'review',
+  },
 }
 
 const mockOnAction = jest.fn()
@@ -109,6 +122,15 @@ describe('ReviewCard', () => {
     expect(screen.queryByTestId('why-section')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /why did claude/i }))
     expect(screen.getByTestId('why-section')).toBeInTheDocument()
+  })
+
+  it('renders explanation summary and expandable details', () => {
+    render(<ReviewCard item={baseItem} onAction={mockOnAction} onInlineAnswer={mockOnInlineAnswer} />)
+    expect(screen.getByText(/this work item was captured for review/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /why this matters/i }))
+    expect(screen.getByTestId('review-explanation-details')).toBeInTheDocument()
+    expect(screen.getByText(/what to check:/i)).toBeInTheDocument()
+    expect(screen.getByText(/expected evidence:/i)).toBeInTheDocument()
   })
 
   it('shows new skill banner when onInlineAnswer returns new_skill_pending=true', async () => {

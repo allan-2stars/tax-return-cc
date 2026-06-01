@@ -15,6 +15,10 @@ from app.db.models import EvidenceObligation
 from app.repositories import exports as exports_repo
 from app.repositories import jobs as jobs_repo
 from app.engines.interview import BRANCH_QUESTIONS, PLATFORM_QUESTIONS, _QUESTION_BY_ID
+from app.services.explanations import (
+    build_evidence_obligation_explanation,
+    build_tax_item_explanation,
+)
 from app.services.evidence_rules import CURRENT_EVIDENCE_RULE_VERSION
 
 _DISCLAIMER_TEXT = (
@@ -151,6 +155,10 @@ async def _run_export(
                     [{"event_id": e.id, "reasoning": e.ai_reasoning} for e in confirmed],
                     default=str,
                 ))
+                zf.writestr(
+                    "04A-REVIEW-ITEMS.json",
+                    json.dumps([_review_item_dict(i) for i in review_items], default=str),
+                )
                 zf.writestr("05-AUDIT-LOG.json", json.dumps(
                     [_audit_dict(a) for a in audit_logs], default=str
                 ))
@@ -235,6 +243,41 @@ def _obligation_dict(obligation) -> dict:
         "status": obligation.status,
         "reason": obligation.reason,
         "rule_version": obligation.rule_version,
+        "explanation": build_evidence_obligation_explanation(
+            target_id=obligation.id,
+            obligation_key=obligation.obligation_key,
+            obligation_category=obligation.category,
+            rule_version=obligation.rule_version,
+            source="rule",
+        ),
+    }
+
+
+def _review_item_dict(item) -> dict:
+    explanation_category = item.category or (item.tax_event.category if item.tax_event else None)
+    return {
+        "id": item.id,
+        "tax_event_id": item.tax_event_id,
+        "title": item.title,
+        "category": item.category,
+        "amount": item.amount,
+        "date": item.date,
+        "status": item.status,
+        "risk_level": item.risk_level,
+        "ai_reasoning": item.ai_reasoning,
+        "confidence": item.confidence,
+        "user_action": item.user_action,
+        "user_note": item.user_note,
+        "amended_amount": item.amended_amount,
+        "amended_category": item.amended_category,
+        "group_id": item.tax_event.group_id if item.tax_event else None,
+        "group_display": item.tax_event.group_display if item.tax_event else None,
+        "explanation": build_tax_item_explanation(
+            target_type="review_item",
+            target_id=item.id,
+            category=explanation_category,
+            source="review",
+        ),
     }
 
 

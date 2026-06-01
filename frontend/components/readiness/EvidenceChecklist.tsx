@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { EvidenceMatchItem, EvidenceObligation, EvidenceObligationStatus } from '@/lib/api/types'
 
 const STATUS_LABELS: Record<EvidenceObligationStatus, string> = {
@@ -34,6 +35,7 @@ export default function EvidenceChecklist({
   onDecideMatch?: (matchId: string, status: 'accepted' | 'rejected') => void
   decidingMatchId?: string | null
 }) {
+  const [expandedExplanationIds, setExpandedExplanationIds] = useState<Record<string, boolean>>({})
   const grouped = obligations.reduce<Record<string, EvidenceObligation[]>>((acc, item) => {
     const key = item.category || 'other'
     acc[key] = acc[key] || []
@@ -63,6 +65,38 @@ export default function EvidenceChecklist({
                   <div>
                     <p className="text-sm font-ui font-medium text-text-primary">{item.label}</p>
                     {item.reason && <p className="text-xs font-ui text-text-muted">{item.reason}</p>}
+                    {item.explanation && (
+                      <div className="mt-1">
+                        <p className="text-xs font-ui text-text-body">{item.explanation.plain_english_summary}</p>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedExplanationIds((prev) => ({ ...prev, [item.id]: !prev[item.id] }))
+                          }
+                          className="mt-1 text-xs font-ui text-text-muted hover:text-text-body transition-colors"
+                        >
+                          {expandedExplanationIds[item.id] ? 'Hide details ↑' : 'Why this matters ↓'}
+                        </button>
+                        {expandedExplanationIds[item.id] && (
+                          <div data-testid={`evidence-explanation-${item.id}`} className="mt-2 p-2 rounded bg-surface-raised text-xs font-ui text-text-muted space-y-1">
+                            <p><span className="text-text-body">Why this matters: </span>{item.explanation.why_it_matters}</p>
+                            <p><span className="text-text-body">What to check: </span>{item.explanation.what_user_should_check}</p>
+                            {item.explanation.evidence_expected.length > 0 && (
+                              <p>
+                                <span className="text-text-body">Expected evidence: </span>
+                                {item.explanation.evidence_expected.join(', ')}
+                              </p>
+                            )}
+                            {item.explanation.rule_version && (
+                              <p>
+                                <span className="text-text-body">Rule version: </span>
+                                {item.explanation.rule_version}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="text-right">
                     <p className={`text-xs font-ui font-medium ${statusClass(item.status)}`}>{STATUS_LABELS[item.status]}</p>

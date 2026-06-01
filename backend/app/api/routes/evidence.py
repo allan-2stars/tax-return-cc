@@ -9,6 +9,7 @@ from app.db.base import get_db
 from app.db.models import Document, EvidenceMatch, EvidenceObligation, TaxEvent, TaxProfile, Workspace
 from app.errors import error_response
 from app.services.evidence_reconcile import EvidenceReconcileService
+from app.services.explanations import build_evidence_obligation_explanation
 from app.services.evidence_rules import CURRENT_EVIDENCE_RULE_VERSION
 
 router = APIRouter()
@@ -72,6 +73,13 @@ def _to_dict(
         "status": obligation.status,
         "reason": obligation.reason,
         "rule_version": obligation.rule_version,
+        "explanation": build_evidence_obligation_explanation(
+            target_id=obligation.id,
+            obligation_key=obligation.obligation_key,
+            obligation_category=obligation.category,
+            rule_version=obligation.rule_version,
+            source="rule",
+        ),
         "matches": match_items,
         "metadata_json": obligation.metadata_json or {},
         "created_at": obligation.created_at.isoformat() if obligation.created_at else None,

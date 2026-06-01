@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.db.models import (
     BackgroundJob,
     Document,
+    EvidenceObligation,
     ExportRecord,
     InterviewSession,
     ReviewItem,
@@ -437,6 +438,7 @@ async def test_export_zip_contains_all_required_files(workspace, db_session, tmp
         "02-REVIEW-SUMMARY.pdf",
         "03-MISSING-ITEMS.pdf",
         "04-AI-REASONING.json",
+        "04A-REVIEW-ITEMS.json",
         "05-AUDIT-LOG.json",
         "05A-EVIDENCE-STATUS.json",
         "06-SCHEMA-VERSION.txt",
@@ -468,3 +470,104 @@ async def test_export_zip_contains_all_required_files(workspace, db_session, tmp
     data = payload if isinstance(payload, dict) else json.loads(payload)
     assert data["current_rule_version"] == CURRENT_EVIDENCE_RULE_VERSION
     assert "summary" in data
+
+
+@pytest.mark.asyncio
+async def test_export_review_items_json_includes_explanations(workspace, db_session, tmp_path):
+    from app.engines.export import ExportEngine
+
+    event = await _create_event(
+        db_session,
+        workspace.id,
+        status="confirmed",
+        event_type="deduction",
+        category="work_expense",
+    )
+    await _create_interview_session(db_session, workspace.id, state="complete")
+    review_item = ReviewItem(
+        workspace_id=workspace.id,
+        tax_event_id=event.id,
+        title="Work expense item",
+        category="work_expense",
+        amount=100.0,
+        date="2025-07-01",
+        status="needs_user_review",
+        risk_level="low",
+        questions_complete=True,
+    )
+    db_session.add(review_item)
+    await db_session.commit()
+
+    mock_pz, mock_zf = _mock_zipper()
+    with patch("app.engines.export.HTML") as mock_html, \
+         patch("app.engines.export.pyzipper", mock_pz):
+        mock_html.return_value.write_pdf.return_value = b"PDF"
+        engine = ExportEngine(
+            export_path=str(tmp_path),
+            storage=MagicMock(),
+            export_task_runner=_run_export_inline,
+        )
+        await engine.generate(workspace.id, "test-password", db_session)
+
+    review_calls = [args for args, _ in mock_zf.writestr.call_args_list if args[0] == "04A-REVIEW-ITEMS.json"]
+    assert len(review_calls) == 1
+    payload = review_calls[0][1]
+    data = payload if isinstance(payload, list) else json.loads(payload)
+    assert isinstance(data, list)
+    assert len(data) >= 1
+    target = next(item for item in data if item["id"] == review_item.id)
+    assert "explanation" in target
+    assert target["explanation"]["plain_english_summary"]
+    assert target["explanation"]["why_it_matters"]
+    assert target["explanation"]["what_user_should_check"]
+    assert isinstance(target["explanation"]["evidence_expected"], list)
+    assert target["explanation"]["confidence_level"] in {"low", "medium", "high"}
+    assert target["explanation"]["source"] == "review"
+
+
+@pytest.mark.asyncio
+async def test_export_evidence_status_includes_obligation_explanations(workspace, db_session, tmp_path):
+    from app.engines.export import ExportEngine
+
+    await _create_event(db_session, workspace.id, status="confirmed")
+    await _create_interview_session(db_session, workspace.id, state="complete")
+    db_session.add(
+        EvidenceObligation(
+            workspace_id=workspace.id,
+            financial_year="2024-25",
+            source_type="tax_event",
+            source_id=None,
+            obligation_key="work_expense_receipt",
+            category="work_expense",
+            label="Work expense receipt",
+            required_level="required",
+            status="missing",
+            rule_version=CURRENT_EVIDENCE_RULE_VERSION,
+        )
+    )
+    await db_session.commit()
+
+    mock_pz, mock_zf = _mock_zipper()
+    with patch("app.engines.export.HTML") as mock_html, \
+         patch("app.engines.export.pyzipper", mock_pz):
+        mock_html.return_value.write_pdf.return_value = b"PDF"
+        engine = ExportEngine(
+            export_path=str(tmp_path),
+            storage=MagicMock(),
+            export_task_runner=_run_export_inline,
+        )
+        await engine.generate(workspace.id, "test-password", db_session)
+
+    evidence_status_calls = [
+        args for args, _ in mock_zf.writestr.call_args_list if args[0] == "05A-EVIDENCE-STATUS.json"
+    ]
+    assert len(evidence_status_calls) == 1
+    payload = evidence_status_calls[0][1]
+    data = payload if isinstance(payload, dict) else json.loads(payload)
+    obligations = data["incomplete_required_obligations"]
+    assert len(obligations) >= 1
+    first = obligations[0]
+    assert "explanation" in first
+    assert first["explanation"]["source"] == "rule"
+    assert first["explanation"]["rule_version"] == CURRENT_EVIDENCE_RULE_VERSION
+    assert first["explanation"]["plain_english_summary"]

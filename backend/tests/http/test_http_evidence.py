@@ -99,6 +99,10 @@ async def test_list_obligations_includes_match_payload(auth_client, test_engine)
     assert target["required_level"] == "required"
     assert target["reason"] == "Needed from profile"
     assert target["rule_version"] == CURRENT_EVIDENCE_RULE_VERSION
+    assert "explanation" in target
+    assert target["explanation"]["target_type"] == "evidence_obligation"
+    assert target["explanation"]["target_id"] == target["id"]
+    assert target["explanation"]["rule_version"] == CURRENT_EVIDENCE_RULE_VERSION
     assert isinstance(target["matches"], list)
     assert len(target["matches"]) == 1
     match = target["matches"][0]

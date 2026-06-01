@@ -144,6 +144,13 @@ Use multi-axis composition, not a single direct merge of legacy score.
 
 ## 5) Blocking vs Warning Rules
 
+## Current implemented policy snapshot (12B-2 / 12B-3 / 12B-4)
+1. Journey incomplete required questions => `readiness_2_0` blocked.
+2. Required evidence missing/partial => `readiness_2_0` blocked.
+3. Recommended evidence missing => `readiness_2_0` warning.
+4. `needs_user_review` and `needs_agent_review` => `readiness_2_0` warning.
+5. Export gating is unchanged by readiness_2_0 (export behavior remains controlled by export eligibility logic).
+
 ## Hard blockers (for readiness state; export hard gate remains separate for now)
 1. Journey:
    - required incomplete questions > 0 -> blocked
@@ -253,4 +260,3 @@ No DB schema change is required for phase 1; model can be assembled from existin
 
 Proceed next with **12B-2 Backend additive readiness_2_0 payload** first.  
 It has the lowest risk and unlocks UI iteration without forcing export gating decisions.
-

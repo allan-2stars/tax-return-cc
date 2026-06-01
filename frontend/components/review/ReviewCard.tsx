@@ -39,6 +39,7 @@ interface ReviewCardProps {
 
 export default function ReviewCard({ item, onAction, onInlineAnswer }: ReviewCardProps) {
   const [showWhy, setShowWhy] = useState(false)
+  const [showExplanation, setShowExplanation] = useState(false)
   const [showAmend, setShowAmend] = useState(false)
   const [showAsk, setShowAsk] = useState(false)
   const [confirmed, setConfirmed] = useState(item.status === 'confirmed')
@@ -97,6 +98,31 @@ export default function ReviewCard({ item, onAction, onInlineAnswer }: ReviewCar
       {item.confidence != null && (
         <div className="mt-2">
           <ConfidenceBar confidence={item.confidence} />
+        </div>
+      )}
+
+      {item.explanation && (
+        <div className="mt-3 pt-3 border-t border-border">
+          <p className="text-xs font-ui text-text-body">{item.explanation.plain_english_summary}</p>
+          <button
+            type="button"
+            onClick={() => setShowExplanation((v) => !v)}
+            className="mt-1 text-xs font-ui text-text-muted hover:text-text-body transition-colors"
+          >
+            {showExplanation ? 'Hide details ↑' : 'Why this matters ↓'}
+          </button>
+          {showExplanation && (
+            <div data-testid="review-explanation-details" className="mt-2 p-3 bg-surface-raised rounded text-xs font-ui space-y-2 text-text-muted">
+              <p><span className="text-text-body">Why this matters: </span>{item.explanation.why_it_matters}</p>
+              <p><span className="text-text-body">What to check: </span>{item.explanation.what_user_should_check}</p>
+              {item.explanation.evidence_expected.length > 0 && (
+                <p>
+                  <span className="text-text-body">Expected evidence: </span>
+                  {item.explanation.evidence_expected.join(', ')}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
 

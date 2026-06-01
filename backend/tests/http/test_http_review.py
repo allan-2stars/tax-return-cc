@@ -17,6 +17,17 @@ async def test_get_queue(auth_client):
     assert "needs_review" in data
     assert "agent_required" in data
     assert "confirmed" in data
+    bucket_items = (
+        data["needs_review"]["items"]
+        + data["agent_required"]["items"]
+        + data["high_risk"]["items"]
+        + data["confirmed"]["items"]
+    )
+    if bucket_items:
+        first = bucket_items[0]
+        assert "explanation" in first
+        assert first["explanation"]["target_type"] == "review_item"
+        assert first["explanation"]["target_id"] == first["id"]
 
 
 @pytest.mark.asyncio

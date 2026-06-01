@@ -74,6 +74,56 @@ export interface ReadinessData {
     evidence_reconcile_status: string
     evidence_reconcile_meta?: Record<string, unknown> | null
   }
+  readiness_2_0?: {
+    overall: {
+      state: 'blocked' | 'warning' | 'ready'
+      score: number
+      label: string
+    }
+    journey: {
+      is_complete: boolean
+      has_incomplete_questions: boolean
+      required_blockers_count: number
+      incomplete_questions: Array<{
+        question_id: string
+        question_label: string
+        editable: boolean
+      }>
+      state: 'blocked' | 'warning' | 'ready'
+    }
+    review: {
+      unconfirmed_total: number
+      needs_user_review_count: number
+      needs_agent_review_count: number
+      confirmed_count: number
+      rejected_or_flagged_count: number
+      state: 'blocked' | 'warning' | 'ready'
+    }
+    evidence: {
+      required_missing_count: number
+      required_partial_count: number
+      required_matched_count: number
+      recommended_missing_count: number
+      candidate_match_count: number
+      accepted_match_count: number
+      rejected_match_count: number
+      blocking_obligations: Array<{
+        id: string
+        obligation_key: string
+        label: string
+        category: string | null
+        required_level: string
+        status: string
+        reason: string | null
+        rule_version?: string | null
+      }>
+      state: 'blocked' | 'warning' | 'ready'
+      current_rule_version: string
+    }
+    blocking_reasons: string[]
+    warnings: string[]
+    last_calculated_at: string | null
+  }
 }
 
 export interface MissingItem {
@@ -134,6 +184,7 @@ export interface EvidenceObligation {
   status: EvidenceObligationStatus
   reason: string | null
   rule_version?: string | null
+  explanation?: ExplanationSidecar | null
   matches: EvidenceMatchItem[]
   metadata_json: Record<string, unknown>
   created_at: string | null
@@ -293,6 +344,21 @@ export interface ReviewItem {
   review_duration_seconds: number | null
   group_id: string | null
   group_display: string | null
+  explanation?: ExplanationSidecar | null
+}
+
+export interface ExplanationSidecar {
+  explanation_id: string
+  target_type: string
+  target_id: string
+  category: string
+  plain_english_summary: string
+  why_it_matters: string
+  what_user_should_check: string
+  evidence_expected: string[]
+  confidence_level: 'low' | 'medium' | 'high'
+  rule_version: string | null
+  source: 'rule' | 'extraction' | 'user_entry' | 'review' | 'evidence_match' | string
 }
 
 export interface ReviewQueueSection {
