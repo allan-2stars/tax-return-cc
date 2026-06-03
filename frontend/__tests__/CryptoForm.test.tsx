@@ -4,8 +4,21 @@ import CryptoForm from '@/components/review/investment/CryptoForm'
 import * as eventsApi from '@/lib/api/events'
 
 jest.mock('@/lib/api/events')
+jest.mock('@/lib/stores/workspace.store', () => ({
+  __esModule: true,
+  default: jest.fn(() => ({
+    workspaceId: 'workspace-1',
+    financialYear: '2024-25',
+  })),
+}))
+
 const mockCreate = eventsApi.createManualEvent as jest.Mock
-beforeEach(() => jest.clearAllMocks())
+const buyDraftKey = 'tax-return-draft:workspace-1:2024-25:investment:crypto:buy'
+
+beforeEach(() => {
+  jest.clearAllMocks()
+  sessionStorage.clear()
+})
 
 test('shows Buy / Sell / Staking sub-type selector by default', () => {
   render(<CryptoForm onSuccess={jest.fn()} onBack={jest.fn()} onCancel={jest.fn()} />)
@@ -90,4 +103,25 @@ test('buy form submits acquisition category', async () => {
       })
     )
   )
+})
+
+test('buy form saves and restores draft fields', async () => {
+  const user = userEvent.setup()
+  const { unmount } = render(<CryptoForm onSuccess={jest.fn()} onBack={jest.fn()} onCancel={jest.fn()} />)
+  await user.click(screen.getByRole('button', { name: /^buy$/i }))
+
+  await user.type(screen.getByLabelText(/exchange \/ wallet/i), 'CoinSpot')
+
+  await waitFor(() => {
+    expect(screen.getByText(/draft saved/i)).toBeInTheDocument()
+    expect(sessionStorage.getItem(buyDraftKey)).toContain('CoinSpot')
+  })
+
+  unmount()
+  render(<CryptoForm onSuccess={jest.fn()} onBack={jest.fn()} onCancel={jest.fn()} />)
+  await user.click(screen.getByRole('button', { name: /^buy$/i }))
+
+  expect(screen.getByText(/draft found/i)).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: /restore draft/i }))
+  expect(screen.getByLabelText(/exchange \/ wallet/i)).toHaveValue('CoinSpot')
 })

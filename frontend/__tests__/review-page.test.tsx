@@ -12,8 +12,29 @@ jest.mock('next/navigation', () => ({
 
 jest.mock('@/lib/api/review')
 jest.mock('@/components/review/ReviewCard', () => ({
-  default: ({ item }: { item: { title: string } }) => (
-    <div data-testid="review-card">{item.title}</div>
+  default: ({
+    item,
+    onAction,
+    onUndo,
+    onUndoBulk,
+  }: {
+    item: { id: string; title: string }
+    onAction: (id: string, action: 'confirmed', payload: object) => void
+    onUndo: (id: string) => void
+    onUndoBulk: (bulkActionId: string) => void
+  }) => (
+    <div data-testid="review-card">
+      <span>{item.title}</span>
+      <button type="button" onClick={() => onAction(item.id, 'confirmed', {})}>
+        Looks right
+      </button>
+      <button type="button" onClick={() => onUndo(item.id)}>
+        Undo last decision
+      </button>
+      <button type="button" onClick={() => onUndoBulk('bulk-1')}>
+        Undo bulk decision
+      </button>
+    </div>
   ),
   __esModule: true,
 }))
@@ -23,6 +44,9 @@ jest.mock('@/components/review/BulkActionBar', () => ({
 }))
 
 const mockGetReviewQueue = reviewApi.getReviewQueue as jest.Mock
+const mockTakeAction = reviewApi.takeAction as jest.Mock
+const mockUndoReviewDecision = reviewApi.undoReviewDecision as jest.Mock
+const mockUndoBulkReviewDecision = reviewApi.undoBulkReviewDecision as jest.Mock
 
 const emptyQueue: ReviewQueue = {
   agent_required: { items: [], count: 0 },
@@ -123,6 +147,94 @@ describe('ReviewPage', () => {
     await waitFor(() =>
       expect(screen.getByText(/3 items? to review/i)).toBeInTheDocument()
     )
+  })
+
+  it('Review action failure shows error without losing item UI', async () => {
+    const queue: ReviewQueue = {
+      ...emptyQueue,
+      needs_review: {
+        count: 1,
+        items: [{ ...makeItem('item-1', 'Work laptop'), status: 'needs_user_review' }],
+      },
+      total: 1,
+      pending: 1,
+    }
+    mockGetReviewQueue.mockResolvedValue({ data: { data: queue } })
+    mockTakeAction.mockRejectedValue(new Error('network'))
+
+    wrap(<ReviewPage />)
+
+    await waitFor(() => expect(screen.getByText('Work laptop')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /looks right/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/unable to save review action/i)
+    expect(screen.getByText('Work laptop')).toBeInTheDocument()
+  })
+
+  it('Undo review decision calls API and shows success message', async () => {
+    const queue: ReviewQueue = {
+      ...emptyQueue,
+      confirmed: {
+        count: 1,
+        items: [{ ...makeItem('item-1', 'Work laptop'), status: 'confirmed' }],
+      },
+      total: 1,
+      pending: 0,
+    }
+    mockGetReviewQueue.mockResolvedValue({ data: { data: queue } })
+    mockUndoReviewDecision.mockResolvedValue({ data: { data: { ...queue.confirmed.items[0], status: 'needs_user_review' } } })
+
+    wrap(<ReviewPage />)
+
+    await waitFor(() => expect(screen.getByText('Work laptop')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /undo last decision/i }))
+
+    await waitFor(() => expect(mockUndoReviewDecision).toHaveBeenCalledWith('item-1'))
+    expect(await screen.findByText(/review decision undone/i)).toBeInTheDocument()
+  })
+
+  it('Undo review decision failure shows error without losing item UI', async () => {
+    const queue: ReviewQueue = {
+      ...emptyQueue,
+      confirmed: {
+        count: 1,
+        items: [{ ...makeItem('item-1', 'Work laptop'), status: 'confirmed' }],
+      },
+      total: 1,
+      pending: 0,
+    }
+    mockGetReviewQueue.mockResolvedValue({ data: { data: queue } })
+    mockUndoReviewDecision.mockRejectedValue(new Error('network'))
+
+    wrap(<ReviewPage />)
+
+    await waitFor(() => expect(screen.getByText('Work laptop')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /undo last decision/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/unable to undo review decision/i)
+    expect(screen.getByText('Work laptop')).toBeInTheDocument()
+  })
+
+  it('Undo bulk review decision calls bulk undo API and shows success message', async () => {
+    const queue: ReviewQueue = {
+      ...emptyQueue,
+      confirmed: {
+        count: 1,
+        items: [{ ...makeItem('item-1', 'Work laptop'), status: 'confirmed' }],
+      },
+      total: 1,
+      pending: 0,
+    }
+    mockGetReviewQueue.mockResolvedValue({ data: { data: queue } })
+    mockUndoBulkReviewDecision.mockResolvedValue({ data: { data: { items: [], count: 0 } } })
+
+    wrap(<ReviewPage />)
+
+    await waitFor(() => expect(screen.getByText('Work laptop')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /undo bulk decision/i }))
+
+    await waitFor(() => expect(mockUndoBulkReviewDecision).toHaveBeenCalledWith('bulk-1'))
+    expect(await screen.findByText(/review decision undone/i)).toBeInTheDocument()
   })
 })
 
@@ -304,5 +416,6 @@ function makeItem(id: string, title: string) {
     review_duration_seconds: null,
     group_id: null,
     group_display: null,
+    decision_history: [],
   }
 }

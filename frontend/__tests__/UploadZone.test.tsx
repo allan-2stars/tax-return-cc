@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import UploadZone from '@/components/evidence/UploadZone'
 
 jest.mock('@/lib/api/documents', () => ({
@@ -72,15 +72,49 @@ describe('UploadZone', () => {
     const file = new File(['%PDF-content'], 'payslip.pdf', { type: 'application/pdf' })
     fireEvent.change(input, { target: { files: [file] } })
     await waitFor(() => expect(screen.getByText(/payslip\.pdf/i)).toBeInTheDocument())
+    expect(screen.getByText(/^uploading file$/i)).toBeInTheDocument()
+  })
+
+  it('shows processing state from SSE updates', async () => {
+    mockUpload.mockResolvedValue({ data: { status: 'processing', document_id: 'doc-1' } })
+    mockUseSSE.mockImplementation((url: string | null) => url
+      ? { data: { document_id: 'doc-1', status: 'processing', stage: 'extract' }, status: 'open', error: null }
+      : { data: null, status: 'closed', error: null })
+
+    renderZone()
+    const input = screen.getByLabelText(/upload document/i)
+    const file = new File(['%PDF-content'], 'payslip.pdf', { type: 'application/pdf' })
+    fireEvent.change(input, { target: { files: [file] } })
+
+    await waitFor(() => expect(screen.getByText(/processing document/i)).toBeInTheDocument())
+    expect(screen.getByText(/finding tax items/i)).toBeInTheDocument()
+  })
+
+  it('shows interrupted connection message while fallback polling continues', async () => {
+    mockUpload.mockResolvedValue({ data: { status: 'processing', document_id: 'doc-1' } })
+    mockUseSSE.mockImplementation((url: string | null) => url
+      ? { data: null, status: 'closed', error: 'connection_error' }
+      : { data: null, status: 'closed', error: null })
+    mockGetDocumentSummary.mockResolvedValue({
+      data: { data: { document_id: 'doc-1', status: 'processing' } },
+    })
+
+    renderZone()
+    const input = screen.getByLabelText(/upload document/i)
+    const file = new File(['%PDF-content'], 'payslip.pdf', { type: 'application/pdf' })
+    fireEvent.change(input, { target: { files: [file] } })
+
+    await waitFor(() => {
+      expect(screen.getByText(/connection interrupted/i)).toBeInTheDocument()
+      expect(screen.getByText(/checking the document status/i)).toBeInTheDocument()
+    })
   })
 
   it('resolves upload on SSE ready event', async () => {
     mockUpload.mockResolvedValue({ data: { status: 'processing', document_id: 'doc-1' } })
-    mockUseSSE.mockReturnValue({
-      data: { document_id: 'doc-1', status: 'ready', events_created: 1 },
-      status: 'closed',
-      error: null,
-    })
+    mockUseSSE.mockImplementation((url: string | null) => url
+      ? { data: { document_id: 'doc-1', status: 'ready', events_created: 1 }, status: 'closed', error: null }
+      : { data: null, status: 'closed', error: null })
 
     renderZone()
     const input = screen.getByLabelText(/upload document/i)
@@ -93,7 +127,9 @@ describe('UploadZone', () => {
 
   it('falls back to summary polling when SSE errors and resolves ready once', async () => {
     mockUpload.mockResolvedValue({ data: { status: 'processing', document_id: 'doc-1' } })
-    mockUseSSE.mockReturnValue({ data: null, status: 'closed', error: 'timeout' })
+    mockUseSSE.mockImplementation((url: string | null) => url
+      ? { data: null, status: 'closed', error: 'timeout' }
+      : { data: null, status: 'closed', error: null })
     mockGetDocumentSummary.mockResolvedValue({
       data: { data: { document_id: 'doc-1', status: 'ready' } },
     })
@@ -111,7 +147,9 @@ describe('UploadZone', () => {
 
   it('shows error and unblocks when polling reports failed/archived', async () => {
     mockUpload.mockResolvedValue({ data: { status: 'processing', document_id: 'doc-2' } })
-    mockUseSSE.mockReturnValue({ data: null, status: 'closed', error: 'connection_error' })
+    mockUseSSE.mockImplementation((url: string | null) => url
+      ? { data: null, status: 'closed', error: 'connection_error' }
+      : { data: null, status: 'closed', error: null })
     mockGetDocumentSummary.mockResolvedValue({
       data: { data: { document_id: 'doc-2', status: 'failed' } },
     })
@@ -123,6 +161,59 @@ describe('UploadZone', () => {
 
     jest.advanceTimersByTime(2_100)
     await waitFor(() => expect(screen.getByText(/something went wrong/i)).toBeInTheDocument())
-    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /retry status check/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /re-upload document/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /continue manually/i })).toBeInTheDocument()
+  })
+
+  it('shows session-expired message for 401 upload error', async () => {
+    mockUpload.mockRejectedValue({ response: { status: 401 } })
+    renderZone()
+    const input = screen.getByLabelText(/upload document/i)
+    const file = new File(['%PDF-content'], 'payslip.pdf', { type: 'application/pdf' })
+    fireEvent.change(input, { target: { files: [file] } })
+
+    await waitFor(() => {
+      expect(screen.getByText(/session has expired/i)).toBeInTheDocument()
+      expect(screen.getByText(/sign in again/i)).toBeInTheDocument()
+    })
+  })
+
+  it('shows retryable network message for upload network error', async () => {
+    mockUpload.mockRejectedValue(new Error('network down'))
+    renderZone()
+    const input = screen.getByLabelText(/upload document/i)
+    const file = new File(['%PDF-content'], 'payslip.pdf', { type: 'application/pdf' })
+    fireEvent.change(input, { target: { files: [file] } })
+
+    await waitFor(() => {
+      expect(screen.getByText(/network connection was interrupted/i)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /retry status check/i })).toBeInTheDocument()
+    })
+  })
+
+  it('shows still processing guidance for long processing state', async () => {
+    mockUpload.mockResolvedValue({ data: { status: 'processing', document_id: 'doc-1' } })
+    mockUseSSE.mockImplementation((url: string | null) => url
+      ? { data: null, status: 'open', error: null }
+      : { data: null, status: 'closed', error: null })
+    mockGetDocumentSummary.mockResolvedValue({
+      data: { data: { document_id: 'doc-1', status: 'processing' } },
+    })
+
+    renderZone()
+    const input = screen.getByLabelText(/upload document/i)
+    const file = new File(['%PDF-content'], 'payslip.pdf', { type: 'application/pdf' })
+    fireEvent.change(input, { target: { files: [file] } })
+
+    await waitFor(() => expect(screen.getByText(/^processing document$/i)).toBeInTheDocument())
+    act(() => {
+      jest.advanceTimersByTime(61_000)
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText(/still processing/i)).toBeInTheDocument()
+      expect(screen.getByText(/you can keep working/i)).toBeInTheDocument()
+    })
   })
 })

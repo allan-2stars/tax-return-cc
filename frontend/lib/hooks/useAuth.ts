@@ -1,13 +1,16 @@
 // frontend/lib/hooks/useAuth.ts
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSession } from '@/lib/api/auth'
 import useWorkspaceStore from '@/lib/stores/workspace.store'
 
+const SESSION_SEEN_KEY = 'tax-return-session-seen'
+
 export function useAuth() {
   const router = useRouter()
+  const [sessionRestored, setSessionRestored] = useState(false)
   const { setWorkspace, setAuthenticated, setUnlocked, setUserLodgerType, isAuthenticated } =
     useWorkspaceStore()
 
@@ -34,6 +37,11 @@ export function useAuth() {
         setAuthenticated(true)
         setUnlocked(is_unlocked)
         setUserLodgerType(user_lodger_type ?? null)
+        const seen = sessionStorage.getItem(SESSION_SEEN_KEY) === '1'
+        sessionStorage.setItem(SESSION_SEEN_KEY, '1')
+        if (seen) {
+          setSessionRestored(true)
+        }
       })
       .catch((err: unknown) => {
         const data = (
@@ -51,5 +59,9 @@ export function useAuth() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  return { isAuthenticated }
+  return {
+    isAuthenticated,
+    sessionRestored,
+    clearSessionRestored: () => setSessionRestored(false),
+  }
 }

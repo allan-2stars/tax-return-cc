@@ -2,11 +2,19 @@
 import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { bulkAction, getReviewQueue, submitInlineAnswer, takeAction } from '@/lib/api/review'
+import {
+  bulkAction,
+  getReviewQueue,
+  submitInlineAnswer,
+  takeAction,
+  undoBulkReviewDecision,
+  undoReviewDecision,
+} from '@/lib/api/review'
 import type { ReviewItem, ReviewQueue } from '@/lib/api/types'
 import ReviewCard from '@/components/review/ReviewCard'
 import BulkActionBar from '@/components/review/BulkActionBar'
 import ManualEntryForm from '@/components/review/ManualEntryForm'
+import { normalizeApiError } from '@/lib/api/errors'
 
 const INCOME_CATEGORIES = new Set([
   'payg_income', 'allowance', 'lump_sum', 'bank_interest', 'investment_income_basic',
@@ -33,16 +41,16 @@ function applyFilter(items: ReviewItem[], filter: string): ReviewItem[] {
   return items
 }
 
-function findGroups(items: ReviewItem[]): Map<string, { ids: string[]; label: string }> {
-  const groups = new Map<string, { ids: string[]; label: string }>()
+function findGroups(items: ReviewItem[]): Map<string, { items: ReviewItem[]; label: string }> {
+  const groups = new Map<string, { items: ReviewItem[]; label: string }>()
   items.forEach((item) => {
     const key = item.group_id ?? item.title
     if (!key) return
     const label = item.group_display ?? item.title ?? key
-    const existing = groups.get(key) ?? { ids: [], label }
-    groups.set(key, { ids: [...existing.ids, item.id], label })
+    const existing = groups.get(key) ?? { items: [], label }
+    groups.set(key, { items: [...existing.items, item], label })
   })
-  return new Map([...groups.entries()].filter(([, { ids }]) => ids.length >= 2))
+  return new Map([...groups.entries()].filter(([, { items }]) => items.length >= 2))
 }
 
 function ReviewContent() {
@@ -51,6 +59,8 @@ function ReviewContent() {
   const queryClient = useQueryClient()
   const [showManualEntry, setShowManualEntry] = useState(false)
   const [activeFilter, setActiveFilter] = useState(() => searchParams.get('filter') ?? 'all')
+  const [mutationError, setMutationError] = useState<string | null>(null)
+  const [mutationSuccess, setMutationSuccess] = useState<string | null>(null)
 
   function handleFilterChange(filter: string) {
     setActiveFilter(filter)
@@ -76,12 +86,52 @@ function ReviewContent() {
       action: 'confirmed' | 'amended' | 'flagged' | 'skipped'
       payload: { amount?: number; category?: string; note?: string }
     }) => takeAction(id, action, payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['review-queue'] }),
+    onSuccess: () => {
+      setMutationError(null)
+      setMutationSuccess(null)
+      queryClient.invalidateQueries({ queryKey: ['review-queue'] })
+    },
+    onError: (err: unknown) => {
+      setMutationError(normalizeApiError(err, 'Unable to save review action. Try again.').message)
+    },
   })
 
   const bulkMutation = useMutation({
     mutationFn: (ids: string[]) => bulkAction(ids, 'confirmed'),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['review-queue'] }),
+    onSuccess: () => {
+      setMutationError(null)
+      setMutationSuccess(null)
+      queryClient.invalidateQueries({ queryKey: ['review-queue'] })
+    },
+    onError: (err: unknown) => {
+      setMutationError(normalizeApiError(err, 'Unable to save review action. Try again.').message)
+    },
+  })
+
+  const undoMutation = useMutation({
+    mutationFn: (id: string) => undoReviewDecision(id),
+    onSuccess: () => {
+      setMutationError(null)
+      setMutationSuccess('Review decision undone.')
+      queryClient.invalidateQueries({ queryKey: ['review-queue'] })
+    },
+    onError: (err: unknown) => {
+      setMutationSuccess(null)
+      setMutationError(normalizeApiError(err, 'Unable to undo review decision. Try again.').message)
+    },
+  })
+
+  const undoBulkMutation = useMutation({
+    mutationFn: (bulkActionId: string) => undoBulkReviewDecision(bulkActionId),
+    onSuccess: () => {
+      setMutationError(null)
+      setMutationSuccess('Review decision undone.')
+      queryClient.invalidateQueries({ queryKey: ['review-queue'] })
+    },
+    onError: (err: unknown) => {
+      setMutationSuccess(null)
+      setMutationError(normalizeApiError(err, 'Unable to undo review decision. Try again.').message)
+    },
   })
 
   async function handleInlineAnswer(
@@ -149,6 +199,16 @@ function ReviewContent() {
         <p className="text-xs font-ui text-text-muted mt-1">
           Review = tax items extracted or manually added for confirmation before export.
         </p>
+        {mutationError && (
+          <p role="alert" className="text-sm font-ui text-risk-high mt-3">
+            {mutationError}
+          </p>
+        )}
+        {mutationSuccess && (
+          <p className="text-sm font-ui text-ready mt-3">
+            {mutationSuccess}
+          </p>
+        )}
       </div>
 
       {/* Filter tabs */}
@@ -188,6 +248,8 @@ function ReviewContent() {
                 item={item}
                 onAction={(id, action, payload) => actionMutation.mutate({ id, action, payload })}
                 onInlineAnswer={handleInlineAnswer}
+                onUndo={(id) => undoMutation.mutate(id)}
+                onUndoBulk={(bulkActionId) => undoBulkMutation.mutate(bulkActionId)}
               />
             ))
           )}
@@ -214,6 +276,8 @@ function ReviewContent() {
                 item={item}
                 onAction={(id, action, payload) => actionMutation.mutate({ id, action, payload })}
                 onInlineAnswer={handleInlineAnswer}
+                onUndo={(id) => undoMutation.mutate(id)}
+                onUndoBulk={(bulkActionId) => undoBulkMutation.mutate(bulkActionId)}
               />
             ))}
           </div>
@@ -232,6 +296,8 @@ function ReviewContent() {
                 item={item}
                 onAction={(id, action, payload) => actionMutation.mutate({ id, action, payload })}
                 onInlineAnswer={handleInlineAnswer}
+                onUndo={(id) => undoMutation.mutate(id)}
+                onUndoBulk={(bulkActionId) => undoBulkMutation.mutate(bulkActionId)}
               />
             ))}
           </div>
@@ -244,10 +310,15 @@ function ReviewContent() {
             Needs your review ({queue.needs_review.count})
           </h2>
           <div className="space-y-3">
-            {[...groups.entries()].map(([key, { ids, label }]) => (
+            {[...groups.entries()].map(([key, { items, label }]) => (
               <BulkActionBar
                 key={key}
-                itemIds={ids}
+                items={items.map((item) => ({
+                  id: item.id,
+                  title: item.title ?? item.category ?? item.id,
+                  amount: item.amount,
+                  date: item.date,
+                }))}
                 groupLabel={label}
                 onBulkConfirm={(ids) => bulkMutation.mutate(ids)}
               />
@@ -258,6 +329,8 @@ function ReviewContent() {
                 item={item}
                 onAction={(id, action, payload) => actionMutation.mutate({ id, action, payload })}
                 onInlineAnswer={handleInlineAnswer}
+                onUndo={(id) => undoMutation.mutate(id)}
+                onUndoBulk={(bulkActionId) => undoBulkMutation.mutate(bulkActionId)}
               />
             ))}
           </div>
@@ -276,6 +349,8 @@ function ReviewContent() {
                 item={item}
                 onAction={(id, action, payload) => actionMutation.mutate({ id, action, payload })}
                 onInlineAnswer={handleInlineAnswer}
+                onUndo={(id) => undoMutation.mutate(id)}
+                onUndoBulk={(bulkActionId) => undoBulkMutation.mutate(bulkActionId)}
               />
             ))}
           </div>

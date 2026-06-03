@@ -39,5 +39,11 @@ export const bulkAction = (itemIds: string[], action: 'confirmed') =>
     action,
   })
 
+export const undoReviewDecision = (itemId: string) =>
+  client.post<ApiResponse<ReviewActionResponse>>(`/api/v1/review/${itemId}/undo`)
+
+export const undoBulkReviewDecision = (bulkActionId: string) =>
+  client.post<ApiResponse<BulkActionResponseData>>(`/api/v1/review/bulk-action/${bulkActionId}/undo`)
+
 export const askClaude = (itemId: string, question: string) =>
   client.post<ApiResponse<AskClaudeResponseData>>(`/api/v1/review/${itemId}/ask`, { question })

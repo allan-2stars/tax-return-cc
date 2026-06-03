@@ -4,6 +4,9 @@ import { createManualEvent } from '@/lib/api/events'
 import type { ManualEventFrequency, ManualEventType, InvestmentSubType } from '@/lib/api/types'
 import { validateDate } from '@/lib/utils/fy'
 import useWorkspaceStore from '@/lib/stores/workspace.store'
+import { normalizeApiError } from '@/lib/api/errors'
+import { useSessionDraft } from '@/lib/hooks/useSessionDraft'
+import DraftStatus from './DraftStatus'
 import SharesForm from './investment/SharesForm'
 import CryptoForm from './investment/CryptoForm'
 import BankInterestForm from './investment/BankInterestForm'
@@ -38,8 +41,71 @@ interface Props {
   onCancel: () => void
 }
 
+interface ManualEntryDraft {
+  step: 1 | 2
+  eventType: ManualEventType | null
+  investmentSubType: InvestmentSubType | null
+  category: string
+  description: string
+  amount: string
+  date: string
+  frequency: ManualEventFrequency
+  periods: Period[]
+  note: string
+  donationCharityName: string
+  donationAbn: string
+  donationDgrConfirmed: boolean
+  donationAmount: string
+  donationDate: string
+  donationReceiptAvailable: boolean
+  workExpenseType: string
+  workExpenseVendor: string
+  workExpenseAmount: string
+  workExpensePurchaseDate: string
+  workExpensePercentage: string
+  workExpenseReceiptAvailable: boolean
+  wfhMethod: 'fixed_rate' | 'actual_cost'
+  wfhFinancialYear: string
+  wfhHours: string
+  wfhAmount: string
+  wfhEvidenceAvailable: boolean
+}
+
+function hasDraftContent(draft: ManualEntryDraft): boolean {
+  return Boolean(
+    draft.eventType ||
+    draft.category ||
+    draft.description ||
+    draft.amount ||
+    draft.date ||
+    draft.note ||
+    draft.donationCharityName ||
+    draft.donationAbn ||
+    draft.donationAmount ||
+    draft.donationDate ||
+    draft.workExpenseType ||
+    draft.workExpenseVendor ||
+    draft.workExpenseAmount ||
+    draft.workExpensePurchaseDate ||
+    draft.workExpensePercentage ||
+    draft.wfhHours ||
+    draft.wfhAmount
+  )
+}
+
+function parseDraft(value: string | null): ManualEntryDraft | null {
+  if (!value) return null
+  try {
+    const parsed = JSON.parse(value)
+    if (!parsed || typeof parsed !== 'object') return null
+    return parsed as ManualEntryDraft
+  } catch {
+    return null
+  }
+}
+
 export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
-  const { financialYear } = useWorkspaceStore()
+  const { workspaceId, financialYear } = useWorkspaceStore()
   const [step, setStep] = useState<1 | 2>(1)
   const [eventType, setEventType] = useState<ManualEventType | null>(null)
   const [investmentSubType, setInvestmentSubType] = useState<InvestmentSubType | null>(null)
@@ -74,6 +140,79 @@ export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
 
   const isMonthly = frequency === 'monthly'
   const monthlyTotal = periods.reduce((sum, p) => sum + p.months * p.amount_per_month, 0)
+  const draft: ManualEntryDraft = {
+    step,
+    eventType,
+    investmentSubType,
+    category,
+    description,
+    amount,
+    date,
+    frequency,
+    periods,
+    note,
+    donationCharityName,
+    donationAbn,
+    donationDgrConfirmed,
+    donationAmount,
+    donationDate,
+    donationReceiptAvailable,
+    workExpenseType,
+    workExpenseVendor,
+    workExpenseAmount,
+    workExpensePurchaseDate,
+    workExpensePercentage,
+    workExpenseReceiptAvailable,
+    wfhMethod,
+    wfhFinancialYear,
+    wfhHours,
+    wfhAmount,
+    wfhEvidenceAvailable,
+  }
+
+  function applyDraft(next: ManualEntryDraft) {
+    setStep(next.step ?? 1)
+    setEventType(next.eventType ?? null)
+    setInvestmentSubType(next.investmentSubType ?? null)
+    setCategory(next.category ?? '')
+    setDescription(next.description ?? '')
+    setAmount(next.amount ?? '')
+    setDate(next.date ?? '')
+    setFrequency(next.frequency ?? 'one_off')
+    setPeriods(Array.isArray(next.periods) && next.periods.length > 0 ? next.periods : [{ months: 1, amount_per_month: 0 }])
+    setNote(next.note ?? '')
+    setDonationCharityName(next.donationCharityName ?? '')
+    setDonationAbn(next.donationAbn ?? '')
+    setDonationDgrConfirmed(Boolean(next.donationDgrConfirmed))
+    setDonationAmount(next.donationAmount ?? '')
+    setDonationDate(next.donationDate ?? '')
+    setDonationReceiptAvailable(Boolean(next.donationReceiptAvailable))
+    setWorkExpenseType(next.workExpenseType ?? '')
+    setWorkExpenseVendor(next.workExpenseVendor ?? '')
+    setWorkExpenseAmount(next.workExpenseAmount ?? '')
+    setWorkExpensePurchaseDate(next.workExpensePurchaseDate ?? '')
+    setWorkExpensePercentage(next.workExpensePercentage ?? '')
+    setWorkExpenseReceiptAvailable(Boolean(next.workExpenseReceiptAvailable))
+    setWfhMethod(next.wfhMethod === 'actual_cost' ? 'actual_cost' : 'fixed_rate')
+    setWfhFinancialYear(next.wfhFinancialYear ?? financialYear ?? '')
+    setWfhHours(next.wfhHours ?? '')
+    setWfhAmount(next.wfhAmount ?? '')
+    setWfhEvidenceAvailable(Boolean(next.wfhEvidenceAvailable))
+  }
+
+  const {
+    notice: draftNotice,
+    restoredDraft,
+    restoreDraft,
+    discardDraft,
+    clearDraft,
+  } = useSessionDraft({
+    keyParts: [workspaceId, financialYear, 'manual_entry'],
+    draft,
+    hasContent: hasDraftContent,
+    applyDraft,
+    parseDraft,
+  })
 
   function updatePeriod(idx: number, field: keyof Period, value: number) {
     setPeriods((prev) => {
@@ -127,6 +266,7 @@ export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
             receipt_available: donationReceiptAvailable,
           },
         })
+        clearDraft(true)
         onSuccess()
         return
       }
@@ -167,6 +307,7 @@ export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
             receipt_available: workExpenseReceiptAvailable,
           },
         })
+        clearDraft(true)
         onSuccess()
         return
       }
@@ -203,6 +344,7 @@ export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
             evidence_available: wfhEvidenceAvailable,
           },
         })
+        clearDraft(true)
         onSuccess()
         return
       }
@@ -218,9 +360,10 @@ export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
           ? periods.map((p) => ({ months: p.months, amount_per_month: p.amount_per_month }))
           : null,
       })
+      clearDraft(true)
       onSuccess()
-    } catch {
-      setError('Something went wrong. Please try again.')
+    } catch (err: unknown) {
+      setError(normalizeApiError(err).message)
     } finally {
       setPending(false)
     }
@@ -229,6 +372,12 @@ export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
   if (step === 1) {
     return (
       <div className="space-y-4">
+        <DraftStatus
+          notice={draftNotice}
+          hasRestorableDraft={Boolean(restoredDraft)}
+          onRestore={restoreDraft}
+          onDiscard={discardDraft}
+        />
         <h2 className="font-display text-xl font-semibold text-text-primary">
           What would you like to add?
         </h2>
@@ -314,6 +463,12 @@ export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+      <DraftStatus
+        notice={draftNotice === 'saved' ? draftNotice : null}
+        hasRestorableDraft={false}
+        onRestore={restoreDraft}
+        onDiscard={discardDraft}
+      />
       <div className="flex items-center gap-3">
         <button
           type="button"

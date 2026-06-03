@@ -18,6 +18,7 @@ from app.db.models import (
     TaxProfile,
     TaxEvent,
     ReviewItem as ReviewItemModel,
+    ReviewDecisionHistory,
     AuditLog,
     InterviewSession,
     Document,
@@ -232,6 +233,22 @@ async def test_process_action_confirmed(workspace, db_session):
     )).scalars().all()
     assert any(log.action == "confirmed" and log.actor == "user" for log in logs)
 
+    history = (await db_session.execute(
+        select(ReviewDecisionHistory).where(ReviewDecisionHistory.review_item_id == item.id)
+    )).scalars().all()
+    assert len(history) == 1
+    assert history[0].action == "confirmed"
+    assert history[0].previous_status == "needs_user_review"
+    assert history[0].new_status == "confirmed"
+    assert history[0].changed_fields["status"] == {
+        "old": "needs_user_review",
+        "new": "confirmed",
+    }
+    assert history[0].changed_fields["user_action"] == {
+        "old": None,
+        "new": "confirmed",
+    }
+
 
 # ── 4. process_action(AMENDED) → correction_history appended, item confirmed ──
 
@@ -259,6 +276,16 @@ async def test_process_action_amended(workspace, db_session):
     assert float(entry["old_value"]) == 100.0
     assert float(entry["new_value"]) == 250.0
 
+    history = (await db_session.execute(
+        select(ReviewDecisionHistory).where(ReviewDecisionHistory.review_item_id == item.id)
+    )).scalars().all()
+    assert len(history) == 1
+    changed = history[0].changed_fields
+    assert changed["status"] == {"old": "needs_user_review", "new": "confirmed"}
+    assert changed["amount"] == {"old": 100.0, "new": 250.0}
+    assert changed["category"] == {"old": "work_expense", "new": "work_equipment"}
+    assert changed["note"] == {"old": None, "new": "corrected amount"}
+
 
 # ── 5. process_action(FLAGGED) → item + event status = needs_agent_review ─────
 
@@ -280,6 +307,17 @@ async def test_process_action_flagged(workspace, db_session):
     await db_session.refresh(event)
     assert event.status == "needs_agent_review"
 
+    history = (await db_session.execute(
+        select(ReviewDecisionHistory).where(ReviewDecisionHistory.review_item_id == item.id)
+    )).scalars().all()
+    assert len(history) == 1
+    assert history[0].action == "flagged"
+    assert history[0].changed_fields["status"] == {
+        "old": "needs_user_review",
+        "new": "needs_agent_review",
+    }
+    assert history[0].changed_fields["note"] == {"old": None, "new": "need agent"}
+
 
 # ── 6. process_action(SKIPPED) → skipped_until set, status unchanged ──────────
 
@@ -300,6 +338,15 @@ async def test_process_action_skipped(workspace, db_session):
     expected = datetime.now(timezone.utc) + timedelta(days=1)
     diff = abs((result.skipped_until - expected).total_seconds())
     assert diff < 60
+
+    history = (await db_session.execute(
+        select(ReviewDecisionHistory).where(ReviewDecisionHistory.review_item_id == item.id)
+    )).scalars().all()
+    assert len(history) == 1
+    assert history[0].action == "skipped"
+    assert history[0].previous_status == "needs_user_review"
+    assert history[0].new_status == "needs_user_review"
+    assert history[0].changed_fields["user_action"] == {"old": None, "new": "skipped"}
 
 
 # ── 7. Bulk confirm → each item individually logged in AuditLog ───────────────
@@ -332,6 +379,122 @@ async def test_bulk_confirm_logs_each_item_individually(workspace, db_session):
     logged_event_ids = {log.tax_event_id for log in logs}
     assert event_a.id in logged_event_ids
     assert event_b.id in logged_event_ids
+
+    histories = (await db_session.execute(
+        select(ReviewDecisionHistory).where(
+            ReviewDecisionHistory.workspace_id == workspace.id,
+            ReviewDecisionHistory.action == "confirmed",
+        )
+    )).scalars().all()
+    assert len(histories) == 2
+    bulk_ids = {h.bulk_action_id for h in histories}
+    assert len(bulk_ids) == 1
+    assert None not in bulk_ids
+
+
+@pytest.mark.asyncio
+async def test_undo_confirmed_restores_previous_status(workspace, db_session):
+    from app.engines.review import ReviewEngine, UserAction
+
+    event = await _create_event(db_session, workspace.id)
+    item = await _create_item(db_session, workspace.id, event)
+
+    engine = ReviewEngine(readiness_engine=_mock_readiness())
+    confirmed = await engine.process_action(item.id, UserAction.CONFIRMED, {}, db_session)
+
+    undone = await engine.undo_latest_decision(confirmed.id, db_session)
+    await db_session.refresh(event)
+
+    assert undone.status == "needs_user_review"
+    assert undone.user_action is None
+    assert event.status == "needs_user_review"
+    assert event.review_status == "pending"
+
+    history = (await db_session.execute(
+        select(ReviewDecisionHistory).where(ReviewDecisionHistory.review_item_id == item.id)
+    )).scalars().all()
+    assert [h.action for h in history] == ["confirmed", "undo"]
+    undo = history[-1]
+    assert undo.changed_fields["status"] == {"old": "confirmed", "new": "needs_user_review"}
+    assert undo.note == f"Undo history {history[0].id}"
+
+
+@pytest.mark.asyncio
+async def test_undo_amended_restores_previous_amount_category_and_note(workspace, db_session):
+    from app.engines.review import ReviewEngine, UserAction
+
+    event = await _create_event(db_session, workspace.id, category="work_expense", amount=100.0)
+    item = await _create_item(db_session, workspace.id, event, amount=100.0)
+
+    engine = ReviewEngine(readiness_engine=_mock_readiness())
+    amended = await engine.process_action(
+        item.id,
+        UserAction.AMENDED,
+        {"amount": 250.0, "category": "work_equipment", "note": "corrected amount"},
+        db_session,
+    )
+
+    undone = await engine.undo_latest_decision(amended.id, db_session)
+    await db_session.refresh(event)
+
+    assert undone.status == "needs_user_review"
+    assert undone.user_action is None
+    assert undone.amended_amount is None
+    assert undone.amended_category is None
+    assert undone.user_note is None
+    assert event.status == "needs_user_review"
+    assert event.review_status == "pending"
+
+    history = (await db_session.execute(
+        select(ReviewDecisionHistory).where(ReviewDecisionHistory.review_item_id == item.id)
+    )).scalars().all()
+    undo = history[-1]
+    assert undo.action == "undo"
+    assert undo.changed_fields["amount"] == {"old": 250.0, "new": 100.0}
+    assert undo.changed_fields["category"] == {"old": "work_equipment", "new": "work_expense"}
+    assert undo.changed_fields["note"] == {"old": "corrected amount", "new": None}
+
+
+@pytest.mark.asyncio
+async def test_undo_latest_rejects_non_latest_confirm_when_newer_action_exists(workspace, db_session):
+    from app.engines.review import ReviewEngine, UserAction
+
+    event = await _create_event(db_session, workspace.id)
+    item = await _create_item(db_session, workspace.id, event)
+
+    engine = ReviewEngine(readiness_engine=_mock_readiness())
+    await engine.process_action(item.id, UserAction.CONFIRMED, {}, db_session)
+    flagged = await engine.process_action(item.id, UserAction.FLAGGED, {"note": "agent check"}, db_session)
+
+    with pytest.raises(ValueError, match="Latest review decision cannot be undone"):
+        await engine.undo_latest_decision(flagged.id, db_session)
+
+
+@pytest.mark.asyncio
+async def test_bulk_undo_restores_grouped_confirmations(workspace, db_session):
+    from app.engines.review import ReviewEngine, UserAction
+
+    event_a = await _create_event(db_session, workspace.id, amount=100.0)
+    event_b = await _create_event(db_session, workspace.id, amount=200.0)
+    item_a = await _create_item(db_session, workspace.id, event_a, amount=100.0)
+    item_b = await _create_item(db_session, workspace.id, event_b, amount=200.0)
+
+    engine = ReviewEngine(readiness_engine=_mock_readiness())
+    await engine.bulk_action([item_a.id, item_b.id], UserAction.CONFIRMED, db_session)
+    histories = (await db_session.execute(
+        select(ReviewDecisionHistory).where(ReviewDecisionHistory.action == "confirmed")
+    )).scalars().all()
+    bulk_action_id = histories[0].bulk_action_id
+
+    restored = await engine.undo_bulk_decision(workspace.id, bulk_action_id, db_session)
+
+    assert {item.id for item in restored} == {item_a.id, item_b.id}
+    assert all(item.status == "needs_user_review" for item in restored)
+    undo_rows = (await db_session.execute(
+        select(ReviewDecisionHistory).where(ReviewDecisionHistory.action == "undo")
+    )).scalars().all()
+    assert len(undo_rows) == 2
+    assert {row.bulk_action_id for row in undo_rows} == {bulk_action_id}
 
 
 # ── 8. Bulk amend → rejected (only CONFIRMED allowed for bulk) ────────────────

@@ -44,6 +44,15 @@ const MOCK_DATA = {
   agent_items_count: 1,
   is_stale: false,
   calculated_at: '2026-05-20T10:00:00+00:00',
+  evidence_freshness: {
+    freshness_state: 'fresh',
+    last_reconciled_at: '2026-06-01T10:00:00+00:00',
+    last_attempted_at: '2026-06-01T10:00:00+00:00',
+    last_failure_at: null,
+    freshness_reason: 'Evidence status is current.',
+    evidence_reconciled_at: '2026-06-01T10:00:00+00:00',
+    evidence_reconcile_status: 'succeeded',
+  },
   evidence_obligation_summary: {
     total_obligations: 3,
     required_missing: 1,
@@ -205,6 +214,24 @@ describe('ReadinessPage', () => {
     expect(screen.getByText(/required evidence is incomplete/i)).toBeInTheDocument()
     expect(screen.getByText(/warnings \(should review before export\)/i)).toBeInTheDocument()
     expect(screen.getByText(/some items still need your review/i)).toBeInTheDocument()
+  })
+
+  it.each(['stale', 'failed'])('renders evidence freshness warning when evidence is %s', (freshnessState) => {
+    ;(mockUseReadiness as jest.Mock).mockReturnValue({
+      isLoading: false,
+      data: {
+        ...MOCK_DATA,
+        evidence_freshness: {
+          ...MOCK_DATA.evidence_freshness,
+          freshness_state: freshnessState,
+          freshness_reason: 'Evidence status may not be current.',
+        },
+      },
+      isError: false,
+    })
+    wrap(<ReadinessPage />)
+    expect(screen.getByText(new RegExp(freshnessState, 'i'))).toBeInTheDocument()
+    expect(screen.getByText(/evidence status may not be current/i)).toBeInTheDocument()
   })
 
   it('shows error state when query fails', () => {

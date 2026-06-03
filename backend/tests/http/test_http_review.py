@@ -3,7 +3,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.models import TaxProfile
+from app.db.models import ReviewDecisionHistory, ReviewItem, TaxProfile
 
 
 @pytest.mark.asyncio
@@ -41,6 +41,12 @@ async def test_confirm_action(auth_client, review_item_id):
     body = resp.json()
     assert body["data"]["status"] == "confirmed"
     assert body["data"]["id"] == review_item_id
+    assert len(body["data"]["decision_history"]) == 1
+    assert body["data"]["decision_history"][0]["action"] == "confirmed"
+    assert body["data"]["decision_history"][0]["changed_fields"]["status"] == {
+        "old": "needs_user_review",
+        "new": "confirmed",
+    }
 
 
 @pytest.mark.asyncio
@@ -54,6 +60,10 @@ async def test_amend_action(auth_client, review_item_id):
     body = resp.json()
     assert body["data"]["status"] == "confirmed"
     assert body["data"]["amended_amount"] == 50000.0
+    history = body["data"]["decision_history"]
+    assert history[0]["action"] == "amended"
+    assert history[0]["changed_fields"]["amount"]["new"] == 50000.0
+    assert history[0]["changed_fields"]["category"]["new"] == "work_expense"
 
 
 @pytest.mark.asyncio
@@ -80,6 +90,125 @@ async def test_bulk_confirm(auth_client, bulk_review_item_ids):
     # Response shape: {"data": {"items": [...], "count": N}}
     assert body["data"]["count"] == len(bulk_review_item_ids)
     assert all(i["status"] == "confirmed" for i in body["data"]["items"])
+    bulk_ids = {i["decision_history"][0]["bulk_action_id"] for i in body["data"]["items"]}
+    assert len(bulk_ids) == 1
+    assert None not in bulk_ids
+
+
+@pytest.mark.asyncio
+async def test_get_review_item_history_endpoint_workspace_scoped(auth_client, review_item_id, test_engine):
+    await auth_client.post(
+        f"/api/v1/review/{review_item_id}/action",
+        json={"action": "confirmed"},
+    )
+
+    resp = await auth_client.get(f"/api/v1/review/{review_item_id}/history")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["data"]["review_item_id"] == review_item_id
+    assert body["data"]["history"][0]["action"] == "confirmed"
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        foreign_item = ReviewItem(
+            workspace_id="foreign-workspace",
+            tax_event_id=None,
+            title="Foreign item",
+            category="work_expense",
+            amount=1.0,
+            status="needs_user_review",
+            questions_complete=True,
+        )
+        session.add(foreign_item)
+        await session.flush()
+        foreign_item_id = foreign_item.id
+        session.add(
+            ReviewDecisionHistory(
+                workspace_id="foreign-workspace",
+                review_item_id=foreign_item_id,
+                tax_event_id=None,
+                action="confirmed",
+                actor="user",
+                previous_status="needs_user_review",
+                new_status="confirmed",
+                changed_fields={},
+            )
+        )
+        await session.commit()
+
+    forbidden = await auth_client.get(f"/api/v1/review/{foreign_item_id}/history")
+    assert forbidden.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_undo_confirmed_action_restores_review_item(auth_client, review_item_id):
+    confirmed = await auth_client.post(
+        f"/api/v1/review/{review_item_id}/action",
+        json={"action": "confirmed"},
+    )
+    assert confirmed.status_code == 200
+
+    resp = await auth_client.post(f"/api/v1/review/{review_item_id}/undo")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["data"]["status"] == "needs_user_review"
+    assert body["data"]["user_action"] is None
+    assert body["data"]["decision_history"][0]["action"] == "undo"
+
+
+@pytest.mark.asyncio
+async def test_undo_is_workspace_scoped(auth_client, test_engine):
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        foreign_item = ReviewItem(
+            workspace_id="foreign-workspace",
+            tax_event_id=None,
+            title="Foreign item",
+            category="work_expense",
+            amount=1.0,
+            status="confirmed",
+            questions_complete=True,
+            user_action="confirmed",
+        )
+        session.add(foreign_item)
+        await session.flush()
+        foreign_item_id = foreign_item.id
+        session.add(
+            ReviewDecisionHistory(
+                workspace_id="foreign-workspace",
+                review_item_id=foreign_item_id,
+                tax_event_id=None,
+                action="confirmed",
+                actor="user",
+                previous_status="needs_user_review",
+                new_status="confirmed",
+                changed_fields={
+                    "status": {"old": "needs_user_review", "new": "confirmed"},
+                    "user_action": {"old": None, "new": "confirmed"},
+                },
+            )
+        )
+        await session.commit()
+
+    resp = await auth_client.post(f"/api/v1/review/{foreign_item_id}/undo")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_bulk_undo_restores_items(auth_client, bulk_review_item_ids):
+    confirmed = await auth_client.post(
+        "/api/v1/review/bulk-action",
+        json={"item_ids": bulk_review_item_ids, "action": "confirmed"},
+    )
+    assert confirmed.status_code == 200
+    bulk_id = confirmed.json()["data"]["items"][0]["decision_history"][0]["bulk_action_id"]
+
+    resp = await auth_client.post(f"/api/v1/review/bulk-action/{bulk_id}/undo")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["data"]["count"] == len(bulk_review_item_ids)
+    assert all(item["status"] == "needs_user_review" for item in body["data"]["items"])
+    assert all(item["decision_history"][0]["action"] == "undo" for item in body["data"]["items"])
 
 
 @pytest.mark.asyncio

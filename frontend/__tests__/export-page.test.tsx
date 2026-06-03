@@ -49,6 +49,15 @@ const readyEligibility: ExportEligibility = {
     mode: 'soft_block',
     message: 'Evidence requirements are currently satisfied.',
   },
+  evidence_freshness: {
+    freshness_state: 'fresh',
+    last_reconciled_at: '2026-06-01T10:00:00+00:00',
+    last_attempted_at: '2026-06-01T10:00:00+00:00',
+    last_failure_at: null,
+    freshness_reason: 'Evidence status is current.',
+    evidence_reconciled_at: '2026-06-01T10:00:00+00:00',
+    evidence_reconcile_status: 'succeeded',
+  },
 }
 const emptyHistory: ExportRecord[] = []
 
@@ -106,6 +115,26 @@ describe('ExportPage', () => {
     expect(await screen.findByText(/evidence preview/i)).toBeInTheDocument()
     expect(screen.getByText(/evidence requirements are currently satisfied/i)).toBeInTheDocument()
     expect(screen.getByText(/required matched: 2/i)).toBeInTheDocument()
+  })
+
+  it.each(['stale', 'failed'])('renders export evidence freshness warning when evidence is %s', async (freshnessState) => {
+    mockGetEligibility.mockResolvedValue({
+      data: {
+        data: {
+          ...readyEligibility,
+          evidence_freshness: {
+            ...readyEligibility.evidence_freshness,
+            freshness_state: freshnessState,
+            freshness_reason: 'Evidence status may not be current.',
+          },
+        },
+      },
+    })
+
+    wrap(<ExportPage />)
+
+    expect(await screen.findByText(freshnessState === 'stale' ? 'Stale' : 'Failed')).toBeInTheDocument()
+    expect(screen.getByText(/export preview may be using stale evidence status/i)).toBeInTheDocument()
   })
 
   it('shows journey-incomplete blocking reason from backend eligibility', async () => {

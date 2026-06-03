@@ -14,6 +14,13 @@ async def test_eligibility_blocked(auth_client):
     assert body["data"]["can_export"] is False
     assert len(body["data"]["blocking_reasons"]) > 0
     assert "eligibility_preview" in body["data"]
+    assert "evidence_freshness" in body["data"]
+    freshness = body["data"]["evidence_freshness"]
+    assert freshness["freshness_state"] in {"fresh", "reconciling", "stale", "failed"}
+    assert "last_reconciled_at" in freshness
+    assert "last_attempted_at" in freshness
+    assert "last_failure_at" in freshness
+    assert "freshness_reason" in freshness
     status = body["data"]["evidence_export_status"]
     assert status["mode"] == "soft_block"
     assert isinstance(status["would_block_export"], bool)

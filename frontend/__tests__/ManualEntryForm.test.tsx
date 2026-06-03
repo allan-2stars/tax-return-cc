@@ -1,11 +1,18 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import ManualEntryForm from '@/components/review/ManualEntryForm'
 import * as eventsApi from '@/lib/api/events'
+import useWorkspaceStore from '@/lib/stores/workspace.store'
 
 jest.mock('@/lib/api/events')
 const mockCreate = eventsApi.createManualEvent as jest.Mock
 
-beforeEach(() => jest.clearAllMocks())
+const DRAFT_KEY = 'tax-return-draft:ws-draft:2024-25:manual_entry'
+
+beforeEach(() => {
+  jest.clearAllMocks()
+  sessionStorage.clear()
+  useWorkspaceStore.getState().setWorkspace('ws-draft', '2024-25')
+})
 
 describe('ManualEntryForm', () => {
   it('step 1 heading uses improved wording', () => {
@@ -242,5 +249,116 @@ describe('ManualEntryForm', () => {
     fireEvent.change(screen.getByLabelText(/category/i), { target: { value: 'donation' } })
     fireEvent.click(screen.getByRole('button', { name: /add item/i }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/charity name is required/i)
+  })
+
+  it('failed submit preserves entered values and shows actionable session error', async () => {
+    mockCreate.mockRejectedValue({
+      response: { status: 401, data: { detail: { error_code: 'session_expired' } } },
+    })
+    render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
+    fireEvent.click(screen.getByText(/^deduction$/i))
+    fireEvent.change(screen.getByLabelText(/category/i), { target: { value: 'donation' } })
+    fireEvent.change(screen.getByLabelText(/charity name/i), { target: { value: 'Red Cross' } })
+    fireEvent.change(screen.getByLabelText(/donation amount/i), { target: { value: '150' } })
+    fireEvent.change(screen.getByLabelText(/donation date/i), { target: { value: '2025-01-10' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /add item/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/session has expired/i)
+    expect(screen.getByLabelText(/charity name/i)).toHaveValue('Red Cross')
+    expect(screen.getByLabelText(/donation amount/i)).toHaveValue(150)
+  })
+
+  it('manual entry draft saves while typing', async () => {
+    render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
+    fireEvent.click(screen.getByText(/^deduction$/i))
+    fireEvent.change(screen.getByLabelText(/category/i), { target: { value: 'donation' } })
+    fireEvent.change(screen.getByLabelText(/charity name/i), { target: { value: 'Red Cross' } })
+
+    await waitFor(() => expect(sessionStorage.getItem(DRAFT_KEY)).toContain('Red Cross'))
+    expect(screen.getByText(/draft saved/i)).toBeInTheDocument()
+  })
+
+  it('draft restores after remount when user chooses restore', async () => {
+    const first = render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
+    fireEvent.click(screen.getByText(/^deduction$/i))
+    fireEvent.change(screen.getByLabelText(/category/i), { target: { value: 'donation' } })
+    fireEvent.change(screen.getByLabelText(/charity name/i), { target: { value: 'Red Cross' } })
+    await waitFor(() => expect(sessionStorage.getItem(DRAFT_KEY)).toContain('Red Cross'))
+    first.unmount()
+
+    render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
+    expect(screen.getByText(/draft found/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /restore draft/i }))
+
+    expect(screen.getByLabelText(/charity name/i)).toHaveValue('Red Cross')
+  })
+
+  it('successful submit clears draft', async () => {
+    mockCreate.mockResolvedValue({ data: { data: { items: [], count: 0 } } })
+    render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
+    fireEvent.click(screen.getByText(/^deduction$/i))
+    fireEvent.change(screen.getByLabelText(/category/i), { target: { value: 'donation' } })
+    fireEvent.change(screen.getByLabelText(/charity name/i), { target: { value: 'Red Cross' } })
+    fireEvent.change(screen.getByLabelText(/donation amount/i), { target: { value: '150' } })
+    fireEvent.change(screen.getByLabelText(/donation date/i), { target: { value: '2025-01-10' } })
+
+    await waitFor(() => expect(sessionStorage.getItem(DRAFT_KEY)).not.toBeNull())
+    fireEvent.click(screen.getByRole('button', { name: /add item/i }))
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalled())
+    expect(sessionStorage.getItem(DRAFT_KEY)).toBeNull()
+  })
+
+  it('failed submit preserves draft', async () => {
+    mockCreate.mockRejectedValue(new Error('network'))
+    render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
+    fireEvent.click(screen.getByText(/^deduction$/i))
+    fireEvent.change(screen.getByLabelText(/category/i), { target: { value: 'donation' } })
+    fireEvent.change(screen.getByLabelText(/charity name/i), { target: { value: 'Red Cross' } })
+    fireEvent.change(screen.getByLabelText(/donation amount/i), { target: { value: '150' } })
+    fireEvent.change(screen.getByLabelText(/donation date/i), { target: { value: '2025-01-10' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /add item/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/something went wrong|connection interrupted/i)
+    expect(sessionStorage.getItem(DRAFT_KEY)).toContain('Red Cross')
+  })
+
+  it('discard draft clears storage', async () => {
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ eventType: 'deduction', category: 'donation', donationCharityName: 'Red Cross' }))
+
+    render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: /discard draft/i }))
+
+    expect(sessionStorage.getItem(DRAFT_KEY)).toBeNull()
+    expect(screen.queryByText(/draft found/i)).not.toBeInTheDocument()
+  })
+
+  it('beforeunload is only active when draft has changes', async () => {
+    render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
+    const cleanEvent = new Event('beforeunload', { cancelable: true })
+    fireEvent(window, cleanEvent)
+    expect(cleanEvent.defaultPrevented).toBe(false)
+
+    fireEvent.click(screen.getByText(/^deduction$/i))
+    fireEvent.change(screen.getByLabelText(/description/i), { target: { value: 'Notebook' } })
+
+    const dirtyEvent = new Event('beforeunload', { cancelable: true })
+    fireEvent(window, dirtyEvent)
+    expect(dirtyEvent.defaultPrevented).toBe(true)
+  })
+
+  it('draft storage excludes secret and document content fields', async () => {
+    render(<ManualEntryForm onSuccess={jest.fn()} onCancel={jest.fn()} />)
+    fireEvent.click(screen.getByText(/^deduction$/i))
+    fireEvent.change(screen.getByLabelText(/description/i), { target: { value: 'Notebook' } })
+
+    await waitFor(() => expect(sessionStorage.getItem(DRAFT_KEY)).not.toBeNull())
+    const payload = JSON.parse(sessionStorage.getItem(DRAFT_KEY) ?? '{}')
+    expect(payload).not.toHaveProperty('password')
+    expect(payload).not.toHaveProperty('recovery_key')
+    expect(payload).not.toHaveProperty('auth_token')
+    expect(payload).not.toHaveProperty('document_contents')
   })
 })

@@ -4,15 +4,17 @@ import WorkspaceTab from '@/components/settings/WorkspaceTab'
 import SecurityTab from '@/components/settings/SecurityTab'
 import AiPrivacyTab from '@/components/settings/AiPrivacyTab'
 import StorageTab from '@/components/settings/StorageTab'
+import WorkspaceSafetyTab from '@/components/settings/WorkspaceSafetyTab'
 import AboutTab from '@/components/settings/AboutTab'
 
-type TabId = 'workspace' | 'security' | 'ai-privacy' | 'storage' | 'about'
+type TabId = 'workspace' | 'security' | 'ai-privacy' | 'storage' | 'workspace-safety' | 'about'
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'workspace', label: 'Workspace' },
   { id: 'security', label: 'Security' },
   { id: 'ai-privacy', label: 'AI & Privacy' },
   { id: 'storage', label: 'Storage' },
+  { id: 'workspace-safety', label: 'Workspace Safety' },
   { id: 'about', label: 'About' },
 ]
 
@@ -64,6 +66,7 @@ export default function SettingsPage() {
         {activeTab === 'security' && <SecurityTab />}
         {activeTab === 'ai-privacy' && <AiPrivacyTab />}
         {activeTab === 'storage' && <StorageTab />}
+        {activeTab === 'workspace-safety' && <WorkspaceSafetyTab />}
         {activeTab === 'about' && <AboutTab />}
       </div>
     </div>

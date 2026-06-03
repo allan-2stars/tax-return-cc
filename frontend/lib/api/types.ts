@@ -43,6 +43,20 @@ export interface SkillBreakdownItem {
   total_weight: number
 }
 
+export type EvidenceFreshnessState = 'fresh' | 'reconciling' | 'stale' | 'failed'
+
+export interface EvidenceFreshness {
+  freshness_state: EvidenceFreshnessState
+  last_reconciled_at: string | null
+  last_attempted_at: string | null
+  last_failure_at: string | null
+  trigger_source?: string | null
+  freshness_reason: string
+  evidence_reconciled_at?: string | null
+  evidence_reconcile_status?: string
+  evidence_reconcile_meta?: Record<string, unknown> | null
+}
+
 export interface ReadinessData {
   percentage: number
   breakdown: SkillBreakdownItem[]
@@ -69,11 +83,7 @@ export interface ReadinessData {
       reason: string | null
     }>
   }
-  evidence_freshness?: {
-    evidence_reconciled_at: string | null
-    evidence_reconcile_status: string
-    evidence_reconcile_meta?: Record<string, unknown> | null
-  }
+  evidence_freshness?: EvidenceFreshness
   readiness_2_0?: {
     overall: {
       state: 'blocked' | 'warning' | 'ready'
@@ -319,6 +329,21 @@ export interface ReviewItemQuestion {
   options: string[] | null
 }
 
+export interface ReviewDecisionHistory {
+  id: string
+  workspace_id: string
+  review_item_id: string
+  tax_event_id: string | null
+  action: string
+  actor: string
+  previous_status: string | null
+  new_status: string | null
+  changed_fields: Record<string, { old: unknown; new: unknown }>
+  note: string | null
+  bulk_action_id: string | null
+  created_at: string | null
+}
+
 export interface ReviewItem {
   id: string
   workspace_id: string
@@ -344,6 +369,7 @@ export interface ReviewItem {
   review_duration_seconds: number | null
   group_id: string | null
   group_display: string | null
+  decision_history?: ReviewDecisionHistory[]
   explanation?: ExplanationSidecar | null
 }
 
@@ -450,6 +476,7 @@ export interface ExportEligibility {
     mode: 'soft_block'
     message: string
   }
+  evidence_freshness?: EvidenceFreshness
 }
 
 export type ExportStatus = 'generating' | 'ready' | 'expired' | 'failed'
@@ -570,6 +597,64 @@ export interface AboutData {
 
 export interface RecoveryKeyData {
   recovery_key: string
+}
+
+// ── Recovery types ────────────────────────────────────────────────────────────
+
+export type RecoverySafetyStatusValue = 'healthy' | 'stale' | 'missing' | 'failed'
+export type RecoveryEncryptionMode = 'server_derived' | 'recovery_key_derived' | 'future_dual_wrapped'
+
+export interface RecoverySafetyStatusData {
+  status: RecoverySafetyStatusValue
+  last_backup_at: string | null
+  last_verified_at: string | null
+  requires_backup_before_dangerous_action: boolean
+  policy_window_hours: number
+}
+
+export interface RecoveryVerificationResult {
+  status: 'pass' | 'fail' | string
+  errors: string[]
+  warnings: string[]
+}
+
+export interface RecoveryBackupData {
+  backup_id: string
+  status: string
+  created_at: string | null
+  filename: string | null
+  path: string | null
+  manifest_summary: Record<string, unknown>
+  verification: RecoveryVerificationResult
+}
+
+export interface RecoveryVerifyBackupData {
+  backup_id: string
+  status: string
+  manifest_summary: Record<string, unknown>
+  verification: RecoveryVerificationResult
+}
+
+export interface RecoveryKeyVerificationData {
+  status: string
+  verified: boolean
+  verified_at: string | null
+}
+
+export interface RecoveryRestorePreviewData {
+  status: string
+  preview_id: string | null
+  backup_id: string
+  workspace_id: string | null
+  financial_year: string | null
+  created_at: string | null
+  encryption_mode: RecoveryEncryptionMode | string | null
+  record_counts: Record<string, number>
+  included_sections: string[]
+  compatibility: Record<string, unknown>
+  blockers: string[]
+  warnings: string[]
+  can_restore: boolean
 }
 
 // ── Estimator types ───────────────────────────────────────────────────────────

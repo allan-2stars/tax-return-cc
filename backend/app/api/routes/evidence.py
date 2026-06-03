@@ -8,6 +8,7 @@ from app.api.dependencies import require_auth
 from app.db.base import get_db
 from app.db.models import Document, EvidenceMatch, EvidenceObligation, TaxEvent, TaxProfile, Workspace
 from app.errors import error_response
+from app.services.evidence_freshness import build_evidence_freshness
 from app.services.evidence_reconcile import EvidenceReconcileService
 from app.services.explanations import build_evidence_obligation_explanation
 from app.services.evidence_rules import CURRENT_EVIDENCE_RULE_VERSION
@@ -143,14 +144,7 @@ async def reconcile(
                 "current_rule_version": CURRENT_EVIDENCE_RULE_VERSION,
                 "obligations_by_rule_version": obligations_by_rule_version,
             },
-            "freshness": {
-                "evidence_reconciled_at": (
-                    workspace.evidence_reconciled_at.isoformat()
-                    if workspace and workspace.evidence_reconciled_at
-                    else None
-                ),
-                "evidence_reconcile_status": workspace.evidence_reconcile_status if workspace else "idle",
-            },
+            "freshness": build_evidence_freshness(workspace),
         }
     }
 
@@ -228,14 +222,7 @@ async def list_obligations(
                 )
                 for o in obligations
             ],
-            "freshness": {
-                "evidence_reconciled_at": (
-                    workspace.evidence_reconciled_at.isoformat()
-                    if workspace and workspace.evidence_reconciled_at
-                    else None
-                ),
-                "evidence_reconcile_status": workspace.evidence_reconcile_status if workspace else "idle",
-            },
+            "freshness": build_evidence_freshness(workspace),
         }
     }
 

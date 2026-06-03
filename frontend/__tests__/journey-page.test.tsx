@@ -19,6 +19,7 @@ const mockGetYoySuggestions = interviewApi.getYoySuggestions as jest.Mock
 const mockRestartInterview = interviewApi.restartInterview as jest.Mock
 const mockGoBack = interviewApi.goBack as jest.Mock
 const mockCancelEdit = interviewApi.cancelEdit as jest.Mock
+const mockAnswerQuestion = interviewApi.answerQuestion as jest.Mock
 const mockUseInterviewStore = useInterviewStore as jest.Mock
 const mockSetNewSkillPending = jest.fn()
 let invalidateSpy: jest.SpyInstance
@@ -75,6 +76,22 @@ test('shows QuestionCard when state is in_progress', async () => {
   mockGetSession.mockResolvedValue(SESSION('in_progress', QUESTION))
   wrap(<JourneyPage />)
   await waitFor(() => expect(screen.getByText('Did you work from home?')).toBeInTheDocument())
+})
+
+test('Journey mutation 401 shows session-expired message', async () => {
+  mockGetSession.mockResolvedValue(SESSION('in_progress', QUESTION))
+  mockAnswerQuestion.mockRejectedValue({
+    response: { status: 401, data: { detail: { error_code: 'session_expired' } } },
+  })
+
+  const user = userEvent.setup()
+  wrap(<JourneyPage />)
+
+  await waitFor(() => expect(screen.getByText('Did you work from home?')).toBeInTheDocument())
+  await user.click(screen.getByRole('button', { name: /^yes$/i }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(/session has expired/i)
+  expect(screen.getByRole('link', { name: /sign in again/i })).toHaveAttribute('href', '/login?returnTo=/journey')
 })
 
 test('back in normal flow uses goBack and does not cancel edit', async () => {

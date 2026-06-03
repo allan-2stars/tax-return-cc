@@ -1,5 +1,5 @@
 import client from './client'
-import type { ApiResponse, EvidenceObligation } from './types'
+import type { ApiResponse, EvidenceFreshness, EvidenceObligation } from './types'
 
 export interface ReconcileEvidenceData {
   status: string
@@ -13,20 +13,14 @@ export interface ReconcileEvidenceData {
     current_rule_version?: string
     obligations_by_rule_version?: Record<string, number>
   }
-  freshness?: {
-    evidence_reconciled_at: string | null
-    evidence_reconcile_status: string
-  }
+  freshness?: EvidenceFreshness
 }
 
 export const getEvidenceObligations = () =>
   client.get<
     ApiResponse<{
       obligations: EvidenceObligation[]
-      freshness?: {
-        evidence_reconciled_at: string | null
-        evidence_reconcile_status: string
-      }
+      freshness?: EvidenceFreshness
     }>
   >('/api/v1/evidence/obligations')
 

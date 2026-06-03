@@ -5,6 +5,8 @@ import { createManualEvent } from '@/lib/api/events'
 import { Info } from 'lucide-react'
 import { validateDate } from '@/lib/utils/fy'
 import useWorkspaceStore from '@/lib/stores/workspace.store'
+import { useSessionDraft } from '@/lib/hooks/useSessionDraft'
+import DraftStatus from '../DraftStatus'
 
 interface InvestmentFormProps { onSuccess: () => void; onBack: () => void; onCancel: () => void }
 
@@ -15,11 +17,27 @@ interface ForeignIncomeFields {
   fx_source: string; source_document_reference: string
 }
 
+function hasDraftContent(draft: Partial<ForeignIncomeFields>): boolean {
+  return Object.values(draft).some((value) => Boolean(String(value ?? '').trim()))
+}
+
 export default function ForeignIncomeForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) {
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<ForeignIncomeFields>()
+  const { register, handleSubmit, watch, reset, formState: { errors } } = useForm<ForeignIncomeFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { financialYear } = useWorkspaceStore()
+  const { workspaceId, financialYear } = useWorkspaceStore()
+  const {
+    notice: draftNotice,
+    restoredDraft,
+    restoreDraft,
+    discardDraft,
+    clearDraft,
+  } = useSessionDraft({
+    keyParts: [workspaceId, financialYear, 'investment', 'foreign_income'],
+    draft: watch(),
+    hasContent: hasDraftContent,
+    applyDraft: (draft) => reset(draft),
+  })
 
   const foreignAmountValue = watch('foreign_amount') || ''
   const foreignAmount = parseFloat(foreignAmountValue || '0')
@@ -54,6 +72,7 @@ export default function ForeignIncomeForm({ onSuccess, onBack, onCancel }: Inves
           source_document_reference: data.source_document_reference?.trim() || null,
         },
       })
+      clearDraft(true)
       onSuccess()
     } catch { setError('Something went wrong. Please try again.') }
     finally { setPending(false) }
@@ -62,6 +81,12 @@ export default function ForeignIncomeForm({ onSuccess, onBack, onCancel }: Inves
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
       <button type="button" onClick={onBack} className="text-sm font-ui text-text-muted">← Back</button>
+      <DraftStatus
+        notice={draftNotice}
+        hasRestorableDraft={Boolean(restoredDraft)}
+        onRestore={restoreDraft}
+        onDiscard={discardDraft}
+      />
       <div className="rounded-md bg-surface-raised px-4 py-3 text-sm font-ui text-text-muted">
         Foreign income is complex — your tax agent must review this
       </div>

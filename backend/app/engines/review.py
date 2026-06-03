@@ -4,10 +4,11 @@ from datetime import date, datetime, timedelta, timezone
 from enum import Enum
 import math
 import re
+from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import AuditLog, ReviewItem, TaxEvent
+from app.db.models import AuditLog, ReviewDecisionHistory, ReviewItem, TaxEvent
 from app.repositories import events as events_repo
 from app.repositories import interview as interview_repo
 from app.repositories import review as review_repo
@@ -70,6 +71,58 @@ async def _write_audit(
     )
     db.add(log)
     await db.commit()
+
+
+def _visible_amount(item: ReviewItem) -> float | None:
+    return item.amended_amount if item.amended_amount is not None else item.amount
+
+
+def _visible_category(item: ReviewItem) -> str | None:
+    return item.amended_category if item.amended_category is not None else item.category
+
+
+def _add_change(changed_fields: dict, field: str, old_value, new_value) -> None:
+    if old_value != new_value:
+        changed_fields[field] = {"old": old_value, "new": new_value}
+
+
+def _write_decision_history(
+    db: AsyncSession,
+    item: ReviewItem,
+    action: UserAction | str,
+    previous_status: str | None,
+    changed_fields: dict,
+    note: str | None = None,
+    bulk_action_id: str | None = None,
+    actor: str = "user",
+) -> None:
+    action_value = action.value if isinstance(action, UserAction) else action
+    db.add(ReviewDecisionHistory(
+        workspace_id=item.workspace_id,
+        review_item_id=item.id,
+        tax_event_id=item.tax_event_id,
+        action=action_value,
+        actor=actor,
+        previous_status=previous_status,
+        new_status=item.status,
+        changed_fields=changed_fields,
+        note=note,
+        bulk_action_id=bulk_action_id,
+    ))
+
+
+def _history_old_value(history: ReviewDecisionHistory, field: str, fallback=None):
+    changed = history.changed_fields or {}
+    field_change = changed.get(field)
+    if isinstance(field_change, dict) and "old" in field_change:
+        return field_change["old"]
+    return fallback
+
+
+def _restore_amended_value(original_value, base_value):
+    if original_value == base_value:
+        return None
+    return original_value
 
 
 # ── ReviewEngine ──────────────────────────────────────────────────────────────
@@ -507,6 +560,7 @@ class ReviewEngine:
         action: UserAction,
         payload: dict,
         db: AsyncSession,
+        bulk_action_id: str | None = None,
     ) -> ReviewItem:
         item = await review_repo.get_by_id(db, item_id)
         if item is None:
@@ -522,6 +576,11 @@ class ReviewEngine:
             if item.created_at.tzinfo is None
             else item.created_at
         )
+        previous_status = item.status
+        previous_user_action = item.user_action
+        previous_amount = _visible_amount(item)
+        previous_category = _visible_category(item)
+        previous_note = item.user_note
 
         if action == UserAction.CONFIRMED:
             item.status = "confirmed"
@@ -533,10 +592,20 @@ class ReviewEngine:
             if event:
                 event.status = "confirmed"
                 event.review_status = "user_confirmed"
+            changed_fields = {}
+            _add_change(changed_fields, "status", previous_status, item.status)
+            _add_change(changed_fields, "user_action", previous_user_action, item.user_action)
+            _write_decision_history(
+                db,
+                item,
+                action,
+                previous_status,
+                changed_fields,
+                bulk_action_id=bulk_action_id,
+            )
             await _write_audit(db, item.workspace_id, "confirmed", item.tax_event_id)
 
         elif action == UserAction.AMENDED:
-            old_amount = item.amount
             new_amount = payload.get("amount")
             new_category = payload.get("category")
             note = payload.get("note")
@@ -555,7 +624,7 @@ class ReviewEngine:
                 history = list(event.correction_history or [])
                 history.append({
                     "field": "amount",
-                    "old_value": str(old_amount),
+                    "old_value": str(item.amount),
                     "new_value": str(new_amount),
                     "corrected_at": now.isoformat(),
                 })
@@ -563,10 +632,25 @@ class ReviewEngine:
                 event.status = "confirmed"
                 event.review_status = "user_confirmed"
 
+            changed_fields = {}
+            _add_change(changed_fields, "status", previous_status, item.status)
+            _add_change(changed_fields, "user_action", previous_user_action, item.user_action)
+            _add_change(changed_fields, "amount", previous_amount, _visible_amount(item))
+            _add_change(changed_fields, "category", previous_category, _visible_category(item))
+            _add_change(changed_fields, "note", previous_note, item.user_note)
+            _write_decision_history(
+                db,
+                item,
+                action,
+                previous_status,
+                changed_fields,
+                note=note,
+                bulk_action_id=bulk_action_id,
+            )
             await _write_audit(
                 db, item.workspace_id, "amended", item.tax_event_id,
                 field="amount",
-                old_value=str(old_amount),
+                old_value=str(item.amount),
                 new_value=str(new_amount),
                 note=note,
             )
@@ -576,6 +660,18 @@ class ReviewEngine:
             item.user_note = payload.get("note")
             if event:
                 event.status = "needs_agent_review"
+            changed_fields = {}
+            _add_change(changed_fields, "status", previous_status, item.status)
+            _add_change(changed_fields, "note", previous_note, item.user_note)
+            _write_decision_history(
+                db,
+                item,
+                action,
+                previous_status,
+                changed_fields,
+                note=payload.get("note"),
+                bulk_action_id=bulk_action_id,
+            )
             await _write_audit(
                 db, item.workspace_id, "flagged", item.tax_event_id,
                 note=payload.get("note"),
@@ -584,6 +680,16 @@ class ReviewEngine:
         elif action == UserAction.SKIPPED:
             item.skipped_until = now + timedelta(days=1)
             item.user_action = "skipped"
+            changed_fields = {}
+            _add_change(changed_fields, "user_action", previous_user_action, item.user_action)
+            _write_decision_history(
+                db,
+                item,
+                action,
+                previous_status,
+                changed_fields,
+                bulk_action_id=bulk_action_id,
+            )
             await _write_audit(db, item.workspace_id, "skipped", item.tax_event_id)
 
         item = await review_repo.update(db, item)
@@ -601,10 +707,118 @@ class ReviewEngine:
         if action != UserAction.CONFIRMED:
             raise ValueError(f"Bulk action only supports CONFIRMED, not {action.value!r}")
         results = []
+        bulk_action_id = str(uuid4())
         for item_id in item_ids:
-            result = await self.process_action(item_id, action, {}, db)
+            result = await self.process_action(item_id, action, {}, db, bulk_action_id=bulk_action_id)
             results.append(result)
         return results
+
+    # ── undo ─────────────────────────────────────────────────────────────────
+
+    async def undo_latest_decision(
+        self,
+        item_id: str,
+        db: AsyncSession,
+    ) -> ReviewItem:
+        item = await review_repo.get_by_id(db, item_id)
+        if item is None:
+            raise ValueError(f"ReviewItem {item_id!r} not found")
+
+        history = await review_repo.get_latest_history_for_item(db, item_id)
+        if history is None:
+            raise ValueError("No review decision history is available to undo.")
+        return await self._undo_history_entry(item, history, db)
+
+    async def undo_bulk_decision(
+        self,
+        workspace_id: str,
+        bulk_action_id: str,
+        db: AsyncSession,
+    ) -> list[ReviewItem]:
+        histories = await review_repo.get_histories_for_bulk_action(db, workspace_id, bulk_action_id)
+        if not histories:
+            raise ValueError("Bulk review decision was not found.")
+
+        undoable: list[tuple[ReviewItem, ReviewDecisionHistory]] = []
+        for history in histories:
+            item = await review_repo.get_by_id(db, history.review_item_id)
+            if item is None or item.workspace_id != workspace_id:
+                raise ValueError("Bulk review decision was not found.")
+            latest = await review_repo.get_latest_history_for_item(db, item.id)
+            if latest is None or latest.id != history.id:
+                raise ValueError("Bulk review decision can only be undone while it is the latest decision.")
+            undoable.append((item, history))
+
+        restored: list[ReviewItem] = []
+        for item, history in undoable:
+            restored.append(await self._undo_history_entry(item, history, db))
+        return restored
+
+    async def _undo_history_entry(
+        self,
+        item: ReviewItem,
+        history: ReviewDecisionHistory,
+        db: AsyncSession,
+    ) -> ReviewItem:
+        if history.action not in {"confirmed", "amended"}:
+            raise ValueError("Latest review decision cannot be undone.")
+
+        event: TaxEvent | None = None
+        if item.tax_event_id:
+            event = await events_repo.get_by_id(db, item.tax_event_id)
+
+        current_status = item.status
+        current_user_action = item.user_action
+        current_amount = _visible_amount(item)
+        current_category = _visible_category(item)
+        current_note = item.user_note
+
+        restored_status = _history_old_value(history, "status", history.previous_status)
+        restored_user_action = _history_old_value(history, "user_action", None)
+        restored_amount = _history_old_value(history, "amount", current_amount)
+        restored_category = _history_old_value(history, "category", current_category)
+        restored_note = _history_old_value(history, "note", current_note)
+
+        item.status = restored_status
+        item.user_action = restored_user_action
+        item.amended_amount = _restore_amended_value(restored_amount, item.amount)
+        item.amended_category = _restore_amended_value(restored_category, item.category)
+        item.user_note = restored_note
+        if restored_status != "confirmed":
+            item.reviewed_at = None
+            item.review_duration_seconds = None
+
+        if event:
+            event.status = restored_status
+            event.review_status = "user_confirmed" if restored_status == "confirmed" else "pending"
+
+        changed_fields = {}
+        _add_change(changed_fields, "status", current_status, item.status)
+        _add_change(changed_fields, "user_action", current_user_action, item.user_action)
+        _add_change(changed_fields, "amount", current_amount, _visible_amount(item))
+        _add_change(changed_fields, "category", current_category, _visible_category(item))
+        _add_change(changed_fields, "note", current_note, item.user_note)
+
+        _write_decision_history(
+            db,
+            item,
+            "undo",
+            current_status,
+            changed_fields,
+            note=f"Undo history {history.id}",
+            bulk_action_id=history.bulk_action_id,
+        )
+        await _write_audit(
+            db,
+            item.workspace_id,
+            "undo",
+            item.tax_event_id,
+            note=f"Undo history {history.id}",
+        )
+
+        item = await review_repo.update(db, item)
+        asyncio.create_task(self._readiness_engine.recalculate(item.workspace_id))
+        return item
 
     # ── submit inline answer ──────────────────────────────────────────────────
 
@@ -632,6 +846,7 @@ class ReviewEngine:
 
         # Check if all inline questions for this item are now answered
         inline_qs = item.inline_questions or []
+        previous_questions_complete = item.questions_complete
         all_answered = all(q["id"] in answers for q in inline_qs)
         if all_answered:
             item.questions_complete = True
@@ -651,6 +866,23 @@ class ReviewEngine:
             db, item.workspace_id, "inline_answer", item.tax_event_id,
             note=f"{question_id}={answer}",
         )
+
+        if previous_questions_complete != item.questions_complete:
+            changed_fields = {}
+            _add_change(
+                changed_fields,
+                "questions_complete",
+                previous_questions_complete,
+                item.questions_complete,
+            )
+            _write_decision_history(
+                db,
+                item,
+                "inline_answer",
+                item.status,
+                changed_fields,
+                note=f"{question_id} answered",
+            )
 
         item = await review_repo.update(db, item)
         return item

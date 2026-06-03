@@ -5,6 +5,8 @@ import { createManualEvent } from '@/lib/api/events'
 import { daysBetween, cgtDiscountEligible } from '@/lib/utils/investment'
 import { validateDate } from '@/lib/utils/fy'
 import useWorkspaceStore from '@/lib/stores/workspace.store'
+import { useSessionDraft } from '@/lib/hooks/useSessionDraft'
+import DraftStatus from '../DraftStatus'
 
 type CryptoSubType = 'buy' | 'sell' | 'staking'
 
@@ -28,6 +30,10 @@ interface CryptoStakingFields {
   income_amount: string; income_date: string; note: string
 }
 
+function hasDraftContent(draft: Partial<CryptoBuyFields | CryptoSellFields | CryptoStakingFields>): boolean {
+  return Object.values(draft).some((value) => Boolean(String(value ?? '').trim()))
+}
+
 function AutoCalcBox({ label, value, unit = '' }: { label: string; value: string; unit?: string }) {
   return (
     <div className="rounded-md bg-surface-raised px-4 py-2 space-y-0.5">
@@ -39,10 +45,22 @@ function AutoCalcBox({ label, value, unit = '' }: { label: string; value: string
 }
 
 function CryptoBuySubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) {
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<CryptoBuyFields>()
+  const { register, handleSubmit, watch, reset, formState: { errors } } = useForm<CryptoBuyFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { financialYear } = useWorkspaceStore()
+  const { workspaceId, financialYear } = useWorkspaceStore()
+  const {
+    notice: draftNotice,
+    restoredDraft,
+    restoreDraft,
+    discardDraft,
+    clearDraft,
+  } = useSessionDraft({
+    keyParts: [workspaceId, financialYear, 'investment', 'crypto', 'buy'],
+    draft: watch(),
+    hasContent: hasDraftContent,
+    applyDraft: (draft) => reset(draft as CryptoBuyFields),
+  })
 
   const purchaseDateValue = watch('purchase_date')
   const purchaseDateWarning = !errors.purchase_date && purchaseDateValue
@@ -65,6 +83,7 @@ function CryptoBuySubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) 
           transaction_fee: fee, purchase_date: data.purchase_date,
         },
       })
+      clearDraft(true)
       onSuccess()
     } catch { setError('Something went wrong. Please try again.') }
     finally { setPending(false) }
@@ -73,6 +92,12 @@ function CryptoBuySubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
       <button type="button" onClick={onBack} className="text-sm font-ui text-text-muted">← Back</button>
+      <DraftStatus
+        notice={draftNotice}
+        hasRestorableDraft={Boolean(restoredDraft)}
+        onRestore={restoreDraft}
+        onDiscard={discardDraft}
+      />
       <div>
         <label htmlFor="cb-exchange" className="text-sm font-ui text-text-body block mb-1">Exchange / Wallet</label>
         <input id="cb-exchange" type="text" placeholder="CoinSpot, Binance, Coinbase…"
@@ -143,10 +168,22 @@ function CryptoBuySubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) 
 }
 
 function CryptoSellSubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) {
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<CryptoSellFields>()
+  const { register, handleSubmit, watch, reset, formState: { errors } } = useForm<CryptoSellFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { financialYear } = useWorkspaceStore()
+  const { workspaceId, financialYear } = useWorkspaceStore()
+  const {
+    notice: draftNotice,
+    restoredDraft,
+    restoreDraft,
+    discardDraft,
+    clearDraft,
+  } = useSessionDraft({
+    keyParts: [workspaceId, financialYear, 'investment', 'crypto', 'sell'],
+    draft: watch(),
+    hasContent: hasDraftContent,
+    applyDraft: (draft) => reset(draft as CryptoSellFields),
+  })
 
   const purchaseDate = watch('purchase_date')
   const saleDate = watch('sale_date')
@@ -185,6 +222,7 @@ function CryptoSellSubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps)
           cost_basis_method: data.cost_basis_method,
         },
       })
+      clearDraft(true)
       onSuccess()
     } catch { setError('Something went wrong. Please try again.') }
     finally { setPending(false) }
@@ -193,6 +231,12 @@ function CryptoSellSubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps)
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
       <button type="button" onClick={onBack} className="text-sm font-ui text-text-muted">← Back</button>
+      <DraftStatus
+        notice={draftNotice}
+        hasRestorableDraft={Boolean(restoredDraft)}
+        onRestore={restoreDraft}
+        onDiscard={discardDraft}
+      />
       <div>
         <label htmlFor="cs-exchange" className="text-sm font-ui text-text-body block mb-1">Exchange / Wallet</label>
         <input id="cs-exchange" type="text"
@@ -309,10 +353,22 @@ function CryptoSellSubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps)
 }
 
 function CryptoStakingSubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) {
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<CryptoStakingFields>()
+  const { register, handleSubmit, watch, reset, formState: { errors } } = useForm<CryptoStakingFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { financialYear } = useWorkspaceStore()
+  const { workspaceId, financialYear } = useWorkspaceStore()
+  const {
+    notice: draftNotice,
+    restoredDraft,
+    restoreDraft,
+    discardDraft,
+    clearDraft,
+  } = useSessionDraft({
+    keyParts: [workspaceId, financialYear, 'investment', 'crypto', 'staking'],
+    draft: watch(),
+    hasContent: hasDraftContent,
+    applyDraft: (draft) => reset(draft as CryptoStakingFields),
+  })
 
   const incomeDateValue = watch('income_date')
   const incomeDateWarning = !errors.income_date && incomeDateValue
@@ -334,6 +390,7 @@ function CryptoStakingSubForm({ onSuccess, onBack, onCancel }: InvestmentFormPro
           income_amount: amt, income_date: data.income_date,
         },
       })
+      clearDraft(true)
       onSuccess()
     } catch { setError('Something went wrong. Please try again.') }
     finally { setPending(false) }
@@ -342,6 +399,12 @@ function CryptoStakingSubForm({ onSuccess, onBack, onCancel }: InvestmentFormPro
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
       <button type="button" onClick={onBack} className="text-sm font-ui text-text-muted">← Back</button>
+      <DraftStatus
+        notice={draftNotice}
+        hasRestorableDraft={Boolean(restoredDraft)}
+        onRestore={restoreDraft}
+        onDiscard={discardDraft}
+      />
       <div className="rounded-md bg-surface-raised px-4 py-3 text-sm font-ui text-text-muted">
         Complex crypto income — your tax agent should review this
       </div>

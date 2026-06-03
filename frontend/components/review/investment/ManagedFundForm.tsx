@@ -5,6 +5,8 @@ import { createManualEvent } from '@/lib/api/events'
 import { Info } from 'lucide-react'
 import { validateDate } from '@/lib/utils/fy'
 import useWorkspaceStore from '@/lib/stores/workspace.store'
+import { useSessionDraft } from '@/lib/hooks/useSessionDraft'
+import DraftStatus from '../DraftStatus'
 
 interface InvestmentFormProps { onSuccess: () => void; onBack: () => void; onCancel: () => void }
 
@@ -15,11 +17,27 @@ interface ManagedFundFields {
   distribution_date: string; note: string
 }
 
+function hasDraftContent(draft: Partial<ManagedFundFields>): boolean {
+  return Object.values(draft).some((value) => Boolean(String(value ?? '').trim()))
+}
+
 export default function ManagedFundForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) {
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<ManagedFundFields>()
+  const { register, handleSubmit, watch, reset, formState: { errors } } = useForm<ManagedFundFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { financialYear } = useWorkspaceStore()
+  const { workspaceId, financialYear } = useWorkspaceStore()
+  const {
+    notice: draftNotice,
+    restoredDraft,
+    restoreDraft,
+    discardDraft,
+    clearDraft,
+  } = useSessionDraft({
+    keyParts: [workspaceId, financialYear, 'investment', 'managed_fund'],
+    draft: watch(),
+    hasContent: hasDraftContent,
+    applyDraft: (draft) => reset(draft),
+  })
 
   const capitalGains = parseFloat(watch('capital_gains_component') || '0') || 0
   const distributionDateValue = watch('distribution_date')
@@ -46,6 +64,7 @@ export default function ManagedFundForm({ onSuccess, onBack, onCancel }: Investm
           distribution_date: data.distribution_date,
         },
       })
+      clearDraft(true)
       onSuccess()
     } catch { setError('Something went wrong. Please try again.') }
     finally { setPending(false) }
@@ -54,6 +73,12 @@ export default function ManagedFundForm({ onSuccess, onBack, onCancel }: Investm
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
       <button type="button" onClick={onBack} className="text-sm font-ui text-text-muted">← Back</button>
+      <DraftStatus
+        notice={draftNotice}
+        hasRestorableDraft={Boolean(restoredDraft)}
+        onRestore={restoreDraft}
+        onDiscard={discardDraft}
+      />
       <div className="rounded-md bg-surface-raised px-4 py-3 text-sm font-ui text-text-muted">
         Please provide your fund&#39;s annual tax statement to your tax agent
       </div>

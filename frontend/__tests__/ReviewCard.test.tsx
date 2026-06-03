@@ -27,6 +27,7 @@ const baseItem: ReviewItem = {
   review_duration_seconds: null,
   group_id: null,
   group_display: null,
+  decision_history: [],
   explanation: {
     explanation_id: 'review_item:item-1',
     target_type: 'review_item',
@@ -44,6 +45,8 @@ const baseItem: ReviewItem = {
 
 const mockOnAction = jest.fn()
 const mockOnInlineAnswer = jest.fn().mockResolvedValue({ new_skill_pending: false })
+const mockOnUndo = jest.fn()
+const mockOnUndoBulk = jest.fn()
 
 beforeEach(() => jest.clearAllMocks())
 
@@ -160,5 +163,152 @@ describe('ReviewCard', () => {
       <ReviewCard item={{ ...baseItem, date: null }} onAction={mockOnAction} onInlineAnswer={mockOnInlineAnswer} />
     )
     expect(screen.getByText('—')).toBeInTheDocument()
+  })
+
+  it('renders review history empty state', () => {
+    render(<ReviewCard item={baseItem} onAction={mockOnAction} onInlineAnswer={mockOnInlineAnswer} />)
+    fireEvent.click(screen.getByRole('button', { name: /review history/i }))
+    expect(screen.getByText(/no review history yet/i)).toBeInTheDocument()
+  })
+
+  it('renders review history changed fields', () => {
+    render(
+      <ReviewCard
+        item={{
+          ...baseItem,
+          decision_history: [
+            {
+              id: 'hist-1',
+              workspace_id: 'ws-1',
+              review_item_id: 'item-1',
+              tax_event_id: 'evt-1',
+              action: 'amended',
+              actor: 'user',
+              previous_status: 'needs_user_review',
+              new_status: 'confirmed',
+              changed_fields: {
+                amount: { old: 1299, new: 1199 },
+                category: { old: 'work_equipment', new: 'work_expense' },
+              },
+              note: 'Corrected after checking receipt',
+              bulk_action_id: null,
+              created_at: '2026-06-03T10:00:00+00:00',
+            },
+          ],
+        }}
+        onAction={mockOnAction}
+        onInlineAnswer={mockOnInlineAnswer}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /review history/i }))
+
+    expect(screen.getByText(/amended/i)).toBeInTheDocument()
+    expect(screen.getByText(/amount:/i)).toHaveTextContent('1299')
+    expect(screen.getByText(/category:/i)).toHaveTextContent('work_equipment')
+    expect(screen.getByText(/corrected after checking receipt/i)).toBeInTheDocument()
+  })
+
+  it('renders bulk action marker in review history', () => {
+    render(
+      <ReviewCard
+        item={{
+          ...baseItem,
+          decision_history: [
+            {
+              id: 'hist-1',
+              workspace_id: 'ws-1',
+              review_item_id: 'item-1',
+              tax_event_id: 'evt-1',
+              action: 'confirmed',
+              actor: 'user',
+              previous_status: 'needs_user_review',
+              new_status: 'confirmed',
+              changed_fields: {
+                status: { old: 'needs_user_review', new: 'confirmed' },
+              },
+              note: null,
+              bulk_action_id: 'bulk-1',
+              created_at: '2026-06-03T10:00:00+00:00',
+            },
+          ],
+        }}
+        onAction={mockOnAction}
+        onInlineAnswer={mockOnInlineAnswer}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /review history/i }))
+    expect(screen.getByText(/bulk action/i)).toBeInTheDocument()
+  })
+
+  it('renders Undo last decision for undoable latest history and calls onUndo', () => {
+    render(
+      <ReviewCard
+        item={{
+          ...baseItem,
+          status: 'confirmed',
+          decision_history: [
+            {
+              id: 'hist-1',
+              workspace_id: 'ws-1',
+              review_item_id: 'item-1',
+              tax_event_id: 'evt-1',
+              action: 'confirmed',
+              actor: 'user',
+              previous_status: 'needs_user_review',
+              new_status: 'confirmed',
+              changed_fields: {
+                status: { old: 'needs_user_review', new: 'confirmed' },
+              },
+              note: null,
+              bulk_action_id: null,
+              created_at: '2026-06-03T10:00:00+00:00',
+            },
+          ],
+        }}
+        onAction={mockOnAction}
+        onInlineAnswer={mockOnInlineAnswer}
+        onUndo={mockOnUndo}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /review history/i }))
+    fireEvent.click(screen.getByRole('button', { name: /undo last decision/i }))
+    expect(mockOnUndo).toHaveBeenCalledWith('item-1')
+  })
+
+  it('uses bulk undo callback when latest history has bulk action id', () => {
+    render(
+      <ReviewCard
+        item={{
+          ...baseItem,
+          status: 'confirmed',
+          decision_history: [
+            {
+              id: 'hist-1',
+              workspace_id: 'ws-1',
+              review_item_id: 'item-1',
+              tax_event_id: 'evt-1',
+              action: 'confirmed',
+              actor: 'user',
+              previous_status: 'needs_user_review',
+              new_status: 'confirmed',
+              changed_fields: {
+                status: { old: 'needs_user_review', new: 'confirmed' },
+              },
+              note: null,
+              bulk_action_id: 'bulk-1',
+              created_at: '2026-06-03T10:00:00+00:00',
+            },
+          ],
+        }}
+        onAction={mockOnAction}
+        onInlineAnswer={mockOnInlineAnswer}
+        onUndo={mockOnUndo}
+        onUndoBulk={mockOnUndoBulk}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /review history/i }))
+    fireEvent.click(screen.getByRole('button', { name: /undo last decision/i }))
+    expect(mockOnUndoBulk).toHaveBeenCalledWith('bulk-1')
+    expect(mockOnUndo).not.toHaveBeenCalled()
   })
 })

@@ -12,8 +12,10 @@ from app.errors import error_response
 from app.services.recovery import (
     ENCRYPTION_MODE_SERVER_DERIVED,
     RecoveryPreviewError,
+    RecoveryRestoreError,
     RecoveryService,
 )
+from app.services.recovery_policy import RecoveryPolicyService
 
 router = APIRouter()
 
@@ -34,6 +36,12 @@ class VerifyRecoveryKeyRequest(BaseModel):
 class PreviewRestoreRequest(BaseModel):
     backup_id: str
     recovery_key: str | None = None
+
+
+class ApplyRestoreRequest(BaseModel):
+    backup_id: str
+    recovery_key: str | None = None
+    conflict_policy: str | None = None
 
 
 @router.post("/recovery/backups")
@@ -68,6 +76,14 @@ async def create_backup(
             "verification": result.verification,
         }
     }
+
+
+@router.get("/recovery/safety-status")
+async def get_recovery_safety_status(
+    workspace_id: str = Depends(require_auth),
+):
+    service = RecoveryPolicyService()
+    return {"data": service.get_backup_safety_status(workspace_id).to_dict(), "status": "ok"}
 
 
 @router.post("/recovery/backups/verify")
@@ -202,4 +218,51 @@ async def preview_restore(
             "warnings": result.warnings,
             "can_restore": result.can_restore,
         }
+    }
+
+
+@router.post("/recovery/restore/apply")
+async def apply_restore(
+    body: ApplyRestoreRequest,
+    workspace_id: str = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    service = RecoveryService()
+    try:
+        result = await service.restore_backup(
+            workspace_id=workspace_id,
+            backup_id=body.backup_id,
+            db=db,
+            recovery_key=body.recovery_key,
+            conflict_policy=body.conflict_policy,
+        )
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail=error_response("backup_not_found", "Backup artifact not found.", retryable=False),
+        )
+    except RecoveryPreviewError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=error_response(e.error_code, e.message, retryable=False),
+        )
+    except RecoveryRestoreError as e:
+        detail = error_response(e.error_code, e.message, retryable=False)
+        if e.result is not None:
+            detail["data"] = _restore_result_payload(e.result)
+        raise HTTPException(status_code=422, detail=detail)
+
+    return {"data": _restore_result_payload(result)}
+
+
+def _restore_result_payload(result):
+    return {
+        "status": result.status,
+        "restored_workspace_id": result.restored_workspace_id,
+        "checkpoint_id": result.checkpoint_id,
+        "rollback_performed": result.rollback_performed,
+        "verification_result": result.verification_result,
+        "post_restore_reconcile": result.post_restore_reconcile,
+        "warnings": result.warnings,
+        "errors": result.errors,
     }

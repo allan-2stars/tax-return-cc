@@ -15,6 +15,12 @@ async def test_reconcile_evidence_endpoint(auth_client):
     assert "obligations_count" in body["data"]
     assert isinstance(body["data"]["obligations_count"], int)
     assert "freshness" in body["data"]
+    freshness = body["data"]["freshness"]
+    assert freshness["freshness_state"] in {"fresh", "reconciling", "stale", "failed"}
+    assert "last_reconciled_at" in freshness
+    assert "last_attempted_at" in freshness
+    assert "last_failure_at" in freshness
+    assert "freshness_reason" in freshness
     assert "telemetry" in body["data"]
     telemetry = body["data"]["telemetry"]
     assert telemetry["current_rule_version"] == CURRENT_EVIDENCE_RULE_VERSION
@@ -31,6 +37,12 @@ async def test_list_obligations_endpoint(auth_client):
     assert "obligations" in body["data"]
     assert isinstance(body["data"]["obligations"], list)
     assert "freshness" in body["data"]
+    freshness = body["data"]["freshness"]
+    assert freshness["freshness_state"] in {"fresh", "reconciling", "stale", "failed"}
+    assert "last_reconciled_at" in freshness
+    assert "last_attempted_at" in freshness
+    assert "last_failure_at" in freshness
+    assert "freshness_reason" in freshness
 
 
 @pytest.mark.asyncio

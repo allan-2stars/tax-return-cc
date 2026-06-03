@@ -12,6 +12,7 @@ import type { ExportRecord } from '@/lib/api/types'
 import EligibilityCard from '@/components/export/EligibilityCard'
 import ExportHistoryCard from '@/components/export/ExportHistoryCard'
 import Disclaimer from '@/components/shared/Disclaimer'
+import EvidenceFreshnessBadge from '@/components/shared/EvidenceFreshnessBadge'
 
 export default function ExportPage() {
   const qc = useQueryClient()
@@ -64,6 +65,9 @@ export default function ExportPage() {
   const isReady = exportStatus?.status === 'ready'
   const isFailed = exportStatus?.status === 'failed'
   const showForm = (canExport || showGenerateForm) && activeExportId === null
+  const evidenceFreshnessWarning =
+    eligibility?.evidence_freshness?.freshness_state === 'stale' ||
+    eligibility?.evidence_freshness?.freshness_state === 'failed'
 
   if (eligibilityLoading) {
     return (
@@ -108,6 +112,12 @@ export default function ExportPage() {
           }`}
         >
           <p className="text-sm font-ui font-semibold text-text-primary">Evidence Preview</p>
+          <EvidenceFreshnessBadge freshness={eligibility.evidence_freshness} compact />
+          {evidenceFreshnessWarning && (
+            <p className="text-sm font-ui text-risk-high">
+              Export preview may be using stale evidence status.
+            </p>
+          )}
           {eligibility.evidence_export_status.would_block_export && (
             <p className="text-sm font-ui text-text-body">
               Export is allowed, but evidence may be incomplete.

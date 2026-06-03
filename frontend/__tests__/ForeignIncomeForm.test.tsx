@@ -4,8 +4,21 @@ import ForeignIncomeForm from '@/components/review/investment/ForeignIncomeForm'
 import * as eventsApi from '@/lib/api/events'
 
 jest.mock('@/lib/api/events')
+jest.mock('@/lib/stores/workspace.store', () => ({
+  __esModule: true,
+  default: jest.fn(() => ({
+    workspaceId: 'workspace-1',
+    financialYear: '2024-25',
+  })),
+}))
+
 const mockCreate = eventsApi.createManualEvent as jest.Mock
-beforeEach(() => jest.clearAllMocks())
+const draftKey = 'tax-return-draft:workspace-1:2024-25:investment:foreign_income'
+
+beforeEach(() => {
+  jest.clearAllMocks()
+  sessionStorage.clear()
+})
 
 test('AUD amount auto-calculates from foreign amount × exchange rate', async () => {
   const user = userEvent.setup()
@@ -59,4 +72,23 @@ test('renders audit fields for fx source and source document reference', () => {
   render(<ForeignIncomeForm onSuccess={jest.fn()} onBack={jest.fn()} onCancel={jest.fn()} />)
   expect(screen.getByLabelText(/fx source/i)).toBeInTheDocument()
   expect(screen.getByLabelText(/source document reference/i)).toBeInTheDocument()
+})
+
+test('saves and restores foreign income draft fields', async () => {
+  const user = userEvent.setup()
+  const { unmount } = render(<ForeignIncomeForm onSuccess={jest.fn()} onBack={jest.fn()} onCancel={jest.fn()} />)
+
+  await user.type(screen.getByLabelText(/country of origin/i), 'United States')
+
+  await waitFor(() => {
+    expect(screen.getByText(/draft saved/i)).toBeInTheDocument()
+    expect(sessionStorage.getItem(draftKey)).toContain('United States')
+  })
+
+  unmount()
+  render(<ForeignIncomeForm onSuccess={jest.fn()} onBack={jest.fn()} onCancel={jest.fn()} />)
+
+  expect(screen.getByText(/draft found/i)).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: /restore draft/i }))
+  expect(screen.getByLabelText(/country of origin/i)).toHaveValue('United States')
 })

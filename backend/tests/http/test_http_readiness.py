@@ -17,6 +17,12 @@ async def test_get_readiness(auth_client):
     assert isinstance(body["data"]["percentage"], int)
     assert "evidence_obligation_summary" in body["data"]
     assert "evidence_freshness" in body["data"]
+    freshness = body["data"]["evidence_freshness"]
+    assert freshness["freshness_state"] in {"fresh", "reconciling", "stale", "failed"}
+    assert "last_reconciled_at" in freshness
+    assert "last_attempted_at" in freshness
+    assert "last_failure_at" in freshness
+    assert "freshness_reason" in freshness
     assert "readiness_2_0" in body["data"]
     r2 = body["data"]["readiness_2_0"]
     assert "overall" in r2 and "journey" in r2 and "review" in r2 and "evidence" in r2

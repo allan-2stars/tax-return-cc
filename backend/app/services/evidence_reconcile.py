@@ -20,6 +20,7 @@ TriggerSource = Literal[
     "event_update",
     "event_delete",
     "manual_reconcile",
+    "restore_apply",
 ]
 
 

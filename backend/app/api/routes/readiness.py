@@ -10,6 +10,7 @@ from app.db.models import EvidenceMatch, EvidenceObligation, InterviewSession, T
 from app.engines.readiness import ReadinessEngine, _get_fy_end_date
 from app.engines.interview import BRANCH_QUESTIONS, PLATFORM_QUESTIONS, _QUESTION_BY_ID
 from app.repositories import readiness as readiness_repo
+from app.services.evidence_freshness import build_evidence_freshness
 from app.repositories import profiles as profile_repo
 from app.services.evidence_rules import CURRENT_EVIDENCE_RULE_VERSION
 
@@ -325,15 +326,7 @@ async def get_readiness(
     evidence_summary = await _evidence_obligation_summary(workspace_id, db)
     readiness_2_0 = await _build_readiness_2_0(workspace_id, db)
     workspace = await db.scalar(select(Workspace).where(Workspace.id == workspace_id))
-    freshness = {
-        "evidence_reconciled_at": (
-            workspace.evidence_reconciled_at.isoformat()
-            if workspace and workspace.evidence_reconciled_at
-            else None
-        ),
-        "evidence_reconcile_status": workspace.evidence_reconcile_status if workspace else "idle",
-        "evidence_reconcile_meta": workspace.evidence_reconcile_meta if workspace else None,
-    }
+    freshness = build_evidence_freshness(workspace)
     existing = await readiness_repo.get_score(db, workspace_id)
     if not existing:
         return {

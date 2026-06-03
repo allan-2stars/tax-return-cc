@@ -73,6 +73,15 @@ jest.mock('@/components/settings/StorageTab', () => ({
   ),
   __esModule: true,
 }))
+jest.mock('@/components/settings/WorkspaceSafetyTab', () => ({
+  default: () => (
+    <div>
+      <p>Workspace Safety</p>
+      <p>Backups are encrypted.</p>
+    </div>
+  ),
+  __esModule: true,
+}))
 jest.mock('@/components/settings/AboutTab', () => ({
   default: () => (
     <div>
@@ -96,12 +105,13 @@ beforeEach(() => {
 })
 
 describe('SettingsPage', () => {
-  it('renders 5 tabs', () => {
+  it('renders 6 tabs', () => {
     wrap(<SettingsPage />)
-    expect(screen.getByRole('tab', { name: /workspace/i })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^workspace$/i })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /security/i })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /ai.*privacy/i })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /storage/i })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /workspace safety/i })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /about/i })).toBeInTheDocument()
   })
 
@@ -169,6 +179,13 @@ describe('SettingsPage', () => {
     expect(screen.getByText(/documents/i)).toBeInTheDocument()
     expect(screen.getByText(/exports/i)).toBeInTheDocument()
     expect(screen.getByText(/database/i)).toBeInTheDocument()
+  })
+
+  it('Workspace Safety tab: recovery controls render', () => {
+    wrap(<SettingsPage />)
+    fireEvent.click(screen.getByRole('tab', { name: /workspace safety/i }))
+    expect(screen.getAllByText(/workspace safety/i).length).toBeGreaterThan(0)
+    expect(screen.getByText(/backups are encrypted/i)).toBeInTheDocument()
   })
 
   it('About tab: disclaimer text renders', () => {

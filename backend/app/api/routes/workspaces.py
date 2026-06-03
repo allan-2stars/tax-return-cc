@@ -13,6 +13,7 @@ from app.errors import error_response
 from app.repositories import auth as auth_repo
 from app.repositories import profiles as profiles_repo
 from app.engines.yoy import YoYEngine
+from app.services.recovery_policy import RecoveryGuardError, RecoveryPolicyService
 
 router = APIRouter()
 
@@ -169,6 +170,13 @@ async def archive_workspace(
             status_code=404,
             detail=error_response("not_found", "Workspace not found.", retryable=False),
         )
+    policy = RecoveryPolicyService()
+    try:
+        await policy.require_recent_backup_or_raise(db=db, workspace_id=workspace_id, operation="workspace_archive")
+    except RecoveryGuardError as e:
+        detail = error_response(e.error_code, e.message, action=e.action, retryable=e.retryable)
+        detail["data"] = e.status.to_dict()
+        raise HTTPException(status_code=409, detail=detail)
     ws.status = "archived"
     await db.commit()
     return {"data": _ws_dict(ws, 0.0), "status": "ok"}
@@ -199,6 +207,13 @@ async def delete_workspace(
             status_code=400,
             detail=error_response("invalid_password", "Incorrect password.", retryable=False),
         )
+    policy = RecoveryPolicyService()
+    try:
+        await policy.require_recent_backup_or_raise(db=db, workspace_id=workspace_id, operation="workspace_delete")
+    except RecoveryGuardError as e:
+        detail = error_response(e.error_code, e.message, action=e.action, retryable=e.retryable)
+        detail["data"] = e.status.to_dict()
+        raise HTTPException(status_code=409, detail=detail)
     ws.status = "deleted"
     await db.commit()
 

@@ -178,6 +178,23 @@ class ReviewItem(Base):
     )
 
 
+class ReviewDecisionHistory(Base):
+    __tablename__ = "review_decision_history"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(String(36), ForeignKey("workspaces.id"), index=True)
+    review_item_id: Mapped[str] = mapped_column(String(36), ForeignKey("review_items.id"), index=True)
+    tax_event_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("tax_events.id"), index=True, nullable=True)
+    action: Mapped[str] = mapped_column(String(30))
+    actor: Mapped[str] = mapped_column(String(20), default="user")
+    previous_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    new_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    changed_fields: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    bulk_action_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class ReadinessScore(Base):
     __tablename__ = "readiness_scores"
 

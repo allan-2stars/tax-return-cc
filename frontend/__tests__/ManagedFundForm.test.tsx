@@ -7,14 +7,17 @@ jest.mock('@/lib/api/events')
 jest.mock('@/lib/stores/workspace.store', () => ({
   __esModule: true,
   default: jest.fn(() => ({
+    workspaceId: 'workspace-1',
     financialYear: '2024-25',
   })),
 }))
 
 const mockCreate = eventsApi.createManualEvent as jest.Mock
+const draftKey = 'tax-return-draft:workspace-1:2024-25:investment:managed_fund'
 
 beforeEach(() => {
   jest.clearAllMocks()
+  sessionStorage.clear()
 })
 
 test('submits expected managed fund metadata', async () => {
@@ -58,4 +61,23 @@ test('shows validation error on missing required fund name', async () => {
 
   const alerts = await screen.findAllByRole('alert')
   expect(alerts.length).toBeGreaterThan(0)
+})
+
+test('saves and restores managed fund draft fields', async () => {
+  const user = userEvent.setup()
+  const { unmount } = render(<ManagedFundForm onSuccess={jest.fn()} onBack={jest.fn()} onCancel={jest.fn()} />)
+
+  await user.type(screen.getByLabelText(/fund name/i), 'Vanguard High Growth')
+
+  await waitFor(() => {
+    expect(screen.getByText(/draft saved/i)).toBeInTheDocument()
+    expect(sessionStorage.getItem(draftKey)).toContain('Vanguard High Growth')
+  })
+
+  unmount()
+  render(<ManagedFundForm onSuccess={jest.fn()} onBack={jest.fn()} onCancel={jest.fn()} />)
+
+  expect(screen.getByText(/draft found/i)).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: /restore draft/i }))
+  expect(screen.getByLabelText(/fund name/i)).toHaveValue('Vanguard High Growth')
 })

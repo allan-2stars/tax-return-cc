@@ -1,9 +1,11 @@
 import pytest
 import pytest_asyncio
+from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models import TaxProfile, Workspace
+from app.services.evidence_freshness import build_evidence_freshness
 from app.services.evidence_reconcile import EvidenceReconcileService
 
 
@@ -85,3 +87,68 @@ async def test_manual_force_bypasses_debounce(db_session, workspace):
     )
     assert forced["status"] == "ok"
     assert forced.get("skipped") is False
+
+
+def test_evidence_freshness_stale_state_for_never_reconciled_workspace():
+    ws = Workspace(name="Freshness WS", financial_year="2024-25", status="active")
+
+    freshness = build_evidence_freshness(ws)
+
+    assert freshness["freshness_state"] == "stale"
+    assert freshness["last_reconciled_at"] is None
+    assert freshness["last_attempted_at"] is None
+    assert freshness["last_failure_at"] is None
+    assert "not been checked" in freshness["freshness_reason"].lower()
+
+
+def test_evidence_freshness_fresh_state_for_successful_reconcile():
+    now = datetime.now(timezone.utc)
+    ws = Workspace(
+        name="Freshness WS",
+        financial_year="2024-25",
+        status="active",
+        evidence_reconciled_at=now,
+        evidence_reconcile_status="succeeded",
+        evidence_reconcile_meta={"last_completed_at": now.isoformat()},
+    )
+
+    freshness = build_evidence_freshness(ws)
+
+    assert freshness["freshness_state"] == "fresh"
+    assert freshness["last_reconciled_at"] == now.isoformat()
+    assert freshness["last_attempted_at"] == now.isoformat()
+    assert freshness["last_failure_at"] is None
+
+
+def test_evidence_freshness_reconciling_state_for_running_reconcile():
+    now = datetime.now(timezone.utc)
+    ws = Workspace(
+        name="Freshness WS",
+        financial_year="2024-25",
+        status="active",
+        evidence_reconcile_status="running",
+        evidence_reconcile_meta={"last_started_at": now.isoformat(), "last_trigger_source": "document_upload"},
+    )
+
+    freshness = build_evidence_freshness(ws)
+
+    assert freshness["freshness_state"] == "reconciling"
+    assert freshness["last_attempted_at"] == now.isoformat()
+    assert freshness["trigger_source"] == "document_upload"
+
+
+def test_evidence_freshness_failed_state_for_failed_reconcile():
+    now = datetime.now(timezone.utc)
+    ws = Workspace(
+        name="Freshness WS",
+        financial_year="2024-25",
+        status="active",
+        evidence_reconcile_status="failed",
+        evidence_reconcile_meta={"last_failed_at": now.isoformat()},
+    )
+
+    freshness = build_evidence_freshness(ws)
+
+    assert freshness["freshness_state"] == "failed"
+    assert freshness["last_failure_at"] == now.isoformat()
+    assert "could not be refreshed" in freshness["freshness_reason"].lower()

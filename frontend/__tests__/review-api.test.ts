@@ -55,6 +55,18 @@ describe('review API', () => {
     })
   })
 
+  it('undoReviewDecision calls POST /api/v1/review/:id/undo', async () => {
+    mockPost.mockResolvedValue({ data: { data: {} } })
+    await reviewApi.undoReviewDecision('item-1')
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/review/item-1/undo')
+  })
+
+  it('undoBulkReviewDecision calls POST /api/v1/review/bulk-action/:bulk_action_id/undo', async () => {
+    mockPost.mockResolvedValue({ data: { data: {} } })
+    await reviewApi.undoBulkReviewDecision('bulk-1')
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/review/bulk-action/bulk-1/undo')
+  })
+
   it('askClaude calls POST /api/v1/review/:id/ask', async () => {
     mockPost.mockResolvedValue({ data: { data: { answer: 'hello' } } })
     await reviewApi.askClaude('item-1', 'Is this deductible?')

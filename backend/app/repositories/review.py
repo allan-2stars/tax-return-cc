@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.db.models import ReviewItem, TaxEvent
+from app.db.models import ReviewDecisionHistory, ReviewItem, TaxEvent
 
 
 def _normalize_datetimes(item: ReviewItem) -> ReviewItem:
@@ -74,3 +74,62 @@ async def update(db: AsyncSession, item: ReviewItem) -> ReviewItem:
     if refreshed is None:
         raise ValueError(f"ReviewItem {item.id} not found after update")
     return _normalize_datetimes(refreshed)
+
+
+async def get_history_for_item(
+    db: AsyncSession,
+    review_item_id: str,
+) -> list[ReviewDecisionHistory]:
+    result = await db.execute(
+        select(ReviewDecisionHistory)
+        .where(ReviewDecisionHistory.review_item_id == review_item_id)
+        .order_by(ReviewDecisionHistory.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def get_history_by_item_ids(
+    db: AsyncSession,
+    review_item_ids: list[str],
+) -> dict[str, list[ReviewDecisionHistory]]:
+    if not review_item_ids:
+        return {}
+    result = await db.execute(
+        select(ReviewDecisionHistory)
+        .where(ReviewDecisionHistory.review_item_id.in_(review_item_ids))
+        .order_by(ReviewDecisionHistory.created_at.desc())
+    )
+    grouped: dict[str, list[ReviewDecisionHistory]] = {item_id: [] for item_id in review_item_ids}
+    for history in result.scalars().all():
+        grouped.setdefault(history.review_item_id, []).append(history)
+    return grouped
+
+
+async def get_latest_history_for_item(
+    db: AsyncSession,
+    review_item_id: str,
+) -> ReviewDecisionHistory | None:
+    result = await db.execute(
+        select(ReviewDecisionHistory)
+        .where(ReviewDecisionHistory.review_item_id == review_item_id)
+        .order_by(ReviewDecisionHistory.created_at.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_histories_for_bulk_action(
+    db: AsyncSession,
+    workspace_id: str,
+    bulk_action_id: str,
+) -> list[ReviewDecisionHistory]:
+    result = await db.execute(
+        select(ReviewDecisionHistory)
+        .where(
+            ReviewDecisionHistory.workspace_id == workspace_id,
+            ReviewDecisionHistory.bulk_action_id == bulk_action_id,
+            ReviewDecisionHistory.action != "undo",
+        )
+        .order_by(ReviewDecisionHistory.created_at.asc())
+    )
+    return list(result.scalars().all())

@@ -9,6 +9,7 @@ from app.engines.review import ReviewEngine, UserAction
 from app.errors import error_response
 from app.repositories import interview as interview_repo
 from app.repositories import profiles as profile_repo
+from app.repositories import review as review_repo
 from app.services.evidence_reconcile import EvidenceReconcileService
 from app.services.explanations import build_tax_item_explanation
 
@@ -44,7 +45,25 @@ class AskRequest(BaseModel):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _item_dict(item: ReviewItem) -> dict:
+def _history_dict(history) -> dict:
+    created_at = history.created_at
+    return {
+        "id": history.id,
+        "workspace_id": history.workspace_id,
+        "review_item_id": history.review_item_id,
+        "tax_event_id": history.tax_event_id,
+        "action": history.action,
+        "actor": history.actor,
+        "previous_status": history.previous_status,
+        "new_status": history.new_status,
+        "changed_fields": history.changed_fields or {},
+        "note": history.note,
+        "bulk_action_id": history.bulk_action_id,
+        "created_at": created_at.isoformat() if created_at else None,
+    }
+
+
+def _item_dict(item: ReviewItem, decision_history: list | None = None) -> dict:
     explanation_category = (item.category or (item.tax_event.category if item.tax_event else None))
     return {
         "id": item.id,
@@ -71,6 +90,7 @@ def _item_dict(item: ReviewItem) -> dict:
         "review_duration_seconds": item.review_duration_seconds,
         "group_id": item.tax_event.group_id if item.tax_event else None,
         "group_display": item.tax_event.group_display if item.tax_event else None,
+        "decision_history": [_history_dict(h) for h in (decision_history or [])],
         "explanation": build_tax_item_explanation(
             target_type="review_item",
             target_id=item.id,
@@ -88,22 +108,24 @@ async def get_review_queue(
     db: AsyncSession = Depends(get_db),
 ):
     queue = await _engine.get_queue(workspace_id, db)
+    all_items = queue.agent_required + queue.high_risk + queue.needs_review + queue.confirmed
+    history_by_item = await review_repo.get_history_by_item_ids(db, [item.id for item in all_items])
     return {
         "data": {
             "agent_required": {
-                "items": [_item_dict(i) for i in queue.agent_required],
+                "items": [_item_dict(i, history_by_item.get(i.id, [])) for i in queue.agent_required],
                 "count": len(queue.agent_required),
             },
             "high_risk": {
-                "items": [_item_dict(i) for i in queue.high_risk],
+                "items": [_item_dict(i, history_by_item.get(i.id, [])) for i in queue.high_risk],
                 "count": len(queue.high_risk),
             },
             "needs_review": {
-                "items": [_item_dict(i) for i in queue.needs_review],
+                "items": [_item_dict(i, history_by_item.get(i.id, [])) for i in queue.needs_review],
                 "count": len(queue.needs_review),
             },
             "confirmed": {
-                "items": [_item_dict(i) for i in queue.confirmed],
+                "items": [_item_dict(i, history_by_item.get(i.id, [])) for i in queue.confirmed],
                 "count": len(queue.confirmed),
             },
             "total": queue.total,
@@ -126,7 +148,29 @@ async def get_review_item(
             status_code=404,
             detail=error_response("item_not_found", "Review item not found.", retryable=False),
         )
-    return {"data": _item_dict(item)}
+    history = await review_repo.get_history_for_item(db, item.id)
+    return {"data": _item_dict(item, history)}
+
+
+@router.get("/review/{item_id}/history")
+async def get_review_item_history(
+    item_id: str,
+    workspace_id: str = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    item = await _engine.get_item(item_id, db)
+    if item is None or item.workspace_id != workspace_id:
+        raise HTTPException(
+            status_code=404,
+            detail=error_response("item_not_found", "Review item not found.", retryable=False),
+        )
+    history = await review_repo.get_history_for_item(db, item.id)
+    return {
+        "data": {
+            "review_item_id": item.id,
+            "history": [_history_dict(h) for h in history],
+        }
+    }
 
 
 # ── POST /review/{item_id}/action ─────────────────────────────────────────────
@@ -165,7 +209,32 @@ async def take_action(
         )
     await _reconcile_service.trigger(workspace_id=workspace_id, trigger_source="event_update", db=db)
 
-    return {"data": _item_dict(item)}
+    history = await review_repo.get_history_for_item(db, item.id)
+    return {"data": _item_dict(item, history)}
+
+
+@router.post("/review/{item_id}/undo")
+async def undo_review_decision(
+    item_id: str,
+    workspace_id: str = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    item_before = await _engine.get_item(item_id, db)
+    if item_before is None or item_before.workspace_id != workspace_id:
+        raise HTTPException(
+            status_code=404,
+            detail=error_response("item_not_found", "Review item not found.", retryable=False),
+        )
+    try:
+        item = await _engine.undo_latest_decision(item_id, db)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=error_response("undo_not_available", str(e), retryable=False),
+        )
+    await _reconcile_service.trigger(workspace_id=workspace_id, trigger_source="event_update", db=db)
+    history = await review_repo.get_history_for_item(db, item.id)
+    return {"data": _item_dict(item, history)}
 
 
 # ── POST /review/{item_id}/inline-answer ──────────────────────────────────────
@@ -233,8 +302,38 @@ async def bulk_action(
             detail=error_response("bulk_action_error", str(e), retryable=False),
         )
     await _reconcile_service.trigger(workspace_id=workspace_id, trigger_source="event_update", db=db)
+    history_by_item = await review_repo.get_history_by_item_ids(db, [item.id for item in results])
 
-    return {"data": {"items": [_item_dict(i) for i in results], "count": len(results)}}
+    return {
+        "data": {
+            "items": [_item_dict(i, history_by_item.get(i.id, [])) for i in results],
+            "count": len(results),
+        }
+    }
+
+
+@router.post("/review/bulk-action/{bulk_action_id}/undo")
+async def undo_bulk_review_decision(
+    bulk_action_id: str,
+    workspace_id: str = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        results = await _engine.undo_bulk_decision(workspace_id, bulk_action_id, db)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=error_response("undo_not_available", str(e), retryable=False),
+        )
+    await _reconcile_service.trigger(workspace_id=workspace_id, trigger_source="event_update", db=db)
+    history_by_item = await review_repo.get_history_by_item_ids(db, [item.id for item in results])
+
+    return {
+        "data": {
+            "items": [_item_dict(i, history_by_item.get(i.id, [])) for i in results],
+            "count": len(results),
+        }
+    }
 
 
 # ── POST /review/{item_id}/ask ────────────────────────────────────────────────

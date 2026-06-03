@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import EvidenceChecklistPage from '@/app/(dashboard)/readiness/checklist/page'
 
@@ -9,7 +9,7 @@ jest.mock('@/lib/api/evidence', () => ({
   __esModule: true,
 }))
 
-import { getEvidenceObligations, updateEvidenceMatch } from '@/lib/api/evidence'
+import { getEvidenceObligations, reconcileEvidence, updateEvidenceMatch } from '@/lib/api/evidence'
 
 function wrap(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -97,5 +97,80 @@ describe('EvidenceChecklistPage decisions', () => {
 
     await waitFor(() => expect(updateEvidenceMatch).toHaveBeenCalledWith('m1', 'rejected'))
     expect(await screen.findByText(/Rejected match:/i)).toBeInTheDocument()
+  })
+
+  it('Evidence decision failure shows retryable error', async () => {
+    ;(getEvidenceObligations as jest.Mock).mockResolvedValue({ data: { data: { obligations: candidatePayload } } })
+    ;(updateEvidenceMatch as jest.Mock).mockRejectedValue(new Error('network'))
+
+    wrap(<EvidenceChecklistPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /accept match/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/unable to update evidence match/i)
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /accept match/i })).toBeInTheDocument()
+  })
+
+  it.each([
+    ['fresh', 'Fresh'],
+    ['reconciling', 'Reconciling'],
+    ['stale', 'Stale'],
+    ['failed', 'Failed'],
+  ])('renders %s evidence freshness state', async (freshnessState, label) => {
+    ;(getEvidenceObligations as jest.Mock).mockResolvedValue({
+      data: {
+        data: {
+          obligations: candidatePayload,
+          freshness: {
+            freshness_state: freshnessState,
+            last_reconciled_at: '2026-06-01T10:00:00+00:00',
+            last_attempted_at: '2026-06-01T10:05:00+00:00',
+            last_failure_at: freshnessState === 'failed' ? '2026-06-01T10:05:00+00:00' : null,
+            freshness_reason: 'Evidence status is current.',
+          },
+        },
+      },
+    })
+
+    wrap(<EvidenceChecklistPage />)
+
+    expect(await screen.findByText(label)).toBeInTheDocument()
+    expect(await screen.findByText(/last reconciled/i)).toBeInTheDocument()
+    expect(screen.getByText(/last attempted/i)).toBeInTheDocument()
+  })
+
+  it('reconcile button shows progress and success feedback', async () => {
+    let resolveReconcile!: (value: unknown) => void
+    ;(getEvidenceObligations as jest.Mock).mockResolvedValue({
+      data: { data: { obligations: candidatePayload, freshness: { freshness_state: 'stale' } } },
+    })
+    ;(reconcileEvidence as jest.Mock).mockReturnValue(
+      new Promise((resolve) => {
+        resolveReconcile = resolve
+      })
+    )
+
+    wrap(<EvidenceChecklistPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /refresh checklist/i }))
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /reconciling/i })).toBeDisabled())
+    await act(async () => {
+      resolveReconcile({
+        data: { data: { status: 'ok', obligations_count: 1, freshness: { freshness_state: 'fresh' } } },
+      })
+    })
+    expect(await screen.findByText(/checklist refreshed/i)).toBeInTheDocument()
+  })
+
+  it('reconcile button shows failed feedback', async () => {
+    ;(getEvidenceObligations as jest.Mock).mockResolvedValue({
+      data: { data: { obligations: candidatePayload, freshness: { freshness_state: 'failed' } } },
+    })
+    ;(reconcileEvidence as jest.Mock).mockRejectedValue(new Error('network'))
+
+    wrap(<EvidenceChecklistPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /refresh checklist/i }))
+
+    expect(await screen.findByText(/unable to refresh evidence checklist/i)).toBeInTheDocument()
   })
 })

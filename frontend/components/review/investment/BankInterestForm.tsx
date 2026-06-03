@@ -3,6 +3,8 @@ import { useForm } from 'react-hook-form'
 import { useState } from 'react'
 import { createManualEvent } from '@/lib/api/events'
 import useWorkspaceStore from '@/lib/stores/workspace.store'
+import { useSessionDraft } from '@/lib/hooks/useSessionDraft'
+import DraftStatus from '../DraftStatus'
 
 interface InvestmentFormProps { onSuccess: () => void; onBack: () => void; onCancel: () => void }
 
@@ -15,11 +17,29 @@ interface BankInterestFields {
   note: string
 }
 
+function hasDraftContent(draft: Partial<BankInterestFields>): boolean {
+  return Object.values(draft).some((value) =>
+    typeof value === 'boolean' ? value : Boolean(String(value ?? '').trim())
+  )
+}
+
 export default function BankInterestForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) {
-  const { register, handleSubmit, formState: { errors } } = useForm<BankInterestFields>()
+  const { register, handleSubmit, watch, reset, formState: { errors } } = useForm<BankInterestFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { financialYear } = useWorkspaceStore()
+  const { workspaceId, financialYear } = useWorkspaceStore()
+  const {
+    notice: draftNotice,
+    restoredDraft,
+    restoreDraft,
+    discardDraft,
+    clearDraft,
+  } = useSessionDraft({
+    keyParts: [workspaceId, financialYear, 'investment', 'bank_interest'],
+    draft: watch(),
+    hasContent: hasDraftContent,
+    applyDraft: (draft) => reset(draft),
+  })
 
   async function onSubmit(data: BankInterestFields) {
     const amt = parseFloat(data.interest_amount)
@@ -41,6 +61,7 @@ export default function BankInterestForm({ onSuccess, onBack, onCancel }: Invest
           in_payg: data.in_payg,
         },
       })
+      clearDraft(true)
       onSuccess()
     } catch { setError('Something went wrong. Please try again.') }
     finally { setPending(false) }
@@ -49,6 +70,12 @@ export default function BankInterestForm({ onSuccess, onBack, onCancel }: Invest
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
       <button type="button" onClick={onBack} className="text-sm font-ui text-text-muted">← Back</button>
+      <DraftStatus
+        notice={draftNotice}
+        hasRestorableDraft={Boolean(restoredDraft)}
+        onRestore={restoreDraft}
+        onDiscard={discardDraft}
+      />
       <div>
         <label htmlFor="bi-bank" className="text-sm font-ui text-text-body block mb-1">Bank name</label>
         <input id="bi-bank" type="text" placeholder="Commonwealth Bank, ANZ…"

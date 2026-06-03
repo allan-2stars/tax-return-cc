@@ -2,6 +2,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { uploadDocument, getDocumentSummary } from '@/lib/api/documents'
 import { useSSE } from '@/lib/hooks/useSSE'
+import { normalizeApiError } from '@/lib/api/errors'
 
 const ALLOWED_TYPES = new Set([
   'application/pdf',
@@ -26,8 +27,10 @@ const STAGE_LABELS: Record<string, string> = {
   extract: 'Finding tax items...',
 }
 const POLL_MS = 2000
+const LONG_PROCESSING_MS = 60_000
 
 type UploadKind = 'idle' | 'hover' | 'uploading' | 'success' | 'error'
+type UploadPhase = 'uploading' | 'processing'
 
 interface UploadZoneProps {
   onUploadComplete: (documentId: string) => void
@@ -40,10 +43,14 @@ export default function UploadZone({ onUploadComplete, onDuplicate }: UploadZone
   const [errorMessage, setErrorMessage] = useState('')
   const [sseStage, setSseStage] = useState('')
   const [documentId, setDocumentId] = useState<string | null>(null)
+  const [failedDocumentId, setFailedDocumentId] = useState<string | null>(null)
+  const [phase, setPhase] = useState<UploadPhase>('uploading')
+  const [stillProcessing, setStillProcessing] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const dragCounterRef = useRef(0)
   const uploadingRef = useRef(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const longProcessingRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const resolvedRef = useRef(false)
 
   const sseUrl = documentId ? `/api/v1/documents/${documentId}/stream` : null
@@ -56,31 +63,52 @@ export default function UploadZone({ onUploadComplete, onDuplicate }: UploadZone
     }
   }, [])
 
+  const clearLongProcessingTimer = useCallback(() => {
+    if (longProcessingRef.current) {
+      clearTimeout(longProcessingRef.current)
+      longProcessingRef.current = null
+    }
+  }, [])
+
+  const startLongProcessingTimer = useCallback(() => {
+    clearLongProcessingTimer()
+    longProcessingRef.current = setTimeout(() => {
+      setStillProcessing(true)
+    }, LONG_PROCESSING_MS)
+  }, [clearLongProcessingTimer])
+
   const resolveSuccess = useCallback((id: string) => {
     if (resolvedRef.current) return
     resolvedRef.current = true
     clearPoll()
+    clearLongProcessingTimer()
     setKind('success')
+    setStillProcessing(false)
+    setFailedDocumentId(null)
     setDocumentId(null)
     onUploadComplete(id)
-  }, [clearPoll, onUploadComplete])
+  }, [clearLongProcessingTimer, clearPoll, onUploadComplete])
 
-  const resolveFailure = useCallback((errorCode?: string) => {
+  const resolveFailure = useCallback((errorCode?: string, id?: string | null) => {
     if (resolvedRef.current) return
     resolvedRef.current = true
     clearPoll()
+    clearLongProcessingTimer()
     setKind('error')
     setErrorMessage(ERROR_MESSAGES[errorCode ?? ''] ?? ERROR_MESSAGES.default)
+    setStillProcessing(false)
+    setFailedDocumentId(id ?? documentId)
     setDocumentId(null)
-  }, [clearPoll])
+  }, [clearLongProcessingTimer, clearPoll, documentId])
 
   useEffect(() => {
     if (!sseData) return
     if (sseData.status === 'ready') {
       resolveSuccess(sseData.document_id)
     } else if (sseData.status === 'failed') {
-      resolveFailure(sseData.error_code)
+      resolveFailure(sseData.error_code, sseData.document_id)
     } else if (sseData.status === 'processing' && sseData.stage) {
+      setPhase('processing')
       setSseStage(STAGE_LABELS[sseData.stage] ?? 'Processing...')
     }
   }, [sseData, resolveSuccess, resolveFailure])
@@ -98,7 +126,9 @@ export default function UploadZone({ onUploadComplete, onDuplicate }: UploadZone
         if (status === 'ready') {
           resolveSuccess(documentId)
         } else if (status === 'failed' || status === 'archived') {
-          resolveFailure(status === 'archived' ? 'archived' : 'processing_failed')
+          resolveFailure(status === 'archived' ? 'archived' : 'processing_failed', documentId)
+        } else {
+          setPhase('processing')
         }
       } catch {
         // Keep polling; transient fetch errors should not wedge upload state.
@@ -106,7 +136,8 @@ export default function UploadZone({ onUploadComplete, onDuplicate }: UploadZone
     }
 
     if (sseError) {
-      setSseStage('Processing document...')
+      setPhase('processing')
+      setSseStage('Connection interrupted. We are checking the document status.')
     }
     void checkSummary()
     pollRef.current = setInterval(() => { void checkSummary() }, POLL_MS)
@@ -114,7 +145,19 @@ export default function UploadZone({ onUploadComplete, onDuplicate }: UploadZone
     return () => clearPoll()
   }, [documentId, kind, sseError, clearPoll, resolveFailure, resolveSuccess])
 
-  useEffect(() => () => clearPoll(), [clearPoll])
+  useEffect(() => {
+    if (documentId && kind === 'uploading') {
+      startLongProcessingTimer()
+      return () => clearLongProcessingTimer()
+    }
+    clearLongProcessingTimer()
+    return undefined
+  }, [clearLongProcessingTimer, documentId, kind, startLongProcessingTimer])
+
+  useEffect(() => () => {
+    clearPoll()
+    clearLongProcessingTimer()
+  }, [clearLongProcessingTimer, clearPoll])
 
   const processFile = useCallback(
     async (file: File) => {
@@ -134,8 +177,11 @@ export default function UploadZone({ onUploadComplete, onDuplicate }: UploadZone
       resolvedRef.current = false
       setFilename(file.name)
       setKind('uploading')
+      setPhase('uploading')
       setSseStage('')
       setErrorMessage('')
+      setStillProcessing(false)
+      setFailedDocumentId(null)
       try {
         const res = await uploadDocument(file)
         const data = res.data
@@ -143,11 +189,14 @@ export default function UploadZone({ onUploadComplete, onDuplicate }: UploadZone
           setKind('idle')
           onDuplicate(data.existing_document_id)
         } else {
+          setPhase('processing')
+          setSseStage('Processing document...')
           setDocumentId(data.document_id)
         }
-      } catch {
+      } catch (err: unknown) {
+        const normalized = normalizeApiError(err, 'Your network connection was interrupted. You can retry the upload.')
         setKind('error')
-        setErrorMessage(ERROR_MESSAGES.default)
+        setErrorMessage(normalized.message)
       } finally {
         uploadingRef.current = false
       }
@@ -163,12 +212,37 @@ export default function UploadZone({ onUploadComplete, onDuplicate }: UploadZone
 
   const handleReset = () => {
     clearPoll()
+    clearLongProcessingTimer()
     resolvedRef.current = false
     setKind('idle')
     setFilename('')
     setErrorMessage('')
     setSseStage('')
     setDocumentId(null)
+    setFailedDocumentId(null)
+    setStillProcessing(false)
+    setPhase('uploading')
+  }
+
+  const retryStatusCheck = () => {
+    if (!failedDocumentId) {
+      handleReset()
+      return
+    }
+    clearPoll()
+    clearLongProcessingTimer()
+    resolvedRef.current = false
+    setKind('uploading')
+    setPhase('processing')
+    setSseStage('Retrying status check...')
+    setErrorMessage('')
+    setStillProcessing(false)
+    setDocumentId(failedDocumentId)
+  }
+
+  const handleReupload = () => {
+    handleReset()
+    inputRef.current?.click()
   }
 
   const handleDrop = (e: React.DragEvent) => {
@@ -212,9 +286,18 @@ export default function UploadZone({ onUploadComplete, onDuplicate }: UploadZone
           </p>
         </>
       ) : kind === 'uploading' ? (
-        <div className="space-y-2">
+        <div className="space-y-3">
           <p className="font-ui text-text-body truncate">{filename}</p>
-          <p className="text-sm font-ui text-text-muted">{sseStage || 'Uploading...'}</p>
+          <div className="space-y-1">
+            <p className="text-sm font-ui font-medium text-text-body">
+              {phase === 'uploading' ? 'Uploading file' : stillProcessing ? 'Still processing' : 'Processing document'}
+            </p>
+            <p className="text-sm font-ui text-text-muted">
+              {stillProcessing
+                ? 'This is taking longer than usual. You can keep working while we keep checking.'
+                : sseStage || 'Uploading file...'}
+            </p>
+          </div>
           <div className="w-full bg-progress-track rounded-full h-1.5">
             <div className="bg-progress-fill h-1.5 rounded-full animate-pulse w-1/2" />
           </div>
@@ -231,15 +314,31 @@ export default function UploadZone({ onUploadComplete, onDuplicate }: UploadZone
           </button>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           <p className="text-sm font-ui text-risk-high">{errorMessage}</p>
-          <button
-            type="button"
-            onClick={handleReset}
-            className="text-sm font-ui text-accent hover:text-accent-hover transition-colors"
-          >
-            Try again
-          </button>
+          <div className="flex flex-wrap justify-center gap-3">
+            <button
+              type="button"
+              onClick={retryStatusCheck}
+              className="text-sm font-ui text-accent hover:text-accent-hover transition-colors"
+            >
+              Retry status check
+            </button>
+            <button
+              type="button"
+              onClick={handleReupload}
+              className="text-sm font-ui text-accent hover:text-accent-hover transition-colors"
+            >
+              Re-upload document
+            </button>
+            <button
+              type="button"
+              onClick={handleReset}
+              className="text-sm font-ui text-text-muted hover:text-text-body transition-colors"
+            >
+              Continue manually
+            </button>
+          </div>
         </div>
       )}
 

@@ -90,4 +90,16 @@ describe('DashboardLayout', () => {
     fireEvent.click(screen.getByRole('button', { name: /more/i }))
     expect(screen.getByRole('dialog', { name: /more options/i })).toBeInTheDocument()
   })
+
+  it('renders dismissible session restored banner when auth hook reports restored session', () => {
+    const { useAuth } = require('@/lib/hooks/useAuth')
+    useAuth.mockReturnValue({ isAuthenticated: true, sessionRestored: true, clearSessionRestored: jest.fn() })
+
+    render(<DashboardLayout><div>content</div></DashboardLayout>)
+
+    expect(screen.getByText(/session restored/i)).toBeInTheDocument()
+    expect(screen.getByText(/workspace data is up to date/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /dismiss session restored message/i }))
+    expect(useAuth().clearSessionRestored).toHaveBeenCalled()
+  })
 })

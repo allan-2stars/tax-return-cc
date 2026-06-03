@@ -22,6 +22,25 @@ function getStatusBadge(item: ReviewItem): BadgeStatus {
   return 'needs_user_review'
 }
 
+function formatHistoryValue(value: unknown): string {
+  if (value == null || value === '') return 'none'
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+function formatHistoryDate(value: string | null): string {
+  if (!value) return 'Unknown time'
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return 'Unknown time'
+  return parsed.toLocaleString('en-AU', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
 interface ReviewCardProps {
   item: ReviewItem
   onAction: (
@@ -35,13 +54,16 @@ interface ReviewCardProps {
     answer: string,
     eventId: string
   ) => Promise<{ new_skill_pending: boolean }>
+  onUndo?: (id: string) => void
+  onUndoBulk?: (bulkActionId: string) => void
 }
 
-export default function ReviewCard({ item, onAction, onInlineAnswer }: ReviewCardProps) {
+export default function ReviewCard({ item, onAction, onInlineAnswer, onUndo, onUndoBulk }: ReviewCardProps) {
   const [showWhy, setShowWhy] = useState(false)
   const [showExplanation, setShowExplanation] = useState(false)
   const [showAmend, setShowAmend] = useState(false)
   const [showAsk, setShowAsk] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
   const [confirmed, setConfirmed] = useState(item.status === 'confirmed')
   const [newSkillPending, setNewSkillPending] = useState(false)
 
@@ -50,6 +72,9 @@ export default function ReviewCard({ item, onAction, onInlineAnswer }: ReviewCar
 
   const displayAmount = item.amended_amount ?? item.amount
   const displayCategory = item.amended_category ?? item.category
+  const decisionHistory = item.decision_history ?? []
+  const latestHistory = decisionHistory[0]
+  const canUndoLatest = latestHistory?.action === 'confirmed' || latestHistory?.action === 'amended'
 
   const d = item.date ? new Date(item.date) : null
   const displayDate =
@@ -66,6 +91,14 @@ export default function ReviewCard({ item, onAction, onInlineAnswer }: ReviewCar
     setConfirmed(true)
     setShowAmend(false)
     onAction(item.id, 'confirmed', {})
+  }
+
+  function handleUndo() {
+    if (latestHistory?.bulk_action_id && onUndoBulk) {
+      onUndoBulk(latestHistory.bulk_action_id)
+      return
+    }
+    onUndo?.(item.id)
   }
 
   return (
@@ -131,6 +164,56 @@ export default function ReviewCard({ item, onAction, onInlineAnswer }: ReviewCar
           <InlineQuestion questions={item.inline_questions} onAnswer={handleInlineAnswer} />
         </div>
       )}
+
+      <div className="mt-3 pt-3 border-t border-border">
+        <button
+          type="button"
+          onClick={() => setShowHistory((v) => !v)}
+          className="text-xs font-ui text-text-muted hover:text-text-body transition-colors"
+        >
+          {showHistory ? 'Hide review history ↑' : 'Review history ↓'}
+        </button>
+        {showHistory && (
+          <div data-testid="review-history" className="mt-2 rounded bg-surface-raised p-3 text-xs font-ui text-text-muted">
+            {decisionHistory.length === 0 ? (
+              <p>No review history yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {decisionHistory.map((entry) => (
+                  <div key={entry.id} className="border-b border-border pb-3 last:border-b-0 last:pb-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium text-text-body">{entry.action.replace(/_/g, ' ')}</span>
+                      <span>{formatHistoryDate(entry.created_at)}</span>
+                      {entry.bulk_action_id && (
+                        <span className="rounded-full bg-review-bg px-2 py-0.5 text-review">Bulk action</span>
+                      )}
+                    </div>
+                    {Object.keys(entry.changed_fields || {}).length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {Object.entries(entry.changed_fields).map(([field, change]) => (
+                          <p key={field} className="text-text-body">
+                            {`${field}: ${formatHistoryValue(change.old)} -> ${formatHistoryValue(change.new)}`}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                    {entry.note && <p className="mt-2">{entry.note}</p>}
+                  </div>
+                ))}
+                {canUndoLatest && (onUndo || (latestHistory?.bulk_action_id && onUndoBulk)) && (
+                  <button
+                    type="button"
+                    onClick={handleUndo}
+                    className="text-xs font-ui text-accent underline"
+                  >
+                    Undo last decision
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {!confirmed ? (
         <div

@@ -10,6 +10,7 @@ from app.db.base import get_db
 from app.db.models import Workspace
 from app.engines.export import ExportEngine
 from app.errors import error_response
+from app.services.evidence_freshness import build_evidence_freshness
 from app.services.export_eligibility import ExportEligibilityService
 
 router = APIRouter()
@@ -100,6 +101,7 @@ async def get_eligibility(
             "evidence_recommended_missing_count": int(preview["evidence_recommended_missing_total"]) if preview else 0,
             "blocking_evidence_obligations": preview["blocking_evidence_obligations"] if preview else [],
             "evidence_export_status": evidence_export_status,
+            "evidence_freshness": build_evidence_freshness(ws),
         }
     }
 

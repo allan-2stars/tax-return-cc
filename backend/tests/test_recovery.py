@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import datetime, timedelta, timezone
 
 import pytest
 import pyzipper
@@ -13,6 +14,7 @@ from app.services.recovery import (
     REQUIRED_MANIFEST_FIELDS,
     RecoveryService,
 )
+from app.services.recovery_policy import RecoveryPolicyService
 
 
 @pytest.mark.asyncio
@@ -189,3 +191,50 @@ async def test_restore_preview_blocks_missing_required_metadata(test_engine, tmp
         preview = await service.preview_backup(workspace_id=ws.id, backup_id=result.backup_id, db=session)
         assert preview.can_restore is False
         assert any("missing required fields" in item.lower() for item in preview.blockers)
+
+
+@pytest.mark.asyncio
+async def test_backup_safety_status_stale_when_verified_backup_older_than_policy(test_engine, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "BACKUP_PATH", str(tmp_path / "backups"))
+    monkeypatch.setattr(settings, "SECRET_KEY", "recovery-test-secret")
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        ws = Workspace(name="Recovery WS", financial_year="2024-25", status="active")
+        session.add(ws)
+        await session.commit()
+        await session.refresh(ws)
+
+        service = RecoveryService(backup_path=settings.BACKUP_PATH)
+        result = await service.create_backup(workspace_id=ws.id, db=session)
+        backup_path = os.path.join(settings.BACKUP_PATH, ws.id, f"{result.backup_id}.trb")
+        old_created_at = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
+        with pyzipper.AESZipFile(
+            backup_path,
+            "r",
+            compression=pyzipper.ZIP_DEFLATED,
+            encryption=pyzipper.WZ_AES,
+        ) as zf:
+            zf.setpassword(service._password_for_workspace(ws.id))
+            manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
+            sections = {
+                name: zf.read(name)
+                for name in zf.namelist()
+                if name != "manifest.json"
+            }
+        manifest["created_at"] = old_created_at
+        with pyzipper.AESZipFile(
+            backup_path,
+            "w",
+            compression=pyzipper.ZIP_DEFLATED,
+            encryption=pyzipper.WZ_AES,
+        ) as zf:
+            zf.setpassword(service._password_for_workspace(ws.id))
+            for name, payload in sections.items():
+                zf.writestr(name, payload)
+            zf.writestr("manifest.json", json.dumps(manifest).encode("utf-8"))
+
+        policy = RecoveryPolicyService(backup_path=settings.BACKUP_PATH)
+        status = policy.get_backup_safety_status(ws.id)
+        assert status.status == "stale"
+        assert status.requires_backup_before_dangerous_action is True

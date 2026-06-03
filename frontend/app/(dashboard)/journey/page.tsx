@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   startInterview, answerQuestion, completeInterview,
@@ -16,6 +17,7 @@ import { useInterview } from '@/lib/hooks/useInterview'
 import Disclaimer from '@/components/shared/Disclaimer'
 import NextStepsList from '@/components/interview/NextStepsList'
 import InterviewSummary from '@/components/interview/InterviewSummary'
+import { normalizeApiError } from '@/lib/api/errors'
 
 export default function JourneyPage() {
   const router = useRouter()
@@ -24,9 +26,11 @@ export default function JourneyPage() {
 
   const { data, isLoading, isError } = useInterview()
   const [serverError, setServerError] = useState<string | null>(null)
+  const [sessionError, setSessionError] = useState(false)
 
   useEffect(() => {
     setServerError(null)
+    setSessionError(false)
   }, [data?.current_question?.id])
 
   const { data: yoy } = useQuery<YoYSuggestion[]>({
@@ -109,9 +113,9 @@ export default function JourneyPage() {
       invalidateJourneyDerived()
     },
     onError: (err: unknown) => {
-      const message = (err as { response?: { status?: number; data?: { detail?: { message?: string } } } })
-        ?.response?.data?.detail?.message
-      setServerError(message ?? 'Unable to save answer right now. Please try again.')
+      const error = normalizeApiError(err, 'Unable to save answer right now. Please try again.')
+      setServerError(error.message)
+      setSessionError(error.kind === 'session')
     },
   })
 
@@ -135,6 +139,11 @@ export default function JourneyPage() {
       const d = res.data.data
       patch({ state: d.state, current_question: d.next_question, progress: d.progress })
       invalidateJourneyDerived()
+    },
+    onError: (err: unknown) => {
+      const error = normalizeApiError(err, 'Unable to skip this question right now. Please try again.')
+      setServerError(error.message)
+      setSessionError(error.kind === 'session')
     },
   })
 
@@ -216,6 +225,11 @@ export default function JourneyPage() {
             serverError={serverError}
             editMode={data.edit_mode}
           />
+          {sessionError && (
+            <Link href="/login?returnTo=/journey" className="text-sm font-ui text-accent underline">
+              Sign in again
+            </Link>
+          )}
         </div>
       )}
 

@@ -6,6 +6,7 @@ import ReadinessRing from '@/components/readiness/ReadinessRing'
 import SkillBreakdown from '@/components/readiness/SkillBreakdown'
 import TaxEstimate from '@/components/readiness/TaxEstimate'
 import Disclaimer from '@/components/shared/Disclaimer'
+import EvidenceFreshnessBadge from '@/components/shared/EvidenceFreshnessBadge'
 import { useReadiness } from '@/lib/hooks/useReadiness'
 import { getEstimatorSummary } from '@/lib/api/estimator'
 import { getSession } from '@/lib/api/interview'
@@ -61,6 +62,8 @@ export default function ReadinessPage() {
 
   const fyLabel = financialYear ? getFYEndLabel(financialYear) : '30 June'
   const fyActive = financialYear ? isFYActive(financialYear) : false
+  const evidenceFreshnessWarning =
+    data.evidence_freshness?.freshness_state === 'stale' || data.evidence_freshness?.freshness_state === 'failed'
 
   return (
     <div className="space-y-8">
@@ -162,6 +165,10 @@ export default function ReadinessPage() {
               <p className="text-xs font-ui">Required missing: {data.readiness_2_0.evidence.required_missing_count}</p>
               <p className="text-xs font-ui">Required partial: {data.readiness_2_0.evidence.required_partial_count}</p>
               <p className="text-xs font-ui">Required matched: {data.readiness_2_0.evidence.required_matched_count}</p>
+              <EvidenceFreshnessBadge freshness={data.evidence_freshness} compact />
+              {evidenceFreshnessWarning && (
+                <p className="text-xs font-ui text-risk-high">Evidence status may not be current.</p>
+              )}
               <p className="text-xs font-ui text-text-muted">Confirm required evidence matches and resolve missing items.</p>
               <Link href="/readiness/checklist" className="text-xs font-ui text-accent hover:underline">Open checklist</Link>
             </div>

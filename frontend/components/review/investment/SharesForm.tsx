@@ -6,6 +6,8 @@ import { createManualEvent } from '@/lib/api/events'
 import { daysBetween, cgtDiscountEligible } from '@/lib/utils/investment'
 import { validateDate } from '@/lib/utils/fy'
 import useWorkspaceStore from '@/lib/stores/workspace.store'
+import { useSessionDraft } from '@/lib/hooks/useSessionDraft'
+import DraftStatus from '../DraftStatus'
 
 type SharesSubType = 'buy' | 'sell' | 'dividend'
 
@@ -31,6 +33,12 @@ interface DividendFields {
   company_name: string; stock_code: string
   dividend_amount: string; franking_credits: string
   payment_date: string; in_payg: boolean; note: string
+}
+
+function hasDraftContent(draft: Partial<BuyFields | SellFields | DividendFields>): boolean {
+  return Object.values(draft).some((value) =>
+    typeof value === 'boolean' ? value : Boolean(String(value ?? '').trim())
+  )
 }
 
 function CurrencyInput({ id, label, register, error, optional = false }: {
@@ -71,10 +79,22 @@ function AutoCalcBox({ label, value }: { label: string; value: string }) {
 }
 
 function SharesBuySubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) {
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<BuyFields>()
+  const { register, handleSubmit, watch, reset, formState: { errors } } = useForm<BuyFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { financialYear } = useWorkspaceStore()
+  const { workspaceId, financialYear } = useWorkspaceStore()
+  const {
+    notice: draftNotice,
+    restoredDraft,
+    restoreDraft,
+    discardDraft,
+    clearDraft,
+  } = useSessionDraft({
+    keyParts: [workspaceId, financialYear, 'investment', 'shares', 'buy'],
+    draft: watch(),
+    hasContent: hasDraftContent,
+    applyDraft: (draft) => reset(draft as BuyFields),
+  })
 
   const units = parseFloat(watch('units') || '0')
   const price = parseFloat(watch('price_per_unit') || '0')
@@ -102,6 +122,7 @@ function SharesBuySubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) 
           purchase_date: data.purchase_date,
         },
       })
+      clearDraft(true)
       onSuccess()
     } catch { setError('Something went wrong. Please try again.') }
     finally { setPending(false) }
@@ -110,6 +131,12 @@ function SharesBuySubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
       <button type="button" onClick={onBack} className="text-sm font-ui text-text-muted">← Back</button>
+      <DraftStatus
+        notice={draftNotice}
+        hasRestorableDraft={Boolean(restoredDraft)}
+        onRestore={restoreDraft}
+        onDiscard={discardDraft}
+      />
       <div>
         <label htmlFor="sb-platform" className="text-sm font-ui text-text-body block mb-1">Platform / Broker</label>
         <input id="sb-platform" type="text" placeholder="CommSec, Nabtrade, moomoo…"
@@ -180,10 +207,22 @@ function SharesBuySubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) 
 }
 
 function SharesSellSubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) {
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<SellFields>()
+  const { register, handleSubmit, watch, reset, formState: { errors } } = useForm<SellFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { financialYear } = useWorkspaceStore()
+  const { workspaceId, financialYear } = useWorkspaceStore()
+  const {
+    notice: draftNotice,
+    restoredDraft,
+    restoreDraft,
+    discardDraft,
+    clearDraft,
+  } = useSessionDraft({
+    keyParts: [workspaceId, financialYear, 'investment', 'shares', 'sell'],
+    draft: watch(),
+    hasContent: hasDraftContent,
+    applyDraft: (draft) => reset(draft as SellFields),
+  })
 
   const purchaseDate = watch('purchase_date')
   const saleDate = watch('sale_date')
@@ -224,6 +263,7 @@ function SharesSellSubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps)
           brokerage_fee: b, sale_date: data.sale_date, purchase_date: data.purchase_date,
         },
       })
+      clearDraft(true)
       onSuccess()
     } catch { setError('Something went wrong. Please try again.') }
     finally { setPending(false) }
@@ -232,6 +272,12 @@ function SharesSellSubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps)
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
       <button type="button" onClick={onBack} className="text-sm font-ui text-text-muted">← Back</button>
+      <DraftStatus
+        notice={draftNotice}
+        hasRestorableDraft={Boolean(restoredDraft)}
+        onRestore={restoreDraft}
+        onDiscard={discardDraft}
+      />
       <div>
         <label htmlFor="ss-platform" className="text-sm font-ui text-text-body block mb-1">Platform / Broker</label>
         <input id="ss-platform" type="text"
@@ -338,10 +384,22 @@ function SharesSellSubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps)
 }
 
 function SharesDividendSubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) {
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<DividendFields>()
+  const { register, handleSubmit, watch, reset, formState: { errors } } = useForm<DividendFields>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { financialYear } = useWorkspaceStore()
+  const { workspaceId, financialYear } = useWorkspaceStore()
+  const {
+    notice: draftNotice,
+    restoredDraft,
+    restoreDraft,
+    discardDraft,
+    clearDraft,
+  } = useSessionDraft({
+    keyParts: [workspaceId, financialYear, 'investment', 'shares', 'dividend'],
+    draft: watch(),
+    hasContent: hasDraftContent,
+    applyDraft: (draft) => reset(draft as DividendFields),
+  })
 
   const paymentDateValue = watch('payment_date')
   const paymentDateWarning = !errors.payment_date && paymentDateValue
@@ -366,6 +424,7 @@ function SharesDividendSubForm({ onSuccess, onBack, onCancel }: InvestmentFormPr
           payment_date: data.payment_date, in_payg: data.in_payg,
         },
       })
+      clearDraft(true)
       onSuccess()
     } catch { setError('Something went wrong. Please try again.') }
     finally { setPending(false) }
@@ -374,6 +433,12 @@ function SharesDividendSubForm({ onSuccess, onBack, onCancel }: InvestmentFormPr
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
       <button type="button" onClick={onBack} className="text-sm font-ui text-text-muted">← Back</button>
+      <DraftStatus
+        notice={draftNotice}
+        hasRestorableDraft={Boolean(restoredDraft)}
+        onRestore={restoreDraft}
+        onDiscard={discardDraft}
+      />
       <div>
         <label htmlFor="sd-company" className="text-sm font-ui text-text-body block mb-1">Company name</label>
         <input id="sd-company" type="text"

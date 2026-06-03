@@ -283,10 +283,51 @@ async def test_login_returns_data_wrapper(auth_client):
 
 
 @pytest.mark.asyncio
-async def test_archive_workspace_sets_status(auth_client, workspace_id):
+async def test_archive_workspace_sets_status(auth_client, workspace_id, tmp_path, monkeypatch):
+    from app.config import settings
+    monkeypatch.setattr(settings, "BACKUP_PATH", str(tmp_path / "backups"))
+    backup = await auth_client.post("/api/v1/recovery/backups")
+    assert backup.status_code == 200
+
     res = await auth_client.post(f"/api/v1/workspaces/{workspace_id}/archive")
     assert res.status_code == 200
     assert res.json()["data"]["status"] == "archived"
+
+
+@pytest.mark.asyncio
+async def test_archive_workspace_blocked_without_recent_backup(auth_client, workspace_id, tmp_path, monkeypatch):
+    from app.config import settings
+    monkeypatch.setattr(settings, "BACKUP_PATH", str(tmp_path / "backups"))
+
+    res = await auth_client.post(f"/api/v1/workspaces/{workspace_id}/archive")
+    assert res.status_code == 409
+    assert res.json()["detail"]["error_code"] == "recent_backup_required"
+
+
+@pytest.mark.asyncio
+async def test_recovery_guard_audits_block_and_pass(auth_client, workspace_id, db_session, tmp_path, monkeypatch):
+    from sqlalchemy import select
+    from app.config import settings
+    from app.db.models import AuditLog
+
+    monkeypatch.setattr(settings, "BACKUP_PATH", str(tmp_path / "backups"))
+    blocked = await auth_client.post(f"/api/v1/workspaces/{workspace_id}/archive")
+    assert blocked.status_code == 409
+
+    backup = await auth_client.post("/api/v1/recovery/backups")
+    assert backup.status_code == 200
+    passed = await auth_client.post(f"/api/v1/workspaces/{workspace_id}/archive")
+    assert passed.status_code == 200
+
+    actions = {
+        row.action
+        for row in (
+            await db_session.execute(select(AuditLog).where(AuditLog.workspace_id == workspace_id))
+        ).scalars().all()
+    }
+    assert "recovery_guard_checked" in actions
+    assert "recovery_guard_blocked" in actions
+    assert "recovery_guard_passed" in actions
 
 
 @pytest.mark.asyncio
@@ -296,7 +337,12 @@ async def test_archive_workspace_forbidden_for_other(auth_client):
 
 
 @pytest.mark.asyncio
-async def test_delete_workspace_success(auth_client, workspace_id):
+async def test_delete_workspace_success(auth_client, workspace_id, tmp_path, monkeypatch):
+    from app.config import settings
+    monkeypatch.setattr(settings, "BACKUP_PATH", str(tmp_path / "backups"))
+    backup = await auth_client.post("/api/v1/recovery/backups")
+    assert backup.status_code == 200
+
     res = await auth_client.request(
         "DELETE",
         f"/api/v1/workspaces/{workspace_id}",
@@ -318,7 +364,12 @@ async def test_delete_workspace_wrong_password(auth_client, workspace_id):
 
 
 @pytest.mark.asyncio
-async def test_delete_workspace_no_other_workspaces_redirects_setup(auth_client, workspace_id):
+async def test_delete_workspace_no_other_workspaces_redirects_setup(auth_client, workspace_id, tmp_path, monkeypatch):
+    from app.config import settings
+    monkeypatch.setattr(settings, "BACKUP_PATH", str(tmp_path / "backups"))
+    backup = await auth_client.post("/api/v1/recovery/backups")
+    assert backup.status_code == 200
+
     res = await auth_client.request(
         "DELETE",
         f"/api/v1/workspaces/{workspace_id}",
