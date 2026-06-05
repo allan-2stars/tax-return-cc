@@ -150,6 +150,9 @@ describe('ExportPage', () => {
 
     wrap(<ExportPage />)
     expect(await screen.findByText(/complete your tax journey before generating export/i)).toBeInTheDocument()
+    expect(screen.getByText(/finish your journey, review your items, and check evidence readiness before exporting/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /go to journey/i })).toHaveAttribute('href', '/journey')
+    expect(screen.getByRole('link', { name: /review readiness/i })).toHaveAttribute('href', '/readiness')
     expect(screen.queryByLabelText(/export password/i)).not.toBeInTheDocument()
   })
 

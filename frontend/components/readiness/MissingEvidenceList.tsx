@@ -10,7 +10,7 @@ interface MissingEvidenceListProps {
 }
 
 function WeightPill({ weight }: { weight: number }) {
-  const label = weight >= 2 ? 'High priority' : weight >= 1 ? 'Medium' : 'Low'
+  const label = weight >= 2 ? 'Usually required' : 'Recommended'
   const classes = weight >= 2 ? 'text-review bg-review-bg' : 'text-text-muted bg-surface-raised'
   return (
     <span className={`inline-block rounded-full px-2 py-1 text-xs font-ui ${classes}`}>
@@ -42,7 +42,7 @@ function MissingItemRow({
         onClick={() => onSkip(item.requirement_id)}
         className="shrink-0 text-xs font-ui text-text-faint hover:text-text-muted transition-colors"
       >
-        Skip for now
+        I&apos;ll provide this later
       </button>
     </li>
   )
@@ -60,9 +60,18 @@ export default function MissingEvidenceList({
 
   const visibleNow = availableNow.filter((i) => !skipped.has(i.requirement_id))
   const visibleAfterFY = availableAfterFY.filter((i) => !skipped.has(i.requirement_id))
+  const hasUsuallyRequiredItems = [...visibleNow, ...visibleAfterFY].some((item) => item.weight >= 2)
 
   return (
     <div className="space-y-6">
+      {hasUsuallyRequiredItems && (
+        <div className="rounded-md border border-review bg-review-bg px-4 py-3">
+          <p className="text-sm font-ui text-text-body">
+            Required evidence left for later may keep readiness blocked and appear in export warnings.
+          </p>
+        </div>
+      )}
+
       {visibleNow.length > 0 && (
         <section>
           <h3 className="text-sm font-ui font-medium text-text-muted uppercase tracking-wide mb-2">

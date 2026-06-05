@@ -112,6 +112,9 @@ describe('ReadinessPage', () => {
     wrap(<ReadinessPage />)
     expect(screen.getByText('72%')).toBeInTheDocument()
     expect(screen.getByText(/overall preparation score/i)).toBeInTheDocument()
+    expect(
+      screen.getByText(/this score reflects evidence, review, and tax readiness checks/i)
+    ).toBeInTheDocument()
   })
 
   it('shows stale indicator when is_stale is true', () => {
@@ -124,11 +127,42 @@ describe('ReadinessPage', () => {
     expect(screen.getByText(/updating/i)).toBeInTheDocument()
   })
 
-  it('shows CTA button linking to /journey', () => {
+  it('shows edit journey CTA when interview is complete', () => {
     ;(mockUseReadiness as jest.Mock).mockReturnValue({ isLoading: false, data: MOCK_DATA, isError: false })
     wrap(<ReadinessPage />)
-    const cta = screen.getByRole('link', { name: /continue your tax journey/i })
-    expect(cta).toHaveAttribute('href', '/journey')
+    return screen.findByRole('link', { name: /edit your tax journey/i }).then((cta) => {
+      expect(cta).toHaveAttribute('href', '/journey')
+    })
+  })
+
+  it('shows continue journey CTA when interview is incomplete', async () => {
+    ;(mockUseReadiness as jest.Mock).mockReturnValue({ isLoading: false, data: MOCK_DATA, isError: false })
+    ;(mockGetSession as jest.Mock).mockResolvedValue({
+      data: {
+        data: {
+          state: 'in_progress',
+          has_incomplete_questions: false,
+          incomplete_questions: [],
+        },
+      },
+    })
+    wrap(<ReadinessPage />)
+    expect(await screen.findByRole('link', { name: /continue your tax journey/i })).toHaveAttribute('href', '/journey')
+  })
+
+  it('shows review skipped journey answers CTA when interview has recoverable skipped answers', async () => {
+    ;(mockUseReadiness as jest.Mock).mockReturnValue({ isLoading: false, data: MOCK_DATA, isError: false })
+    ;(mockGetSession as jest.Mock).mockResolvedValue({
+      data: {
+        data: {
+          state: 'awaiting_evidence',
+          has_incomplete_questions: true,
+          incomplete_questions: [{ question_id: 'wfh', question_label: 'Did you work from home?', editable: true }],
+        },
+      },
+    })
+    wrap(<ReadinessPage />)
+    expect(await screen.findByRole('link', { name: /review skipped journey answers/i })).toHaveAttribute('href', '/journey')
   })
 
   it('shows empty state message when percentage is 0', () => {
@@ -253,6 +287,27 @@ describe('ReadinessPage', () => {
     })
     wrap(<ReadinessPage />)
     expect(await screen.findByText(/complete your tax journey before final export/i)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /continue your tax journey/i })).toHaveAttribute('href', '/journey')
+    expect(screen.getByRole('link', { name: /review skipped journey answers/i })).toHaveAttribute('href', '/journey')
+  })
+
+  it('replaces ambiguous per-skill wording with tax areas checked helper copy', () => {
+    ;(mockUseReadiness as jest.Mock).mockReturnValue({ isLoading: false, data: MOCK_DATA, isError: false })
+    wrap(<ReadinessPage />)
+    expect(screen.getByRole('button', { name: /tax areas checked/i })).toBeInTheDocument()
+    expect(screen.queryByText(/per-skill breakdown/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/progress for each tax area reflects confirmed evidence and review progress/i)).toBeInTheDocument()
+  })
+
+  it('shows zero-progress helper when tax areas are not meaningful yet', () => {
+    ;(mockUseReadiness as jest.Mock).mockReturnValue({
+      isLoading: false,
+      data: {
+        ...MOCK_DATA,
+        breakdown: [{ skill_id: 'employee_tax_au', percentage: 0, achieved_weight: 0, total_weight: 0 }],
+      },
+      isError: false,
+    })
+    wrap(<ReadinessPage />)
+    expect(screen.getByText(/no tax areas have evidence confirmed yet/i)).toBeInTheDocument()
   })
 })

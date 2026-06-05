@@ -1,5 +1,6 @@
 'use client'
 import { Suspense, useState } from 'react'
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -261,6 +262,21 @@ function ReviewContent() {
           <p className="font-ui text-text-muted">
             No items to review yet. Complete the interview to generate review items.
           </p>
+          <p className="mt-2 text-sm font-ui text-text-muted">
+            Upload supporting evidence or add a manual item to create review items.
+          </p>
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-4">
+            <Link href="/evidence" className="text-sm font-ui text-accent underline">
+              Upload supporting evidence
+            </Link>
+            <button
+              type="button"
+              className="text-sm font-ui text-accent underline"
+              onClick={() => setShowManualEntry(true)}
+            >
+              Add a manual item
+            </button>
+          </div>
         </div>
       )}
 

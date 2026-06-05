@@ -54,6 +54,8 @@ describe('DashboardLayout', () => {
     expect(screen.getAllByText('Review').length).toBeGreaterThan(0)
     expect(screen.getByText('Export Review Pack')).toBeInTheDocument()
     expect(screen.getByText('Settings')).toBeInTheDocument()
+    expect(screen.getByText(/suggested order/i)).toBeInTheDocument()
+    expect(screen.getByText(/journey → evidence → review → readiness → export/i)).toBeInTheDocument()
   })
 
   it('marks the active nav item based on pathname', () => {

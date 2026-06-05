@@ -18,6 +18,7 @@ describe('MissingEvidenceList', () => {
     expect(screen.getByText('Available now')).toBeInTheDocument()
     expect(screen.getByText('Work receipts')).toBeInTheDocument()
     expect(screen.getByText('Tax invoices')).toBeInTheDocument()
+    expect(screen.getAllByText(/recommended/i).length).toBeGreaterThan(0)
   })
 
   it('renders "Available after FY" section with end date', () => {
@@ -36,11 +37,20 @@ describe('MissingEvidenceList', () => {
     expect(screen.queryByText(/available after/i)).not.toBeInTheDocument()
   })
 
-  it('hides an item after "Skip for now" is clicked', async () => {
+  it('uses stronger defer wording and required evidence warning copy', () => {
+    render(<MissingEvidenceList availableNow={[]} availableAfterFY={AFTER_FY_ITEMS} fyEndLabel="30 June 2025" />)
+    expect(screen.getByText(/i'll provide this later/i)).toBeInTheDocument()
+    expect(
+      screen.getByText(/required evidence left for later may keep readiness blocked and appear in export warnings/i)
+    ).toBeInTheDocument()
+    expect(screen.getByText(/usually required/i)).toBeInTheDocument()
+  })
+
+  it("hides an item after \"I'll provide this later\" is clicked", async () => {
     const user = userEvent.setup()
     render(<MissingEvidenceList availableNow={NOW_ITEMS} availableAfterFY={[]} fyEndLabel="30 June 2025" />)
     expect(screen.getByText('Work receipts')).toBeInTheDocument()
-    const skipButtons = screen.getAllByRole('button', { name: /skip for now/i })
+    const skipButtons = screen.getAllByRole('button', { name: /i'll provide this later/i })
     await user.click(skipButtons[0])
     expect(screen.queryByText('Work receipts')).not.toBeInTheDocument()
     // Other item still visible

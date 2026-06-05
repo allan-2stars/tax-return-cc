@@ -88,6 +88,8 @@ describe('ReviewPage', () => {
     await waitFor(() =>
       expect(screen.getByText(/no items to review yet/i)).toBeInTheDocument()
     )
+    expect(screen.getByText(/upload supporting evidence or add a manual item to create review items/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /upload supporting evidence/i })).toHaveAttribute('href', '/evidence')
   })
 
   it('renders ReviewCards for needs_review items', async () => {

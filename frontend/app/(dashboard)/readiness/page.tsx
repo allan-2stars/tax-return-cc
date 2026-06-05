@@ -64,6 +64,14 @@ export default function ReadinessPage() {
   const fyActive = financialYear ? isFYActive(financialYear) : false
   const evidenceFreshnessWarning =
     data.evidence_freshness?.freshness_state === 'stale' || data.evidence_freshness?.freshness_state === 'failed'
+  const hasRecoverableJourneyAnswers = Boolean(interviewSession?.has_incomplete_questions)
+  const journeyComplete =
+    interviewSession?.state === 'awaiting_evidence' || interviewSession?.state === 'complete'
+  const journeyCtaLabel = hasRecoverableJourneyAnswers
+    ? 'Review skipped journey answers →'
+    : journeyComplete
+      ? 'Edit your tax journey →'
+      : 'Continue your tax journey →'
 
   return (
     <div className="space-y-8">
@@ -94,6 +102,9 @@ export default function ReadinessPage() {
         )}
         <ReadinessRing percentage={data.percentage} />
         <p className="text-xs font-ui text-text-muted">Overall preparation score</p>
+        <p className="max-w-xl text-center text-sm font-ui text-text-muted">
+          This score reflects evidence, review, and tax readiness checks — not just interview completion.
+        </p>
 
         {/* State messages */}
         {data.percentage === 0 && (
@@ -136,7 +147,7 @@ export default function ReadinessPage() {
           href="/journey"
           className="inline-block px-6 py-3 rounded-md bg-accent hover:bg-accent-hover text-white font-ui font-medium text-sm transition-colors"
         >
-          Continue your tax journey →
+          {journeyCtaLabel}
         </Link>
       </div>
 

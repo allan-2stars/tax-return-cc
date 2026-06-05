@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   downloadExport,
@@ -101,6 +102,28 @@ export default function ExportPage() {
           eligibility={eligibility}
           onGenerateAnyway={() => setShowGenerateForm(true)}
         />
+      )}
+
+      {eligibility && !eligibility.can_export && (
+        <div className="rounded-lg border border-review bg-review-bg p-4 space-y-2">
+          <p className="text-sm font-ui font-semibold text-text-primary">
+            Export works best after the earlier steps are in place.
+          </p>
+          <p className="text-sm font-ui text-text-body">
+            Finish your journey, review your items, and check evidence readiness before exporting.
+          </p>
+          <div className="flex flex-wrap gap-4">
+            <Link href="/journey" className="text-sm font-ui text-accent underline">
+              Go to Journey
+            </Link>
+            <Link href="/review" className="text-sm font-ui text-accent underline">
+              Go to Review
+            </Link>
+            <Link href="/readiness" className="text-sm font-ui text-accent underline">
+              Review readiness
+            </Link>
+          </div>
+        </div>
       )}
 
       {eligibility?.evidence_export_status && (

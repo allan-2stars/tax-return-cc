@@ -36,10 +36,10 @@ describe('SkillBreakdown', () => {
     // Starts expanded — items visible
     expect(screen.getByText('Employee Tax')).toBeInTheDocument()
     // Click to collapse
-    await user.click(screen.getByRole('button', { name: /per-skill breakdown/i }))
+    await user.click(screen.getByRole('button', { name: /tax areas checked/i }))
     expect(screen.queryByText('Employee Tax')).not.toBeInTheDocument()
     // Click to expand again
-    await user.click(screen.getByRole('button', { name: /per-skill breakdown/i }))
+    await user.click(screen.getByRole('button', { name: /tax areas checked/i }))
     expect(screen.getByText('Employee Tax')).toBeInTheDocument()
   })
 })

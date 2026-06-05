@@ -132,6 +132,12 @@ export default function DashboardLayout({
               active={pathname === item.href || pathname.startsWith(item.href + '?')}
             />
           ))}
+          <div className="mx-3 mt-4 rounded-md border border-border bg-surface-raised px-3 py-3">
+            <p className="text-xs font-ui font-semibold text-text-primary">Suggested order</p>
+            <p className="mt-1 text-xs font-ui text-text-muted">
+              Journey → Evidence → Review → Readiness → Export
+            </p>
+          </div>
         </nav>
       </aside>
 
