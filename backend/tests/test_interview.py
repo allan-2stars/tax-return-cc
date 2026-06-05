@@ -55,7 +55,7 @@ def _make_mock_skill(skill_id: str = "crypto_au") -> MagicMock:
     return skill
 
 
-# ── 1. start() → session in_progress, first platform question returned ────────
+# ── 1. start() → session seeds FY and returns first non-FY question ───────────
 
 @pytest.mark.asyncio
 async def test_start_creates_session_in_progress_with_first_question(db_session, workspace):
@@ -67,7 +67,10 @@ async def test_start_creates_session_in_progress_with_first_question(db_session,
     assert session.state == "in_progress"
     assert session.workspace_id == workspace.id
     assert question is not None
-    assert question.id == "fy_confirm"
+    assert question.id == "residency"
+    assert session.answers is not None
+    assert session.answers.get("fy_confirm") == workspace.financial_year
+    assert "fy_confirm" in (session.completed_steps or [])
 
 
 # ── 2. process_answer() → answer saved, next question returned ────────────────
@@ -80,13 +83,13 @@ async def test_process_answer_saves_answer_and_advances(db_session, workspace):
     session, q1 = await engine.start(workspace.id, workspace.financial_year, db_session)
 
     session, q2 = await engine.process_answer(
-        session.id, q1.id, workspace.financial_year, db_session
+        session.id, q1.id, "resident", db_session
     )
 
     assert q2 is not None
     assert q2.id != q1.id
     assert session.answers is not None
-    assert session.answers.get(q1.id) == workspace.financial_year
+    assert session.answers.get(q1.id) == "resident"
 
 
 # ── 3. Branch insertion: has_spouse=yes → spouse_income_range inserted next ───
@@ -99,7 +102,6 @@ async def test_has_spouse_inserts_spouse_income_range_branch(db_session, workspa
     session, q = await engine.start(workspace.id, workspace.financial_year, db_session)
 
     for qid, ans in [
-        ("fy_confirm", "2024-25"),
         ("residency", "resident"),
         ("employment_type", "employee"),
     ]:
@@ -123,7 +125,6 @@ async def test_go_back_undoes_branch_insertion(db_session, workspace):
     session, q = await engine.start(workspace.id, workspace.financial_year, db_session)
 
     for qid, ans in [
-        ("fy_confirm", "2024-25"),
         ("residency", "resident"),
         ("employment_type", "employee"),
     ]:
@@ -157,7 +158,6 @@ async def test_spouse_and_dependents_both_trigger_branches(db_session, workspace
     session, q = await engine.start(workspace.id, workspace.financial_year, db_session)
 
     for qid, ans in [
-        ("fy_confirm", "2024-25"),
         ("residency", "resident"),
         ("employment_type", "employee"),
     ]:
@@ -201,7 +201,6 @@ async def test_skill_activation_inserts_skill_questions(db_session, workspace):
     session, q = await engine.start(workspace.id, workspace.financial_year, db_session)
 
     for qid, ans in [
-        ("fy_confirm", "2024-25"),
         ("residency", "resident"),
         ("employment_type", "employee"),
         ("has_spouse", "no"),
@@ -234,7 +233,6 @@ async def test_go_back_removes_skill_lock_on_undo(db_session, workspace):
     engine = InterviewEngine(registry=mock_registry)
     session, q = await engine.start(workspace.id, workspace.financial_year, db_session)
 
-    session, _ = await engine.process_answer(session.id, "fy_confirm", "2024-25", db_session)
     session, _ = await engine.process_answer(session.id, "residency", "resident", db_session)
     session, _ = await engine.process_answer(session.id, "employment_type", "employee", db_session)
 
@@ -285,7 +283,7 @@ async def test_pause_resume_preserves_current_question(db_session, workspace):
     engine = InterviewEngine()
     session, first_q = await engine.start(workspace.id, workspace.financial_year, db_session)
     session, q2 = await engine.process_answer(
-        session.id, first_q.id, workspace.financial_year, db_session
+        session.id, first_q.id, "resident", db_session
     )
 
     session = await engine.pause(session.id, db_session)
@@ -295,7 +293,7 @@ async def test_pause_resume_preserves_current_question(db_session, workspace):
 
     assert session.state == "in_progress"
     assert resumed_q.id == q2.id
-    assert (session.answers or {}).get(first_q.id) == workspace.financial_year
+    assert (session.answers or {}).get(first_q.id) == "resident"
 
 
 # ── 9. complete() → state=awaiting_evidence, completed_at set ────────────────
@@ -356,7 +354,6 @@ async def test_platform_answers_update_tax_profile(db_session, workspace):
     session, q = await engine.start(workspace.id, workspace.financial_year, db_session)
 
     for qid, ans in [
-        ("fy_confirm", "2024-25"),
         ("residency", "resident"),
         ("employment_type", "employee"),
     ]:
@@ -380,7 +377,6 @@ async def test_full_platform_flow_activates_employee_skill(db_session, workspace
     session, q = await engine.start(workspace.id, workspace.financial_year, db_session)
 
     for qid, ans in [
-        ("fy_confirm", "2024-25"),
         ("residency", "resident"),
         ("employment_type", "employee"),
         ("has_spouse", "no"),
@@ -463,7 +459,6 @@ async def test_process_answer_reregisters_skill_questions_after_restart(db_sessi
 
     # Answer up to employment_type=employee → activates employee_tax_au, adds wfh etc.
     for qid, ans in [
-        ("fy_confirm", "2024-25"),
         ("residency", "resident"),
         ("employment_type", "employee"),
         ("has_spouse", "no"),
@@ -504,7 +499,6 @@ async def test_edit_mode_with_branches_asks_branches_before_returning(db_session
 
     # Complete the full interview (no spouse, no dependents)
     for qid, ans in [
-        ("fy_confirm", "2024-25"),
         ("residency", "resident"),
         ("employment_type", "employee"),
         ("has_spouse", "no"),

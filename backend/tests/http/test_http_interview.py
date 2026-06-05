@@ -13,28 +13,27 @@ async def test_get_session_not_started(auth_client):
 
 @pytest.mark.asyncio
 async def test_start_interview(auth_client):
-    """POST /interview/start returns 200 with state=in_progress and a first question."""
+    """POST /interview/start skips duplicate FY and begins at residency."""
     resp = await auth_client.post("/api/v1/interview/start")
     assert resp.status_code == 200
     body = resp.json()
     assert body["data"]["state"] == "in_progress"
-    assert body["data"]["current_question"]["id"] == "fy_confirm"
+    assert body["data"]["current_question"]["id"] == "residency"
     assert body["data"]["session_id"] is not None
 
 
 @pytest.mark.asyncio
 async def test_answer_question(auth_client):
-    """POST /interview/answer returns 200 and advances to next question."""
+    """POST /interview/answer from residency returns 200 and advances to next question."""
     await auth_client.post("/api/v1/interview/start")
     resp = await auth_client.post(
         "/api/v1/interview/answer",
-        json={"question_id": "fy_confirm", "answer": "2024-25"},
+        json={"question_id": "residency", "answer": "resident"},
     )
     assert resp.status_code == 200
     body = resp.json()
     assert body["data"]["state"] == "in_progress"
-    # Next question should be residency
-    assert body["data"]["next_question"]["id"] == "residency"
+    assert body["data"]["next_question"]["id"] == "employment_type"
 
 
 @pytest.mark.asyncio
@@ -43,11 +42,12 @@ async def test_skip_question(auth_client):
     await auth_client.post("/api/v1/interview/start")
     resp = await auth_client.post(
         "/api/v1/interview/skip",
-        json={"question_id": "fy_confirm", "reason": "not sure"},
+        json={"question_id": "residency", "reason": "not sure"},
     )
     assert resp.status_code == 200
     body = resp.json()
     assert body["data"]["state"] == "in_progress"
+    assert body["data"]["next_question"]["id"] == "employment_type"
 
 
 @pytest.mark.asyncio
@@ -57,23 +57,22 @@ async def test_back_navigation(auth_client):
     # Answer first question
     await auth_client.post(
         "/api/v1/interview/answer",
-        json={"question_id": "fy_confirm", "answer": "2024-25"},
+        json={"question_id": "residency", "answer": "resident"},
     )
     # Go back
     resp = await auth_client.post("/api/v1/interview/back")
     assert resp.status_code == 200
     body = resp.json()
-    # Should be back at fy_confirm
-    assert body["data"]["current_question"]["id"] == "fy_confirm"
+    assert body["data"]["current_question"]["id"] == "residency"
 
 
 @pytest.mark.asyncio
-async def test_start_interview_fy_confirm_includes_workspace_financial_year(auth_client, test_engine):
-    """fy_confirm options must include the workspace financial_year."""
+async def test_start_interview_seeds_financial_year_and_summary_includes_it(auth_client, test_engine):
+    """Start should seed fy_confirm from workspace FY and begin at residency."""
     from sqlalchemy import select
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-    from app.db.models import Workspace
+    from app.db.models import Workspace, InterviewSession
 
     maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
     async with maker() as session:
@@ -84,19 +83,34 @@ async def test_start_interview_fy_confirm_includes_workspace_financial_year(auth
     resp = await auth_client.post("/api/v1/interview/start")
     assert resp.status_code == 200, resp.text
     q = resp.json()["data"]["current_question"]
-    assert q["id"] == "fy_confirm"
-    assert "2025-26" in (q.get("options") or [])
+    assert q["id"] == "residency"
+
+    async with maker() as session:
+        interview = (
+            await session.execute(select(InterviewSession).where(InterviewSession.workspace_id == auth_client.workspace_id))
+        ).scalar_one()
+        assert interview.answers["fy_confirm"] == "2025-26"
+        assert "fy_confirm" in (interview.completed_steps or [])
+
+    summary = await auth_client.get("/api/v1/interview/summary")
+    assert summary.status_code == 200, summary.text
+    sections = summary.json()["data"]["sections"]
+    situation = next((s for s in sections if s["title"] == "Your situation"), None)
+    assert situation is not None
+    answers = {a["question_id"]: a for a in situation["answers"]}
+    assert answers["fy_confirm"]["answer_value"] == "2025-26"
+    assert answers["fy_confirm"]["answer_label"] == "2025-26"
 
 
 @pytest.mark.asyncio
 async def test_get_session_fy_confirm_options_include_workspace_financial_year_and_no_duplicates(
     auth_client, test_engine
 ):
-    """GET /interview/session must return fy_confirm options aligned to workspace FY (dynamic, not import-time)."""
+    """Legacy sessions still return dynamic fy_confirm options aligned to workspace FY."""
     from sqlalchemy import select
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-    from app.db.models import Workspace
+    from app.db.models import Workspace, InterviewSession
 
     maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
     async with maker() as session:
@@ -104,9 +118,21 @@ async def test_get_session_fy_confirm_options_include_workspace_financial_year_a
             await session.execute(select(Workspace).where(Workspace.id == auth_client.workspace_id))
         ).scalar_one()
         ws.financial_year = "2025-26"
+        legacy = InterviewSession(
+            workspace_id=auth_client.workspace_id,
+            financial_year="2025-26",
+            state="in_progress",
+            current_step={"id": "fy_confirm"},
+            pending_queue=["residency", "employment_type", "has_spouse", "has_dependents", "lodger_type"],
+            completed_steps=[],
+            skipped_steps=[],
+            answers={},
+            branch_path=[],
+            activated_skills=[],
+        )
+        session.add(legacy)
         await session.commit()
 
-    await auth_client.post("/api/v1/interview/start")
     resp = await auth_client.get("/api/v1/interview/session")
     assert resp.status_code == 200, resp.text
     q = resp.json()["data"]["current_question"]
@@ -117,9 +143,29 @@ async def test_get_session_fy_confirm_options_include_workspace_financial_year_a
 
 
 @pytest.mark.asyncio
-async def test_answer_single_choice_invalid_option_returns_422(auth_client):
-    """Single choice answers must be one of question.options."""
-    await auth_client.post("/api/v1/interview/start")
+async def test_answer_single_choice_invalid_option_returns_422(auth_client, test_engine):
+    """Legacy fy_confirm sessions still enforce single-choice validation."""
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.db.models import InterviewSession
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        legacy = InterviewSession(
+            workspace_id=auth_client.workspace_id,
+            financial_year="2024-25",
+            state="in_progress",
+            current_step={"id": "fy_confirm"},
+            pending_queue=["residency", "employment_type", "has_spouse", "has_dependents", "lodger_type"],
+            completed_steps=[],
+            skipped_steps=[],
+            answers={},
+            branch_path=[],
+            activated_skills=[],
+        )
+        session.add(legacy)
+        await session.commit()
+
     resp = await auth_client.post(
         "/api/v1/interview/answer",
         json={"question_id": "fy_confirm", "answer": "1900-01"},
@@ -135,7 +181,7 @@ async def test_answer_fy_confirm_accepts_workspace_financial_year(auth_client, t
     from sqlalchemy import select
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-    from app.db.models import Workspace
+    from app.db.models import Workspace, InterviewSession
 
     maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
     async with maker() as session:
@@ -143,9 +189,21 @@ async def test_answer_fy_confirm_accepts_workspace_financial_year(auth_client, t
             await session.execute(select(Workspace).where(Workspace.id == auth_client.workspace_id))
         ).scalar_one()
         ws.financial_year = "2025-26"
+        legacy = InterviewSession(
+            workspace_id=auth_client.workspace_id,
+            financial_year="2025-26",
+            state="in_progress",
+            current_step={"id": "fy_confirm"},
+            pending_queue=["residency", "employment_type", "has_spouse", "has_dependents", "lodger_type"],
+            completed_steps=[],
+            skipped_steps=[],
+            answers={},
+            branch_path=[],
+            activated_skills=[],
+        )
+        session.add(legacy)
         await session.commit()
 
-    await auth_client.post("/api/v1/interview/start")
     resp = await auth_client.post(
         "/api/v1/interview/answer",
         json={"question_id": "fy_confirm", "answer": "2025-26"},
@@ -159,7 +217,7 @@ async def test_answer_fy_confirm_rejects_future_financial_year(auth_client, test
     from sqlalchemy import select
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-    from app.db.models import Workspace
+    from app.db.models import Workspace, InterviewSession
 
     maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
     async with maker() as session:
@@ -167,9 +225,21 @@ async def test_answer_fy_confirm_rejects_future_financial_year(auth_client, test
             await session.execute(select(Workspace).where(Workspace.id == auth_client.workspace_id))
         ).scalar_one()
         ws.financial_year = "2025-26"
+        legacy = InterviewSession(
+            workspace_id=auth_client.workspace_id,
+            financial_year="2025-26",
+            state="in_progress",
+            current_step={"id": "fy_confirm"},
+            pending_queue=["residency", "employment_type", "has_spouse", "has_dependents", "lodger_type"],
+            completed_steps=[],
+            skipped_steps=[],
+            answers={},
+            branch_path=[],
+            activated_skills=[],
+        )
+        session.add(legacy)
         await session.commit()
 
-    await auth_client.post("/api/v1/interview/start")
     resp = await auth_client.post(
         "/api/v1/interview/answer",
         json={"question_id": "fy_confirm", "answer": "2099-00"},
@@ -183,7 +253,6 @@ async def test_dependent_count_rejects_out_of_range_and_not_persisted(auth_clien
     """dependent_count must be integer between 1 and 20 when has_dependents=yes."""
     await auth_client.post("/api/v1/interview/start")
     for qid, answer in [
-        ("fy_confirm", "2024-25"),
         ("residency", "resident"),
         ("employment_type", "employee"),
         ("has_spouse", "no"),
@@ -240,7 +309,6 @@ async def test_dependent_count_accepts_1_to_20(auth_client):
     """dependent_count should accept integers 1..20 when has_dependents=yes."""
     await auth_client.post("/api/v1/interview/start")
     for qid, answer in [
-        ("fy_confirm", "2024-25"),
         ("residency", "resident"),
         ("employment_type", "employee"),
         ("has_spouse", "no"),
@@ -265,7 +333,6 @@ async def test_skip_conditional_question_propagates_and_returns_summary(auth_cli
     """Skipping a conditional follow-up should safely end that branch and return to summary."""
     await auth_client.post("/api/v1/interview/start")
     for qid, answer in [
-        ("fy_confirm", "2024-25"),
         ("residency", "resident"),
         ("employment_type", "employee"),
         ("has_spouse", "no"),
@@ -287,14 +354,14 @@ async def test_skip_conditional_question_propagates_and_returns_summary(auth_cli
     )
     assert skip_resp.status_code == 200, skip_resp.text
     body = skip_resp.json()["data"]
-    assert body["state"] == "awaiting_evidence"
-    assert body["next_question"] is None
+    assert body["state"] == "in_progress"
+    assert body["next_question"] is not None
 
     session_resp = await auth_client.get("/api/v1/interview/session")
     assert session_resp.status_code == 200, session_resp.text
     session = session_resp.json()["data"]
-    assert session["state"] == "awaiting_evidence"
-    assert session["current_question"] is None
+    assert session["state"] == "in_progress"
+    assert session["current_question"] is not None
     assert session["answers"]["wfh"] == "yes_regular"
     assert "wfh_method" not in session["answers"]
     assert "wfh_days" not in session["answers"]
@@ -305,7 +372,6 @@ async def test_skip_conditional_child_preserves_unrelated_answers(auth_client):
     """Skipping a branch child must not wipe unrelated completed platform answers."""
     await auth_client.post("/api/v1/interview/start")
     for qid, answer in [
-        ("fy_confirm", "2024-25"),
         ("residency", "resident"),
         ("employment_type", "employee"),
         ("has_spouse", "yes"),
@@ -341,25 +407,24 @@ async def test_skip_platform_question_keeps_valid_session_and_marks_incomplete(a
     await auth_client.post("/api/v1/interview/start")
     resp = await auth_client.post(
         "/api/v1/interview/skip",
-        json={"question_id": "fy_confirm", "reason": "skip_for_now"},
+        json={"question_id": "residency", "reason": "skip_for_now"},
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()["data"]
     assert body["next_question"] is not None
-    assert body["next_question"]["id"] == "residency"
+    assert body["next_question"]["id"] == "employment_type"
 
     session_resp = await auth_client.get("/api/v1/interview/session")
     assert session_resp.status_code == 200, session_resp.text
     session = session_resp.json()["data"]
     assert not (session["state"] == "in_progress" and session["current_question"] is None)
     incomplete_ids = {q["question_id"] for q in session.get("incomplete_questions", [])}
-    assert "fy_confirm" in incomplete_ids
+    assert "residency" in incomplete_ids
 
 
 async def _reach_wfh_days_question(auth_client):
     await auth_client.post("/api/v1/interview/start")
     for qid, answer in [
-        ("fy_confirm", "2024-25"),
         ("residency", "resident"),
         ("employment_type", "employee"),
         ("has_spouse", "no"),
@@ -414,7 +479,6 @@ async def test_spouse_rfba_amount_rejects_out_of_range_and_not_persisted(auth_cl
     """spouse_rfba_amount must be between 0 and 1_000_000."""
     await auth_client.post("/api/v1/interview/start")
     for qid, answer in [
-        ("fy_confirm", "2024-25"),
         ("residency", "resident"),
         ("employment_type", "employee"),
         ("has_spouse", "yes"),
@@ -449,7 +513,6 @@ async def test_skip_spouse_rfba_amount_advances_and_stays_recoverable(auth_clien
     """Skipping spouse_rfba_amount should continue the interview and remain recoverable."""
     await auth_client.post("/api/v1/interview/start")
     for qid, answer in [
-        ("fy_confirm", "2024-25"),
         ("residency", "resident"),
         ("employment_type", "employee"),
         ("has_spouse", "yes"),
@@ -485,9 +548,9 @@ async def test_skip_spouse_rfba_amount_advances_and_stays_recoverable(auth_clien
     session_resp = await auth_client.get("/api/v1/interview/session")
     assert session_resp.status_code == 200, session_resp.text
     session = session_resp.json()["data"]
-    assert session["state"] == "awaiting_evidence"
+    assert session["state"] == "in_progress"
     assert session["needs_restart"] is False
-    assert session["current_question"] is None
+    assert session["current_question"] is not None
     incomplete_ids = {q["question_id"] for q in session.get("incomplete_questions", [])}
     assert "spouse_rfba_amount" in incomplete_ids
 
@@ -526,7 +589,7 @@ async def test_session_needs_restart_when_awaiting_evidence_missing_platform_ans
 
 @pytest.mark.asyncio
 async def test_restart_abandons_old_session_and_starts_fresh(auth_client, test_engine):
-    """POST /interview/restart abandons broken session and returns a fresh in_progress session."""
+    """POST /interview/restart abandons broken session and returns a fresh in_progress session at residency."""
     from sqlalchemy import select
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -553,7 +616,7 @@ async def test_restart_abandons_old_session_and_starts_fresh(auth_client, test_e
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["data"]["state"] == "in_progress"
-    assert body["data"]["current_question"]["id"] == "fy_confirm"
+    assert body["data"]["current_question"]["id"] == "residency"
     new_id = body["data"]["session_id"]
     assert new_id
 

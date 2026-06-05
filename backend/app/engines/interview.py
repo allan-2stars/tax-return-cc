@@ -211,15 +211,15 @@ class InterviewEngine:
         session = await interview_repo.create(db, workspace_id, financial_year)
         await profile_repo.get_or_create(db, workspace_id, financial_year)
 
-        first_id = _PLATFORM_IDS[0]
-        session.pending_queue = list(_PLATFORM_IDS[1:])
+        seeded_answers = {"fy_confirm": financial_year}
+        session.answers = seeded_answers
+        session.completed_steps = ["fy_confirm"]
+
+        first_id = _PLATFORM_IDS[1]
+        session.pending_queue = list(_PLATFORM_IDS[2:])
         session.current_step = {"id": first_id}
         session = await interview_repo.save(db, session)
         first_q = _QUESTION_BY_ID[first_id]
-        if first_id == "fy_confirm":
-            first_q = replace(
-                first_q, options=_fy_confirm_options(financial_year, first_q.options)
-            )
         return session, first_q
 
     async def process_answer(
