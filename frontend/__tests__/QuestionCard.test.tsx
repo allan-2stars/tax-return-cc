@@ -63,13 +63,26 @@ test('calls onAnswer with question id and raw option value', () => {
   expect(onAnswer).toHaveBeenCalledWith('wfh', 'yes_regular')
 })
 
-test('back button is always visible and calls onBack', () => {
+test('back button is visible by default and calls onBack', () => {
   const onBack = jest.fn()
   render(<QuestionCard question={choiceQ} onAnswer={jest.fn()} onBack={onBack} onSkip={jest.fn()} />)
   const back = screen.getByRole('button', { name: /back/i })
   expect(back).toBeInTheDocument()
   fireEvent.click(back)
   expect(onBack).toHaveBeenCalled()
+})
+
+test('back button hidden when canGoBack is false', () => {
+  render(
+    <QuestionCard
+      question={choiceQ}
+      onAnswer={jest.fn()}
+      onBack={jest.fn()}
+      onSkip={jest.fn()}
+      canGoBack={false}
+    />
+  )
+  expect(screen.queryByRole('button', { name: /back/i })).not.toBeInTheDocument()
 })
 
 test('skip button shown and calls onSkip for non-required questions', () => {

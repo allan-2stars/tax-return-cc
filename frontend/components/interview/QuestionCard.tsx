@@ -51,6 +51,7 @@ interface Props {
   onAnswer: (questionId: string, answer: string) => void
   onBack: () => void
   onSkip: (questionId: string) => void
+  canGoBack?: boolean
   isSubmitting?: boolean
   currentAnswer?: string | number | boolean | null
   serverError?: string | null
@@ -58,7 +59,7 @@ interface Props {
 }
 
 export default function QuestionCard({
-  question, onAnswer, onBack, onSkip, isSubmitting = false, currentAnswer, serverError,
+  question, onAnswer, onBack, onSkip, canGoBack = true, isSubmitting = false, currentAnswer, serverError,
 }: Props) {
   const [whyOpen, setWhyOpen] = useState(false)
   const constraints = numericConstraints(question.id)
@@ -75,15 +76,17 @@ export default function QuestionCard({
 
   return (
     <div className="space-y-6">
-      <button
-        type="button"
-        onClick={onBack}
-        disabled={isSubmitting}
-        aria-label="Back"
-        className="text-sm font-ui text-text-muted hover:text-text-body transition-colors disabled:opacity-50"
-      >
-        ← Back
-      </button>
+      {canGoBack && (
+        <button
+          type="button"
+          onClick={onBack}
+          disabled={isSubmitting}
+          aria-label="Back"
+          className="text-sm font-ui text-text-muted hover:text-text-body transition-colors disabled:opacity-50"
+        >
+          ← Back
+        </button>
+      )}
 
       {/* Question title row with optional ⓘ icon */}
       <div className="space-y-2">

@@ -63,8 +63,8 @@ async def test_regenerate_recovery_key_returns_new_key(auth_client):
     )
     assert resp.status_code == 200
     new_key = resp.json()["data"]["recovery_key"]
-    assert " / " in new_key
-    assert "-" in new_key
+    assert " / " not in new_key
+    assert new_key.count("-") == 7
 
 
 @pytest.mark.asyncio

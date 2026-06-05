@@ -685,6 +685,13 @@ export interface SummarySection {
   answers: SummaryAnswer[]
 }
 
+export interface IncompleteInterviewQuestion {
+  question_id: string
+  question_label: string
+  editable: boolean
+}
+
 export interface InterviewSummaryData {
   sections: SummarySection[]
+  incomplete_questions?: IncompleteInterviewQuestion[]
 }

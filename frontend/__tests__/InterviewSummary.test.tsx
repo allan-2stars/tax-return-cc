@@ -133,3 +133,38 @@ test('renders incomplete questions section and Resume action', async () => {
   await waitFor(() => expect(mockJumpToQuestion).toHaveBeenCalledWith('wfh', true))
   await waitFor(() => expect(onEdit).toHaveBeenCalled())
 })
+
+test('renders multiple skipped questions as resumable items', async () => {
+  mockGetInterviewSummary.mockResolvedValue({
+    data: {
+      data: {
+        ...SUMMARY_DATA,
+        incomplete_questions: [
+          {
+            question_id: 'wfh',
+            question_label: 'Did you work from home during this financial year?',
+            editable: true,
+          },
+          {
+            question_id: 'has_private_health',
+            question_label: 'Do you have private health insurance?',
+            editable: true,
+          },
+          {
+            question_id: 'has_novated_lease',
+            question_label: 'Do you have a novated lease through your employer?',
+            editable: true,
+          },
+        ],
+      },
+    },
+  })
+
+  wrap(<InterviewSummary onEdit={jest.fn()} />)
+
+  await waitFor(() => expect(screen.getByText(/some questions still need answers/i)).toBeInTheDocument())
+  expect(screen.getByText(/did you work from home during this financial year/i)).toBeInTheDocument()
+  expect(screen.getByText(/do you have private health insurance/i)).toBeInTheDocument()
+  expect(screen.getByText(/do you have a novated lease through your employer/i)).toBeInTheDocument()
+  expect(screen.getAllByRole('button', { name: /resume/i })).toHaveLength(3)
+})

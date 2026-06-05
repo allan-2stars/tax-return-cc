@@ -42,7 +42,7 @@ def decrypt_dek(encrypted_str: str, passphrase: str) -> bytes:
 def generate_recovery_key() -> str:
     raw = secrets.token_hex(16).upper()
     segs = [raw[i : i + 4] for i in range(0, 32, 4)]
-    return f"{'-'.join(segs[:4])} / {'-'.join(segs[4:])}"
+    return "-".join(segs)
 
 
 def normalize_recovery_key(key: str) -> str:

@@ -20,6 +20,7 @@ const mockRestartInterview = interviewApi.restartInterview as jest.Mock
 const mockGoBack = interviewApi.goBack as jest.Mock
 const mockCancelEdit = interviewApi.cancelEdit as jest.Mock
 const mockAnswerQuestion = interviewApi.answerQuestion as jest.Mock
+const mockSkipQuestion = interviewApi.skipQuestion as jest.Mock
 const mockUseInterviewStore = useInterviewStore as jest.Mock
 const mockSetNewSkillPending = jest.fn()
 let invalidateSpy: jest.SpyInstance
@@ -76,6 +77,25 @@ test('shows QuestionCard when state is in_progress', async () => {
   mockGetSession.mockResolvedValue(SESSION('in_progress', QUESTION))
   wrap(<JourneyPage />)
   await waitFor(() => expect(screen.getByText('Did you work from home?')).toBeInTheDocument())
+})
+
+test('first question hides Back button', async () => {
+  mockGetSession.mockResolvedValue(SESSION('in_progress', {
+    id: 'fy_confirm',
+    ask: 'Which financial year are you preparing?',
+    type: 'single_choice',
+    options: ['2025-26', '2024-25', '2023-24'],
+    branches: null,
+    required: false,
+    why: null,
+    hint: null,
+  }, {
+    progress: { completed: 0, total: 6 },
+  }))
+
+  wrap(<JourneyPage />)
+  await waitFor(() => expect(screen.getByText('Which financial year are you preparing?')).toBeInTheDocument())
+  expect(screen.queryByRole('button', { name: /back/i })).not.toBeInTheDocument()
 })
 
 test('Journey mutation 401 shows session-expired message', async () => {
@@ -255,6 +275,61 @@ test('shows restart journey screen when needs_restart is true', async () => {
   await user.click(screen.getByRole('button', { name: /restart tax journey/i }))
   await waitFor(() => expect(mockRestartInterview).toHaveBeenCalled())
   await waitFor(() => expect(screen.getByText('Did you work from home?')).toBeInTheDocument())
+})
+
+test('skipping spouse RFBA continues journey and does not render restart-only screen', async () => {
+  mockGetSession
+    .mockResolvedValueOnce(SESSION('in_progress', {
+      id: 'spouse_rfba_amount',
+      ask: "What is your spouse's Reportable Fringe Benefits Amount?",
+      type: 'number',
+      options: null,
+      branches: null,
+      required: false,
+      why: null,
+      hint: null,
+      currency: true,
+    }, {
+      progress: { completed: 5, total: 8 },
+    }))
+    .mockResolvedValue(SESSION('in_progress', {
+      id: 'has_dependents',
+      ask: 'Do you have any dependent children?',
+      type: 'single_choice',
+      options: ['yes', 'no'],
+      branches: null,
+      required: false,
+      why: null,
+      hint: null,
+    }, {
+      progress: { completed: 5, total: 8 },
+    }))
+  mockSkipQuestion.mockResolvedValue({
+    data: { data: {
+      state: 'in_progress',
+      next_question: {
+        id: 'has_dependents',
+        ask: 'Do you have any dependent children?',
+        type: 'single_choice',
+        options: ['yes', 'no'],
+        branches: null,
+        required: false,
+        why: null,
+        hint: null,
+      },
+      progress: { completed: 5, total: 8 },
+    } },
+  })
+
+  const user = userEvent.setup()
+  wrap(<JourneyPage />)
+
+  await waitFor(() => expect(screen.getByText("What is your spouse's Reportable Fringe Benefits Amount?")).toBeInTheDocument())
+  await user.click(screen.getByRole('button', { name: /skip for now/i }))
+
+  await waitFor(() => expect(mockSkipQuestion).toHaveBeenCalledWith('spouse_rfba_amount', 'user_skipped'))
+  await waitFor(() => expect(screen.getByText('Do you have any dependent children?')).toBeInTheDocument())
+  expect(screen.queryByText(/your tax journey needs attention/i)).not.toBeInTheDocument()
 })
 
 test('renders completion screen when state is complete', async () => {

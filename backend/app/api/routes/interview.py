@@ -164,26 +164,14 @@ def _progress(session: InterviewSession) -> dict:
 
 def _incomplete_questions(session: InterviewSession) -> list[dict]:
     answers = session.answers or {}
-    skipped_ids = [
-        (s.get("question_id") if isinstance(s, dict) else s)
-        for s in (session.skipped_steps or [])
-    ]
-    active_conditional_ids: set[str] = set()
-    for q in _QUESTION_BY_ID.values():
-        if not q.branches:
-            continue
-        ans = answers.get(q.id)
-        if ans is None:
-            continue
-        active_conditional_ids.update((q.branches or {}).get(ans, []))
-
     rows: list[dict] = []
     seen: set[str] = set()
-    platform_ids = set(_ORDERED_PLATFORM_IDS)
-    for qid in skipped_ids:
+    for skipped in (session.skipped_steps or []):
+        qid = skipped.get("question_id") if isinstance(skipped, dict) else skipped
+        reason = skipped.get("reason") if isinstance(skipped, dict) else None
         if qid in seen or answers.get(qid) is not None:
             continue
-        if qid not in platform_ids and qid not in active_conditional_ids:
+        if reason == "branch_not_applicable":
             continue
         seen.add(qid)
         q = _QUESTION_BY_ID.get(qid)

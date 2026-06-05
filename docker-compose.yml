@@ -7,7 +7,7 @@ services:
     ports:
       - "3060:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=/
+      - NEXT_PUBLIC_API_URL=https://taxcc-api.signpega.com
     depends_on:
       backend:
         condition: service_healthy

@@ -37,18 +37,15 @@ def test_decrypt_dek_wrong_passphrase_raises():
 
 def test_recovery_key_format():
     key = generate_recovery_key()
-    parts = key.split(" / ")
-    assert len(parts) == 2
-    for part in parts:
-        segments = part.split("-")
-        assert len(segments) == 4
-        for seg in segments:
-            assert len(seg) == 4
-            assert all(c in "0123456789ABCDEF" for c in seg)
+    segments = key.split("-")
+    assert len(segments) == 8
+    for seg in segments:
+        assert len(seg) == 4
+        assert all(c in "0123456789ABCDEF" for c in seg)
 
 
 def test_normalize_recovery_key():
-    key = "ABCD-EF01-2345-6789 / ABCD-EF01-2345-6789"
+    key = "ABCD-EF01-2345-6789-ABCD-EF01-2345-6789"
     assert normalize_recovery_key(key) == "ABCDEF0123456789ABCDEF0123456789"
 
 
@@ -202,7 +199,8 @@ async def test_setup_creates_workspace_security(client, patch_password):
     body = resp.json()["data"]
     assert "recovery_key" in body
     assert "workspace_id" in body
-    assert " / " in body["recovery_key"]
+    assert body["recovery_key"].count("-") == 7
+    assert " / " not in body["recovery_key"]
 
 
 @pytest.mark.asyncio
@@ -457,7 +455,7 @@ async def test_recover_wrong_key_returns_401(auth_client, patch_password):
     resp = await auth_client.post(
         "/api/v1/auth/recover",
         json={
-            "recovery_key": "WRONG-WRONG-WRONG-WRONG / WRONG-WRONG-WRONG-WRONG",
+            "recovery_key": "WRONG-WRONG-WRONG-WRONG-WRONG-WRONG-WRONG-WRONG",
             "new_password": "some-new-password",
         },
     )

@@ -445,6 +445,54 @@ async def test_spouse_rfba_amount_rejects_out_of_range_and_not_persisted(auth_cl
 
 
 @pytest.mark.asyncio
+async def test_skip_spouse_rfba_amount_advances_and_stays_recoverable(auth_client):
+    """Skipping spouse_rfba_amount should continue the interview and remain recoverable."""
+    await auth_client.post("/api/v1/interview/start")
+    for qid, answer in [
+        ("fy_confirm", "2024-25"),
+        ("residency", "resident"),
+        ("employment_type", "employee"),
+        ("has_spouse", "yes"),
+        ("spouse_income_range", "45000_120000"),
+        ("spouse_novated_lease", "yes"),
+    ]:
+        resp = await auth_client.post(
+            "/api/v1/interview/answer",
+            json={"question_id": qid, "answer": answer},
+        )
+        assert resp.status_code == 200, resp.text
+    assert resp.json()["data"]["next_question"]["id"] == "spouse_rfba_amount"
+
+    resp = await auth_client.post(
+        "/api/v1/interview/skip",
+        json={"question_id": "spouse_rfba_amount", "reason": "skip_for_now"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()["data"]
+    assert body["state"] == "in_progress"
+    assert body["next_question"]["id"] == "has_dependents"
+
+    for qid, answer in [
+        ("has_dependents", "no"),
+        ("lodger_type", "self"),
+    ]:
+        resp = await auth_client.post(
+            "/api/v1/interview/answer",
+            json={"question_id": qid, "answer": answer},
+        )
+        assert resp.status_code == 200, resp.text
+
+    session_resp = await auth_client.get("/api/v1/interview/session")
+    assert session_resp.status_code == 200, session_resp.text
+    session = session_resp.json()["data"]
+    assert session["state"] == "awaiting_evidence"
+    assert session["needs_restart"] is False
+    assert session["current_question"] is None
+    incomplete_ids = {q["question_id"] for q in session.get("incomplete_questions", [])}
+    assert "spouse_rfba_amount" in incomplete_ids
+
+
+@pytest.mark.asyncio
 async def test_session_needs_restart_when_awaiting_evidence_missing_platform_answers(auth_client, test_engine):
     """If an awaiting_evidence session is missing required platform answers, flag needs_restart."""
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker

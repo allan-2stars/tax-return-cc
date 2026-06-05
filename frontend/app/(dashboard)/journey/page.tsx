@@ -167,6 +167,7 @@ export default function JourneyPage() {
   const isAtEditRoot = Boolean(
     data.edit_mode && (data.edit_flow_completed ?? 0) === 0
   )
+  const canGoBack = data.edit_mode || (data.progress.completed ?? 0) > 0
 
   return (
     <div className="max-w-xl mx-auto px-4 py-8 space-y-6">
@@ -220,6 +221,7 @@ export default function JourneyPage() {
               backMutation.mutate()
             }}
             onSkip={(qid) => skipMutation.mutate({ question_id: qid, reason: 'user_skipped' })}
+            canGoBack={canGoBack}
             isSubmitting={isBusy}
             currentAnswer={data.answers?.[data.current_question.id]}
             serverError={serverError}

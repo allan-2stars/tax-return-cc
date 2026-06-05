@@ -579,3 +579,106 @@ async def test_jump_to_skipped_question_succeeds(auth_client):
     )
     assert jump.status_code == 200, jump.text
     assert jump.json()["data"]["current_question"]["id"] == "wfh_days"
+
+
+async def _complete_employee_interview_with_skips(client, skipped_ids: list[str]) -> None:
+    """Complete the employee interview while skipping selected shown questions."""
+    resp = await client.post("/api/v1/interview/start")
+    assert resp.status_code == 200, resp.text
+
+    platform_answers = [
+        ("fy_confirm", "2024-25"),
+        ("residency", "resident"),
+        ("employment_type", "employee"),
+        ("has_spouse", "no"),
+        ("has_dependents", "no"),
+        ("lodger_type", "self"),
+    ]
+    for qid, answer in platform_answers:
+        resp = await client.post(
+            "/api/v1/interview/answer",
+            json={"question_id": qid, "answer": answer},
+        )
+        assert resp.status_code == 200, f"Answer failed for {qid}: {resp.text}"
+
+    next_q = resp.json()["data"].get("next_question")
+    while next_q is not None:
+        qid = next_q["id"]
+        q_type = next_q.get("type", "text")
+        options = next_q.get("options") or []
+
+        if qid in skipped_ids:
+            resp = await client.post(
+                "/api/v1/interview/skip",
+                json={"question_id": qid, "reason": "skip_for_now"},
+            )
+            assert resp.status_code == 200, f"Skip failed for {qid}: {resp.text}"
+            next_q = resp.json()["data"].get("next_question")
+            continue
+
+        if qid == "wfh":
+            answer = str(options[-1])
+        elif q_type == "number":
+            answer = "3"
+        elif options:
+            answer = str(options[0])
+        else:
+            answer = "yes"
+
+        resp = await client.post(
+            "/api/v1/interview/answer",
+            json={"question_id": qid, "answer": answer},
+        )
+        assert resp.status_code == 200, f"Answer failed for skill question {qid}: {resp.text}"
+        next_q = resp.json()["data"].get("next_question")
+
+    resp = await client.post("/api/v1/interview/complete")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["data"]["state"] == "awaiting_evidence"
+
+
+@pytest.mark.asyncio
+async def test_summary_lists_all_shown_skipped_skill_questions(auth_client):
+    """Shown skill questions that the user skips must remain resumable in incomplete_questions."""
+    await _complete_employee_interview_with_skips(
+        auth_client,
+        skipped_ids=["wfh", "has_private_health", "has_novated_lease", "self_education"],
+    )
+
+    summary = await auth_client.get("/api/v1/interview/summary")
+    assert summary.status_code == 200, summary.text
+    body = summary.json()["data"]
+
+    completed_ids = {
+        ans["question_id"]
+        for section in body["sections"]
+        for ans in section["answers"]
+    }
+    assert "wfh" not in completed_ids
+    assert "has_private_health" not in completed_ids
+    assert "has_novated_lease" not in completed_ids
+    assert "self_education" not in completed_ids
+
+    incomplete_ids = {q["question_id"] for q in body.get("incomplete_questions", [])}
+    assert "wfh" in incomplete_ids
+    assert "has_private_health" in incomplete_ids
+    assert "has_novated_lease" in incomplete_ids
+    assert "self_education" in incomplete_ids
+
+
+@pytest.mark.asyncio
+async def test_summary_does_not_list_irrelevant_never_shown_branch_questions(auth_client):
+    """Branch-only questions that never appeared must not be surfaced as incomplete."""
+    await _complete_employee_interview_with_skips(
+        auth_client,
+        skipped_ids=["has_private_health"],
+    )
+
+    summary = await auth_client.get("/api/v1/interview/summary")
+    assert summary.status_code == 200, summary.text
+    incomplete_ids = {q["question_id"] for q in summary.json()["data"].get("incomplete_questions", [])}
+
+    assert "has_private_health" in incomplete_ids
+    assert "wfh_method" not in incomplete_ids
+    assert "wfh_days" not in incomplete_ids
+    assert "spouse_rfba_amount" not in incomplete_ids

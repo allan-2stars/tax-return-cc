@@ -28,6 +28,15 @@ beforeEach(() => {
   jest.clearAllMocks()
 })
 
+function mockClipboard() {
+  const writeText = jest.fn().mockResolvedValue(undefined)
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText },
+  })
+  return writeText
+}
+
 describe('SetupPage', () => {
   it('renders step 1 — set password heading and inputs', async () => {
     const user = userEvent.setup()
@@ -64,6 +73,110 @@ describe('SetupPage', () => {
     })
     expect(screen.getByRole('button', { name: /copy/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument()
+  })
+
+  it('renders exactly one recovery key value from the backend response', async () => {
+    const user = userEvent.setup()
+    ;(mockSetup as jest.Mock).mockResolvedValue({
+      data: { data: { recovery_key: RECOVERY_KEY, workspace_id: 'ws-1' } },
+    })
+
+    render(<SetupPage />)
+    await user.click(screen.getByRole('button', { name: /2024-25/i }))
+    await user.type(screen.getByLabelText('Password'), 'StrongPass1!')
+    await user.type(screen.getByLabelText('Confirm password'), 'StrongPass1!')
+    await user.click(screen.getByRole('button', { name: /continue/i }))
+
+    await waitFor(() => expect(screen.getByText(RECOVERY_KEY)).toBeInTheDocument())
+    expect(screen.getAllByText(RECOVERY_KEY)).toHaveLength(1)
+  })
+
+  it('copy and download use the same displayed backend recovery key', async () => {
+    const user = userEvent.setup()
+    const writeText = mockClipboard()
+    const createObjectURL = jest.fn().mockReturnValue('blob:recovery-key')
+    const revokeObjectURL = jest.fn()
+    const click = jest.fn()
+    const originalBlob = global.Blob
+    const blobMock = jest.fn().mockImplementation((parts, options) => ({ parts, options }))
+    const originalCreateElement = document.createElement.bind(document)
+    const createElementSpy = jest.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+      if (tagName === 'a') {
+        return {
+          click,
+          set href(_value: string) {},
+          set download(_value: string) {},
+        } as HTMLAnchorElement
+      }
+      return originalCreateElement(tagName)
+    })
+    Object.defineProperty(global, 'Blob', {
+      configurable: true,
+      value: blobMock,
+    })
+
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: createObjectURL,
+    })
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: revokeObjectURL,
+    })
+
+    ;(mockSetup as jest.Mock).mockResolvedValue({
+      data: { data: { recovery_key: RECOVERY_KEY, workspace_id: 'ws-1' } },
+    })
+
+    render(<SetupPage />)
+    await user.click(screen.getByRole('button', { name: /2024-25/i }))
+    await user.type(screen.getByLabelText('Password'), 'StrongPass1!')
+    await user.type(screen.getByLabelText('Confirm password'), 'StrongPass1!')
+    await user.click(screen.getByRole('button', { name: /continue/i }))
+    await waitFor(() => expect(screen.getByText(RECOVERY_KEY)).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: /copy/i }))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(RECOVERY_KEY))
+
+    await user.click(screen.getByRole('button', { name: /download/i }))
+    expect(blobMock).toHaveBeenCalledWith([RECOVERY_KEY], { type: 'text/plain' })
+    expect(createObjectURL).toHaveBeenCalled()
+    expect(click).toHaveBeenCalled()
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:recovery-key')
+
+    createElementSpy.mockRestore()
+    Object.defineProperty(global, 'Blob', {
+      configurable: true,
+      value: originalBlob,
+    })
+  })
+
+  it('does not generate a client-side recovery key during setup flow', async () => {
+    const user = userEvent.setup()
+    const originalCrypto = globalThis.crypto
+    const getRandomValues = jest.fn()
+    const randomUUID = jest.fn()
+    Object.defineProperty(globalThis, 'crypto', {
+      configurable: true,
+      value: { getRandomValues, randomUUID },
+    })
+    ;(mockSetup as jest.Mock).mockResolvedValue({
+      data: { data: { recovery_key: RECOVERY_KEY, workspace_id: 'ws-1' } },
+    })
+
+    render(<SetupPage />)
+    await user.click(screen.getByRole('button', { name: /2024-25/i }))
+    await user.type(screen.getByLabelText('Password'), 'StrongPass1!')
+    await user.type(screen.getByLabelText('Confirm password'), 'StrongPass1!')
+    await user.click(screen.getByRole('button', { name: /continue/i }))
+    await waitFor(() => expect(screen.getByText(RECOVERY_KEY)).toBeInTheDocument())
+
+    expect(getRandomValues).not.toHaveBeenCalled()
+    expect(randomUUID).not.toHaveBeenCalled()
+    Object.defineProperty(globalThis, 'crypto', {
+      configurable: true,
+      value: originalCrypto,
+    })
   })
 
   it('step 1 shows password mismatch error when passwords do not match', async () => {
