@@ -220,6 +220,33 @@ async def test_readiness_2_0_journey_incomplete_is_blocked(auth_client, test_eng
 
 
 @pytest.mark.asyncio
+async def test_readiness_incomplete_questions_hide_legacy_fy_confirm(auth_client, test_engine):
+    from app.db.models import InterviewSession
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        session.add(
+            InterviewSession(
+                workspace_id=auth_client.workspace_id,
+                financial_year="2024-25",
+                state="awaiting_evidence",
+                answers={"fy_confirm": "2024-25"},
+                skipped_steps=[{"question_id": "fy_confirm", "reason": "skip_for_now"}],
+                activated_skills=[],
+                pending_queue=[],
+                completed_steps=["fy_confirm"],
+            )
+        )
+        await session.commit()
+
+    response = await auth_client.get("/api/v1/readiness")
+    assert response.status_code == 200
+    journey = response.json()["data"]["readiness_2_0"]["journey"]
+    incomplete_ids = {q["question_id"] for q in journey["incomplete_questions"]}
+    assert "fy_confirm" not in incomplete_ids
+
+
+@pytest.mark.asyncio
 async def test_readiness_2_0_required_missing_evidence_is_blocked(auth_client, test_engine):
     maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
     async with maker() as session:

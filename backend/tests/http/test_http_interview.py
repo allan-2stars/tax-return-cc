@@ -67,8 +67,8 @@ async def test_back_navigation(auth_client):
 
 
 @pytest.mark.asyncio
-async def test_start_interview_seeds_financial_year_and_summary_includes_it(auth_client, test_engine):
-    """Start should seed fy_confirm from workspace FY and begin at residency."""
+async def test_start_interview_seeds_financial_year_and_summary_hides_it(auth_client, test_engine):
+    """Start should seed fy_confirm from workspace FY but hide it from summary rows."""
     from sqlalchemy import select
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -95,11 +95,12 @@ async def test_start_interview_seeds_financial_year_and_summary_includes_it(auth
     summary = await auth_client.get("/api/v1/interview/summary")
     assert summary.status_code == 200, summary.text
     sections = summary.json()["data"]["sections"]
-    situation = next((s for s in sections if s["title"] == "Your situation"), None)
-    assert situation is not None
-    answers = {a["question_id"]: a for a in situation["answers"]}
-    assert answers["fy_confirm"]["answer_value"] == "2025-26"
-    assert answers["fy_confirm"]["answer_label"] == "2025-26"
+    completed_ids = {
+        answer["question_id"]
+        for section in sections
+        for answer in section["answers"]
+    }
+    assert "fy_confirm" not in completed_ids
 
 
 @pytest.mark.asyncio
@@ -246,6 +247,46 @@ async def test_answer_fy_confirm_rejects_future_financial_year(auth_client, test
     )
     assert resp.status_code == 422
     assert resp.json()["detail"]["error_code"] == "invalid_answer"
+
+
+@pytest.mark.asyncio
+async def test_summary_hides_legacy_fy_confirm_and_incomplete_rows(auth_client, test_engine):
+    """Legacy fy_confirm answers may exist, but summary UX must hide them completely."""
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.db.models import InterviewSession
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        legacy = InterviewSession(
+            workspace_id=auth_client.workspace_id,
+            financial_year="2025-26",
+            state="awaiting_evidence",
+            current_step=None,
+            pending_queue=[],
+            completed_steps=["fy_confirm", "residency"],
+            skipped_steps=[{"question_id": "fy_confirm", "reason": "skip_for_now"}],
+            answers={"fy_confirm": "2025-26", "residency": "resident"},
+            branch_path=[],
+            activated_skills=[],
+        )
+        session.add(legacy)
+        await session.commit()
+
+    summary = await auth_client.get("/api/v1/interview/summary")
+    assert summary.status_code == 200, summary.text
+    body = summary.json()["data"]
+
+    completed_ids = {
+        ans["question_id"]
+        for section in body["sections"]
+        for ans in section["answers"]
+    }
+    incomplete_ids = {q["question_id"] for q in body.get("incomplete_questions", [])}
+
+    assert "fy_confirm" not in completed_ids
+    assert "fy_confirm" not in incomplete_ids
+    assert "residency" in completed_ids
 
 
 @pytest.mark.asyncio

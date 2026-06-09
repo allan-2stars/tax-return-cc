@@ -343,7 +343,7 @@ async def test_interview_answer_triggers_reconcile(auth_client, test_engine):
     assert start.status_code == 200
     answer = await auth_client.post(
         "/api/v1/interview/answer",
-        json={"question_id": "fy_confirm", "answer": "2024-25"},
+        json={"question_id": "residency", "answer": "resident"},
     )
     assert answer.status_code == 200
 
@@ -377,7 +377,7 @@ async def test_interview_skip_triggers_reconcile_and_removes_no_longer_applicabl
     await auth_client.post("/api/v1/interview/start")
     skip = await auth_client.post(
         "/api/v1/interview/skip",
-        json={"question_id": "fy_confirm", "reason": "skip for now"},
+        json={"question_id": "residency", "reason": "skip for now"},
     )
     assert skip.status_code == 200
     # Route-triggered reconcile may be debounced; force one full pass for deterministic assertion.
@@ -484,12 +484,12 @@ async def test_route_trigger_reconcile_debounces_within_window(auth_client, test
     assert start.status_code == 200
     ans1 = await auth_client.post(
         "/api/v1/interview/answer",
-        json={"question_id": "fy_confirm", "answer": "2024-25"},
+        json={"question_id": "residency", "answer": "resident"},
     )
     assert ans1.status_code == 200
     ans2 = await auth_client.post(
         "/api/v1/interview/answer",
-        json={"question_id": "residency", "answer": "resident"},
+        json={"question_id": "employment_type", "answer": "employee"},
     )
     assert ans2.status_code == 200
 

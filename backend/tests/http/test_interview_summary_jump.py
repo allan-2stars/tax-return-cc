@@ -9,7 +9,6 @@ async def _complete_full_interview(client) -> None:
 
     # Platform answers — these are the fixed questions for any employee
     platform_answers = [
-        ("fy_confirm",      "2024-25"),
         ("residency",       "resident"),
         ("employment_type", "employee"),
         ("has_spouse",      "no"),
@@ -153,7 +152,6 @@ async def _complete_interview_with_spouse(client) -> None:
     assert resp.status_code == 200, resp.text
 
     answers = [
-        ("fy_confirm",           "2024-25"),
         ("residency",            "resident"),
         ("employment_type",      "employee"),
         ("has_spouse",           "yes"),
@@ -241,18 +239,18 @@ async def test_summary_includes_skill_questions(auth_client):
 
 @pytest.mark.asyncio
 async def test_jump_safety_limit(auth_client):
-    """Jump to the very first question (fy_confirm) succeeds — tests the safety limit
+    """Jump to the first editable question (residency) succeeds — tests the safety limit
     allows traversing the full branch_path without hitting an artificial cap."""
     await _complete_full_interview(auth_client)
 
     resp = await auth_client.post(
         "/api/v1/interview/jump",
-        json={"question_id": "fy_confirm"},
+        json={"question_id": "residency"},
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["data"]["state"] == "in_progress"
-    assert body["data"]["current_question"]["id"] == "fy_confirm"
+    assert body["data"]["current_question"]["id"] == "residency"
 
 
 @pytest.mark.asyncio
@@ -587,7 +585,6 @@ async def _complete_employee_interview_with_skips(client, skipped_ids: list[str]
     assert resp.status_code == 200, resp.text
 
     platform_answers = [
-        ("fy_confirm", "2024-25"),
         ("residency", "resident"),
         ("employment_type", "employee"),
         ("has_spouse", "no"),
@@ -682,3 +679,33 @@ async def test_summary_does_not_list_irrelevant_never_shown_branch_questions(aut
     assert "wfh_method" not in incomplete_ids
     assert "wfh_days" not in incomplete_ids
     assert "spouse_rfba_amount" not in incomplete_ids
+
+
+@pytest.mark.asyncio
+async def test_summary_does_not_list_legacy_skipped_fy_confirm(auth_client, test_engine):
+    """Legacy skipped fy_confirm must not appear in resumable skipped-question UX."""
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.db.models import InterviewSession
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        legacy = InterviewSession(
+            workspace_id=auth_client.workspace_id,
+            financial_year="2025-26",
+            state="awaiting_evidence",
+            current_step=None,
+            pending_queue=[],
+            completed_steps=["fy_confirm", "residency"],
+            skipped_steps=[{"question_id": "fy_confirm", "reason": "skip_for_now"}],
+            answers={"fy_confirm": "2025-26", "residency": "resident"},
+            branch_path=[],
+            activated_skills=[],
+        )
+        session.add(legacy)
+        await session.commit()
+
+    summary = await auth_client.get("/api/v1/interview/summary")
+    assert summary.status_code == 200, summary.text
+    incomplete_ids = {q["question_id"] for q in summary.json()["data"].get("incomplete_questions", [])}
+    assert "fy_confirm" not in incomplete_ids

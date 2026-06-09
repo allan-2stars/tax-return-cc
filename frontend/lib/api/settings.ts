@@ -62,3 +62,6 @@ export const createWorkspace = (name: string, financial_year: string) =>
     name,
     financial_year,
   })
+
+export const selectWorkspace = (id: string) =>
+  client.post<ApiResponse<WorkspaceInfo>>(`/api/v1/workspaces/${id}/select`)

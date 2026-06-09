@@ -1,7 +1,7 @@
 // frontend/app/(dashboard)/layout.tsx
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
@@ -20,7 +20,8 @@ import NewFYModal from '@/components/settings/NewFYModal'
 import DeadlineBanner from '@/components/shared/DeadlineBanner'
 import NetworkBanner from '@/components/shared/NetworkBanner'
 import MobileMoreSheet from '@/components/shared/MobileMoreSheet'
-import type { CreateWorkspaceResult } from '@/lib/api/types'
+import { listWorkspaces, selectWorkspace } from '@/lib/api/settings'
+import type { CreateWorkspaceResult, WorkspaceInfo } from '@/lib/api/types'
 
 interface NavItem {
   label: string
@@ -82,8 +83,31 @@ export default function DashboardLayout({
   const { financialYear, setWorkspace } = useWorkspaceStore()
   const [showNewFY, setShowNewFY] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
+  const [fyMenuOpen, setFyMenuOpen] = useState(false)
+  const [workspaces, setWorkspaces] = useState<WorkspaceInfo[]>([])
 
   const { isAuthenticated, sessionRestored, clearSessionRestored } = useAuth()
+
+  useEffect(() => {
+    let cancelled = false
+    if (!isAuthenticated) return
+
+    listWorkspaces()
+      .then((res) => {
+        if (!cancelled) {
+          setWorkspaces(res.data.data.items)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setWorkspaces([])
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [isAuthenticated])
 
   if (!isAuthenticated) {
     return (
@@ -99,6 +123,14 @@ export default function DashboardLayout({
     router.push('/journey')
   }
 
+  async function handleSelectWorkspace(ws: WorkspaceInfo) {
+    await selectWorkspace(ws.id)
+    setWorkspace(ws.id, ws.financial_year)
+    setFyMenuOpen(false)
+    router.push('/journey')
+    router.refresh()
+  }
+
   return (
     <div className="flex min-h-screen bg-canvas">
       {/* ── Desktop sidebar ─────────────────────────────────────── */}
@@ -112,14 +144,49 @@ export default function DashboardLayout({
 
         {/* FY switcher */}
         {financialYear && (
-          <div className="px-4 py-3 border-b border-border">
+          <div className="px-4 py-3 border-b border-border relative">
             <button
               type="button"
               className="font-ui text-xs text-text-muted hover:text-text-body flex items-center gap-1"
-              onClick={() => setShowNewFY(true)}
+              onClick={() => setFyMenuOpen((open) => !open)}
             >
               FY {financialYear} ▾
             </button>
+            {fyMenuOpen && (
+              <div className="mt-3 rounded-md border border-border bg-surface shadow-md p-2 space-y-1">
+                <p className="px-2 py-1 text-xs font-ui text-text-muted">Tax years</p>
+                {workspaces.map((ws) => {
+                  const isCurrent = ws.financial_year === financialYear
+                  return (
+                    <button
+                      key={ws.id}
+                      type="button"
+                      onClick={() => handleSelectWorkspace(ws)}
+                      className={`w-full rounded-sm px-2 py-2 text-left text-sm font-ui transition-colors ${
+                        isCurrent
+                          ? 'bg-accent-soft text-accent'
+                          : 'text-text-body hover:bg-surface-raised'
+                      }`}
+                    >
+                      <span>{ws.financial_year}</span>
+                      {isCurrent && <span className="ml-2 text-xs">Current</span>}
+                    </button>
+                  )
+                })}
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFyMenuOpen(false)
+                      setShowNewFY(true)
+                    }}
+                    className="w-full rounded-sm px-2 py-2 text-left text-sm font-ui text-accent hover:bg-surface-raised"
+                  >
+                    Start new tax year return
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

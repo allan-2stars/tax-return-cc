@@ -90,6 +90,7 @@ _SKILL_SECTION_TITLES: dict[str, str] = {
     "crypto_skill_au": "Cryptocurrency",
     "investment_skill": "Investments",
 }
+_HIDDEN_SUMMARY_QUESTION_IDS: frozenset[str] = frozenset({"fy_confirm"})
 
 
 # ── Request bodies ────────────────────────────────────────────────────────────
@@ -170,6 +171,8 @@ def _incomplete_questions(session: InterviewSession) -> list[dict]:
         qid = skipped.get("question_id") if isinstance(skipped, dict) else skipped
         reason = skipped.get("reason") if isinstance(skipped, dict) else None
         if qid in seen or answers.get(qid) is not None:
+            continue
+        if qid in _HIDDEN_SUMMARY_QUESTION_IDS:
             continue
         if reason == "branch_not_applicable":
             continue
@@ -534,6 +537,8 @@ async def get_summary(
     # "Your situation" section: platform + branch questions in canonical order
     situation_answers = []
     for qid in _ORDERED_PLATFORM_IDS:
+        if qid in _HIDDEN_SUMMARY_QUESTION_IDS:
+            continue
         val = answers.get(qid)
         if val is not None:
             situation_answers.append({

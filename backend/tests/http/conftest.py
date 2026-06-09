@@ -103,7 +103,6 @@ async def eligible_client(auth_client, test_engine):
     start_resp = await auth_client.post("/api/v1/interview/start")
     assert start_resp.status_code == 200
     for qid, answer in [
-        ("fy_confirm", "2024-25"),
         ("residency", "resident"),
         ("employment_type", "employee"),
         ("has_spouse", "no"),

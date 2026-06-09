@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import require_auth, sign_session
 from app.config import settings
 from app.db.base import get_db
-from app.db.models import ReadinessScore, Workspace
+from app.db.models import ReadinessScore, Workspace, WorkspaceSecurity
 from app.errors import error_response
 from app.repositories import auth as auth_repo
 from app.repositories import profiles as profiles_repo
@@ -74,6 +74,7 @@ async def create_workspace(
 
     # 3. Copy TaxProfile basics from current workspace
     current_profile = await profiles_repo.get_by_workspace(db, workspace_id)
+    current_security = await auth_repo.get_security(db, workspace_id)
     new_profile = await profiles_repo.get_or_create(db, new_ws.id, body.financial_year)
     if current_profile:
         copy_keys = [
@@ -84,6 +85,19 @@ async def create_workspace(
         await profiles_repo.update_fields(
             db, new_profile, {k: getattr(current_profile, k) for k in copy_keys}
         )
+    if current_security:
+        db.add(
+            WorkspaceSecurity(
+                workspace_id=new_ws.id,
+                password_hash=current_security.password_hash,
+                password_encrypted_dek=current_security.password_encrypted_dek,
+                recovery_key_hash=current_security.recovery_key_hash,
+                recovery_encrypted_dek=current_security.recovery_encrypted_dek,
+                recovery_confirm_hash=current_security.recovery_confirm_hash,
+                setup_confirmed=current_security.setup_confirmed,
+            )
+        )
+        await db.commit()
 
     # 4. Trigger YoY suggestions (graceful no-op if no prior FY workspace)
     yoy = YoYEngine()
@@ -128,6 +142,41 @@ async def list_workspaces(
         items.append(_ws_dict(ws, score.percentage if score else 0.0))
 
     return {"data": {"items": items}, "status": "ok"}
+
+
+@router.post("/workspaces/{target_id}/select")
+async def select_workspace(
+    target_id: str,
+    response: Response,
+    workspace_id: str = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    ws = await db.get(Workspace, target_id)
+    if not ws or ws.status != "active":
+        raise HTTPException(
+            status_code=404,
+            detail=error_response("not_found", "Workspace not found.", retryable=False),
+        )
+
+    max_age = settings.SESSION_MAX_AGE_DAYS * 86400
+    response.set_cookie(
+        "session",
+        sign_session(ws.id),
+        max_age=max_age,
+        httponly=True,
+        secure=_cookie_secure(),
+        samesite="strict",
+        path="/",
+    )
+
+    score_row = await db.execute(
+        select(ReadinessScore)
+        .where(ReadinessScore.workspace_id == ws.id)
+        .order_by(ReadinessScore.calculated_at.desc())
+        .limit(1)
+    )
+    score = score_row.scalar_one_or_none()
+    return {"data": _ws_dict(ws, score.percentage if score else 0.0), "status": "ok"}
 
 
 @router.patch("/workspaces/{target_id}")

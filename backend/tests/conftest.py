@@ -10,6 +10,7 @@ from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.db import base as db_base
 from app.db.base import Base, get_db
 from app.main import app
 
@@ -36,6 +37,15 @@ async def client(test_engine):
         test_engine, class_=AsyncSession, expire_on_commit=False
     )
 
+    original_session_local = db_base.AsyncSessionLocal
+    db_base.AsyncSessionLocal = session_maker
+
+    # Some route modules captured AsyncSessionLocal at import time, so patch those
+    # direct references as well to keep background tasks on the test DB.
+    from app.api.routes import documents as documents_route
+    original_documents_session_local = documents_route.AsyncSessionLocal
+    documents_route.AsyncSessionLocal = session_maker
+
     async def _override_get_db():
         async with session_maker() as session:
             yield session
@@ -49,6 +59,8 @@ async def client(test_engine):
             yield ac
     finally:
         app.dependency_overrides.pop(get_db, None)
+        documents_route.AsyncSessionLocal = original_documents_session_local
+        db_base.AsyncSessionLocal = original_session_local
 
 
 @pytest.fixture
@@ -61,6 +73,19 @@ def missing_storage_settings(monkeypatch):
 import bcrypt
 
 TEST_PASSWORD = "test-password-m2"
+
+
+@pytest.fixture(autouse=True)
+def reset_interview_question_registry():
+    """Isolate tests from global interview question registry mutations."""
+    from app.engines.interview import PLATFORM_QUESTIONS, BRANCH_QUESTIONS, _QUESTION_BY_ID
+
+    canonical = {q.id: q for q in PLATFORM_QUESTIONS + BRANCH_QUESTIONS}
+    _QUESTION_BY_ID.clear()
+    _QUESTION_BY_ID.update(canonical)
+    yield
+    _QUESTION_BY_ID.clear()
+    _QUESTION_BY_ID.update(canonical)
 
 
 @pytest.fixture

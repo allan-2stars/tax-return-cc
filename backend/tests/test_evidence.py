@@ -65,7 +65,19 @@ def _make_png_bytes() -> bytes:
 
 
 def _make_pdf_bytes() -> bytes:
-    return b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\nxref\ntrailer\n<< /Root 1 0 R >>\n%%EOF"
+    return (
+        b"%PDF-1.4\n"
+        b"1 0 obj\n<</Type /Catalog /Pages 2 0 R>>\nendobj\n"
+        b"2 0 obj\n<</Type /Pages /Kids [3 0 R] /Count 1>>\nendobj\n"
+        b"3 0 obj\n<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]>>\nendobj\n"
+        b"xref\n0 4\n"
+        b"0000000000 65535 f\n"
+        b"0000000009 00000 n\n"
+        b"0000000058 00000 n\n"
+        b"0000000115 00000 n\n"
+        b"trailer\n<</Size 4 /Root 1 0 R>>\n"
+        b"startxref\n190\n%%EOF"
+    )
 
 
 def _make_csv_bytes(header: str, rows: list[str]) -> bytes:
@@ -284,7 +296,7 @@ async def test_list_documents_returns_empty_for_new_workspace(auth_client):
 @pytest.mark.asyncio
 async def test_list_documents_excludes_archived(auth_client):
     """GET /documents excludes archived documents."""
-    pdf_bytes = b"%PDF-1.4 minimal"
+    pdf_bytes = _make_pdf_bytes()
     response = await auth_client.post(
         "/api/v1/documents/upload",
         files={"file": ("test.pdf", pdf_bytes, "application/pdf")},

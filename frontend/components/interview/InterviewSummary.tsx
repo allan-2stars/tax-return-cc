@@ -8,6 +8,8 @@ interface InterviewSummaryProps {
   onEdit: () => void
 }
 
+const HIDDEN_QUESTION_IDS = new Set(['fy_confirm'])
+
 export default function InterviewSummary({ onEdit }: InterviewSummaryProps) {
   const queryClient = useQueryClient()
   const [jumping, setJumping] = useState<string | null>(null)
@@ -29,6 +31,16 @@ export default function InterviewSummary({ onEdit }: InterviewSummaryProps) {
   if (!data || data.sections.length === 0) {
     return null
   }
+
+  const visibleIncomplete = (data.incomplete_questions ?? []).filter(
+    (q) => !HIDDEN_QUESTION_IDS.has(q.question_id)
+  )
+  const visibleSections = data.sections
+    .map((section) => ({
+      ...section,
+      answers: section.answers.filter((answer) => !HIDDEN_QUESTION_IDS.has(answer.question_id)),
+    }))
+    .filter((section) => section.answers.length > 0)
 
   async function handleEdit(questionId: string) {
     if (jumping) return
@@ -56,11 +68,11 @@ export default function InterviewSummary({ onEdit }: InterviewSummaryProps) {
     <div>
       <h2 className="font-display text-xl text-text-primary mb-4">Your answers</h2>
 
-      {Array.isArray(data.incomplete_questions) && data.incomplete_questions.length > 0 && (
+      {visibleIncomplete.length > 0 && (
         <div className="mb-5 space-y-2">
           <p className="font-ui text-sm text-risk-high">Some questions still need answers.</p>
           <div className="border border-border rounded-md divide-y divide-border">
-            {data.incomplete_questions.map((q) => (
+            {visibleIncomplete.map((q) => (
               <div key={q.question_id} className="px-4 py-2 text-sm flex items-center justify-between gap-3">
                 <span className="font-ui text-text-body">{q.question_label}</span>
                 <button
@@ -77,7 +89,7 @@ export default function InterviewSummary({ onEdit }: InterviewSummaryProps) {
         </div>
       )}
 
-      {data.sections.map((section, sectionIndex) => (
+      {visibleSections.map((section, sectionIndex) => (
         <div key={section.title}>
           {sectionIndex > 0 && <div className="border-t border-border" />}
           <p className="font-ui font-semibold text-sm text-text-muted uppercase tracking-wide mb-2 mt-4">

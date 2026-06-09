@@ -91,7 +91,7 @@ test('answer value is right-aligned in a three-column grid row', async () => {
   expect(row).toHaveStyle({ display: 'grid', gridTemplateColumns: '1fr auto auto' })
 })
 
-test('does not render Edit button for non-editable answers', async () => {
+test('does not render compatibility-only Financial year answers', async () => {
   const nonEditableData = {
     sections: [{
       title: 'Your situation',
@@ -106,7 +106,34 @@ test('does not render Edit button for non-editable answers', async () => {
   }
   mockGetInterviewSummary.mockResolvedValue({ data: { data: nonEditableData } })
   wrap(<InterviewSummary onEdit={jest.fn()} />)
-  await waitFor(() => expect(screen.getByText('Financial year')).toBeInTheDocument())
+  await waitFor(() => expect(mockGetInterviewSummary).toHaveBeenCalled())
+  expect(screen.queryByText('Financial year')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /edit/i })).not.toBeInTheDocument()
+})
+
+test('does not render Financial year rows from compatibility-only summary data', async () => {
+  mockGetInterviewSummary.mockResolvedValue({
+    data: {
+      data: {
+        sections: [{
+          title: 'Your situation',
+          answers: [{
+            question_id: 'fy_confirm',
+            question_label: 'Financial year',
+            answer_value: '2023-24',
+            answer_label: '2023-24',
+            editable: true,
+          }],
+        }],
+        incomplete_questions: [],
+      },
+    },
+  })
+
+  wrap(<InterviewSummary onEdit={jest.fn()} />)
+
+  await waitFor(() => expect(mockGetInterviewSummary).toHaveBeenCalled())
+  expect(screen.queryByText(/financial year/i)).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /edit/i })).not.toBeInTheDocument()
 })
 

@@ -115,6 +115,8 @@ def _compute_incomplete_required_questions(session: InterviewSession | None) -> 
     for qid in skipped_ids:
         if not qid:
             continue
+        if str(qid) == "fy_confirm":
+            continue
         q = _QUESTION_BY_ID.get(str(qid))
         if q is None:
             continue

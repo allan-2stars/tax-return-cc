@@ -32,7 +32,6 @@ async def test_complete_user_journey(auth_client, test_engine):
     assert start.json()["data"]["state"] == "in_progress"
 
     for qid, answer in [
-        ("fy_confirm", "2024-25"),
         ("residency", "resident"),
         ("employment_type", "employee"),
         ("has_spouse", "no"),
