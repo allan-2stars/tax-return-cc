@@ -2,7 +2,15 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.models import Document, EvidenceMatch, EvidenceObligation, TaxEvent, TaxProfile, Workspace
+from app.db.models import (
+    Document,
+    EvidenceMatch,
+    EvidenceMatchDecisionHistory,
+    EvidenceObligation,
+    TaxEvent,
+    TaxProfile,
+    Workspace,
+)
 from app.services.evidence_rules import CURRENT_EVIDENCE_RULE_VERSION
 
 
@@ -218,6 +226,20 @@ async def test_patch_match_accept_updates_status_and_obligation(auth_client, tes
     assert body["obligation"]["status"] == "matched"
     assert body["obligation"]["id"] == obligation_id
 
+    async with maker() as session:
+        result = await session.execute(
+            select(EvidenceMatchDecisionHistory).where(
+                EvidenceMatchDecisionHistory.evidence_match_id == match_id
+            )
+        )
+        history = result.scalars().all()
+        assert len(history) == 1
+        assert history[0].workspace_id == auth_client.workspace_id
+        assert history[0].action == "accepted"
+        assert history[0].actor == "user"
+        assert history[0].previous_status == "candidate"
+        assert history[0].new_status == "accepted"
+
 
 @pytest.mark.asyncio
 async def test_patch_match_reject_updates_status_and_obligation(auth_client, test_engine):
@@ -256,6 +278,61 @@ async def test_patch_match_reject_updates_status_and_obligation(auth_client, tes
     assert body["match"]["status"] == "rejected"
     assert body["obligation"]["status"] == "missing"
 
+    async with maker() as session:
+        result = await session.execute(
+            select(EvidenceMatchDecisionHistory).where(
+                EvidenceMatchDecisionHistory.evidence_match_id == match_id
+            )
+        )
+        history = result.scalars().all()
+        assert len(history) == 1
+        assert history[0].action == "rejected"
+        assert history[0].previous_status == "candidate"
+        assert history[0].new_status == "rejected"
+
+
+@pytest.mark.asyncio
+async def test_patch_match_same_status_does_not_duplicate_history(auth_client, test_engine):
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        obligation = EvidenceObligation(
+            workspace_id=auth_client.workspace_id,
+            financial_year="2024-25",
+            source_type="profile",
+            obligation_key="private_health_annual_statement",
+            category="private_health",
+            label="PHI Statement",
+            required_level="required",
+            status="matched",
+        )
+        session.add(obligation)
+        await session.flush()
+        match = EvidenceMatch(
+            workspace_id=auth_client.workspace_id,
+            obligation_id=obligation.id,
+            match_type="document",
+            status="accepted",
+            confidence=0.8,
+            reason="Accepted already",
+        )
+        session.add(match)
+        await session.commit()
+        match_id = match.id
+
+    response = await auth_client.patch(
+        f"/api/v1/evidence/matches/{match_id}",
+        json={"status": "accepted"},
+    )
+    assert response.status_code == 200
+
+    async with maker() as session:
+        result = await session.execute(
+            select(EvidenceMatchDecisionHistory).where(
+                EvidenceMatchDecisionHistory.evidence_match_id == match_id
+            )
+        )
+        assert result.scalars().all() == []
+
 
 @pytest.mark.asyncio
 async def test_patch_match_scopes_workspace(auth_client, test_engine):
@@ -291,6 +368,14 @@ async def test_patch_match_scopes_workspace(auth_client, test_engine):
         json={"status": "accepted"},
     )
     assert response.status_code == 404
+
+    async with maker() as session:
+        result = await session.execute(
+            select(EvidenceMatchDecisionHistory).where(
+                EvidenceMatchDecisionHistory.evidence_match_id == match_id
+            )
+        )
+        assert result.scalars().all() == []
 
 
 @pytest.mark.asyncio
@@ -499,3 +584,376 @@ async def test_route_trigger_reconcile_debounces_within_window(auth_client, test
         assert meta.get("last_trigger_source") == "event_update"
         assert meta.get("skip_reason") == "debounce_window"
         assert meta.get("skipped") is True
+
+
+@pytest.mark.asyncio
+async def test_list_obligations_includes_match_decision_history(auth_client, test_engine):
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        obligation = EvidenceObligation(
+            workspace_id=auth_client.workspace_id,
+            financial_year="2024-25",
+            source_type="profile",
+            obligation_key="private_health_annual_statement",
+            category="private_health",
+            label="PHI Statement",
+            required_level="required",
+            status="matched",
+        )
+        session.add(obligation)
+        await session.flush()
+
+        match = EvidenceMatch(
+            workspace_id=auth_client.workspace_id,
+            obligation_id=obligation.id,
+            match_type="document",
+            status="accepted",
+            confidence=0.9,
+            reason="Accepted match",
+        )
+        session.add(match)
+        await session.flush()
+
+        session.add(
+            EvidenceMatchDecisionHistory(
+                workspace_id=auth_client.workspace_id,
+                evidence_match_id=match.id,
+                evidence_obligation_id=obligation.id,
+                action="accepted",
+                actor="user",
+                previous_status="candidate",
+                new_status="accepted",
+                note="Looks correct",
+            )
+        )
+        await session.commit()
+
+    response = await auth_client.get("/api/v1/evidence/obligations")
+    assert response.status_code == 200
+    obligations = response.json()["data"]["obligations"]
+    target = next(o for o in obligations if o["obligation_key"] == "private_health_annual_statement")
+    match = target["matches"][0]
+    assert "decision_history" in match
+    assert len(match["decision_history"]) == 1
+    history = match["decision_history"][0]
+    assert history["action"] == "accepted"
+    assert history["actor"] == "user"
+    assert history["previous_status"] == "candidate"
+    assert history["new_status"] == "accepted"
+    assert history["note"] == "Looks correct"
+
+
+@pytest.mark.asyncio
+async def test_undo_match_accept_restores_candidate_and_writes_history(auth_client, test_engine):
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        obligation = EvidenceObligation(
+            workspace_id=auth_client.workspace_id,
+            financial_year="2024-25",
+            source_type="profile",
+            obligation_key="private_health_annual_statement",
+            category="private_health",
+            label="PHI Statement",
+            required_level="required",
+            status="matched",
+        )
+        session.add(obligation)
+        await session.flush()
+        match = EvidenceMatch(
+            workspace_id=auth_client.workspace_id,
+            obligation_id=obligation.id,
+            match_type="document",
+            status="accepted",
+            confidence=0.8,
+            reason="Accepted match",
+        )
+        session.add(match)
+        await session.flush()
+        accepted_history = EvidenceMatchDecisionHistory(
+            workspace_id=auth_client.workspace_id,
+            evidence_match_id=match.id,
+            evidence_obligation_id=obligation.id,
+            action="accepted",
+            actor="user",
+            previous_status="candidate",
+            new_status="accepted",
+        )
+        session.add(accepted_history)
+        await session.commit()
+        match_id = match.id
+        obligation_id = obligation.id
+
+    response = await auth_client.post(f"/api/v1/evidence/matches/{match_id}/undo")
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["match"]["status"] == "candidate"
+    assert body["obligation"]["status"] == "partially_matched"
+    assert body["obligation"]["id"] == obligation_id
+
+    async with maker() as session:
+        match = await session.scalar(select(EvidenceMatch).where(EvidenceMatch.id == match_id))
+        assert match.status == "candidate"
+        histories = (
+            await session.execute(
+                select(EvidenceMatchDecisionHistory)
+                .where(EvidenceMatchDecisionHistory.evidence_match_id == match_id)
+                .order_by(EvidenceMatchDecisionHistory.created_at.asc())
+            )
+        ).scalars().all()
+        assert len(histories) == 2
+        assert histories[-1].action == "undo"
+        assert histories[-1].previous_status == "accepted"
+        assert histories[-1].new_status == "candidate"
+        assert histories[-1].actor == "user"
+        assert histories[-1].note == f"Undo history {histories[0].id}"
+
+
+@pytest.mark.asyncio
+async def test_undo_match_reject_restores_candidate_and_obligation_status(auth_client, test_engine):
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        obligation = EvidenceObligation(
+            workspace_id=auth_client.workspace_id,
+            financial_year="2024-25",
+            source_type="profile",
+            obligation_key="private_health_annual_statement",
+            category="private_health",
+            label="PHI Statement",
+            required_level="required",
+            status="missing",
+        )
+        session.add(obligation)
+        await session.flush()
+        match = EvidenceMatch(
+            workspace_id=auth_client.workspace_id,
+            obligation_id=obligation.id,
+            match_type="document",
+            status="rejected",
+            confidence=0.7,
+            reason="Rejected match",
+        )
+        session.add(match)
+        await session.flush()
+        session.add(
+            EvidenceMatchDecisionHistory(
+                workspace_id=auth_client.workspace_id,
+                evidence_match_id=match.id,
+                evidence_obligation_id=obligation.id,
+                action="rejected",
+                actor="user",
+                previous_status="candidate",
+                new_status="rejected",
+            )
+        )
+        await session.commit()
+        match_id = match.id
+
+    response = await auth_client.post(f"/api/v1/evidence/matches/{match_id}/undo")
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["match"]["status"] == "candidate"
+    assert body["obligation"]["status"] == "partially_matched"
+
+
+@pytest.mark.asyncio
+async def test_undo_match_recalculates_obligation_status_with_other_accepted_match(auth_client, test_engine):
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        obligation = EvidenceObligation(
+            workspace_id=auth_client.workspace_id,
+            financial_year="2024-25",
+            source_type="profile",
+            obligation_key="bank_interest_statement",
+            category="bank_interest",
+            label="Bank Interest Statement",
+            required_level="recommended",
+            status="matched",
+        )
+        session.add(obligation)
+        await session.flush()
+        accepted_match = EvidenceMatch(
+            workspace_id=auth_client.workspace_id,
+            obligation_id=obligation.id,
+            match_type="document",
+            status="accepted",
+            confidence=0.9,
+            reason="Accepted match",
+        )
+        undoable_match = EvidenceMatch(
+            workspace_id=auth_client.workspace_id,
+            obligation_id=obligation.id,
+            match_type="document",
+            status="accepted",
+            confidence=0.85,
+            reason="Accepted match",
+        )
+        session.add_all([accepted_match, undoable_match])
+        await session.flush()
+        session.add_all(
+            [
+                EvidenceMatchDecisionHistory(
+                    workspace_id=auth_client.workspace_id,
+                    evidence_match_id=accepted_match.id,
+                    evidence_obligation_id=obligation.id,
+                    action="accepted",
+                    actor="user",
+                    previous_status="candidate",
+                    new_status="accepted",
+                ),
+                EvidenceMatchDecisionHistory(
+                    workspace_id=auth_client.workspace_id,
+                    evidence_match_id=undoable_match.id,
+                    evidence_obligation_id=obligation.id,
+                    action="accepted",
+                    actor="user",
+                    previous_status="candidate",
+                    new_status="accepted",
+                ),
+            ]
+        )
+        await session.commit()
+        match_id = undoable_match.id
+
+    response = await auth_client.post(f"/api/v1/evidence/matches/{match_id}/undo")
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["match"]["status"] == "candidate"
+    assert body["obligation"]["status"] == "matched"
+
+
+@pytest.mark.asyncio
+async def test_undo_match_cannot_undo_candidate(auth_client, test_engine):
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        obligation = EvidenceObligation(
+            workspace_id=auth_client.workspace_id,
+            financial_year="2024-25",
+            source_type="profile",
+            obligation_key="bank_interest_statement",
+            category="bank_interest",
+            label="Bank Interest Statement",
+            required_level="recommended",
+            status="partially_matched",
+        )
+        session.add(obligation)
+        await session.flush()
+        match = EvidenceMatch(
+            workspace_id=auth_client.workspace_id,
+            obligation_id=obligation.id,
+            match_type="document",
+            status="candidate",
+            confidence=0.7,
+            reason="Possible match",
+        )
+        session.add(match)
+        await session.commit()
+        match_id = match.id
+
+    response = await auth_client.post(f"/api/v1/evidence/matches/{match_id}/undo")
+    assert response.status_code == 422
+    body = response.json()
+    assert body["detail"]["error_code"] == "undo_not_available"
+
+
+@pytest.mark.asyncio
+async def test_undo_match_scopes_workspace(auth_client, test_engine):
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        other = Workspace(name="Other WS", financial_year="2024-25", status="active")
+        session.add(other)
+        await session.flush()
+        obligation = EvidenceObligation(
+            workspace_id=other.id,
+            financial_year="2024-25",
+            source_type="profile",
+            obligation_key="bank_interest_statement",
+            category="bank_interest",
+            label="Bank Interest Statement",
+            required_level="recommended",
+            status="matched",
+        )
+        session.add(obligation)
+        await session.flush()
+        match = EvidenceMatch(
+            workspace_id=other.id,
+            obligation_id=obligation.id,
+            match_type="document",
+            status="accepted",
+            confidence=0.7,
+            reason="Accepted match",
+        )
+        session.add(match)
+        await session.flush()
+        session.add(
+            EvidenceMatchDecisionHistory(
+                workspace_id=other.id,
+                evidence_match_id=match.id,
+                evidence_obligation_id=obligation.id,
+                action="accepted",
+                actor="user",
+                previous_status="candidate",
+                new_status="accepted",
+            )
+        )
+        await session.commit()
+        match_id = match.id
+
+    response = await auth_client.post(f"/api/v1/evidence/matches/{match_id}/undo")
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_undo_match_requires_latest_history_to_be_undoable(auth_client, test_engine):
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        obligation = EvidenceObligation(
+            workspace_id=auth_client.workspace_id,
+            financial_year="2024-25",
+            source_type="profile",
+            obligation_key="bank_interest_statement",
+            category="bank_interest",
+            label="Bank Interest Statement",
+            required_level="recommended",
+            status="matched",
+        )
+        session.add(obligation)
+        await session.flush()
+        match = EvidenceMatch(
+            workspace_id=auth_client.workspace_id,
+            obligation_id=obligation.id,
+            match_type="document",
+            status="accepted",
+            confidence=0.7,
+            reason="Accepted match",
+        )
+        session.add(match)
+        await session.flush()
+        session.add_all(
+            [
+                EvidenceMatchDecisionHistory(
+                    workspace_id=auth_client.workspace_id,
+                    evidence_match_id=match.id,
+                    evidence_obligation_id=obligation.id,
+                    action="accepted",
+                    actor="user",
+                    previous_status="candidate",
+                    new_status="accepted",
+                ),
+                EvidenceMatchDecisionHistory(
+                    workspace_id=auth_client.workspace_id,
+                    evidence_match_id=match.id,
+                    evidence_obligation_id=obligation.id,
+                    action="undo",
+                    actor="user",
+                    previous_status="accepted",
+                    new_status="candidate",
+                ),
+            ]
+        )
+        await session.commit()
+        match_id = match.id
+
+    response = await auth_client.post(f"/api/v1/evidence/matches/{match_id}/undo")
+    assert response.status_code == 422
+    body = response.json()
+    assert body["detail"]["error_code"] == "undo_not_available"

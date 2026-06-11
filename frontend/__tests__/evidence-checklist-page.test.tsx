@@ -6,10 +6,11 @@ jest.mock('@/lib/api/evidence', () => ({
   getEvidenceObligations: jest.fn(),
   reconcileEvidence: jest.fn(),
   updateEvidenceMatch: jest.fn(),
+  undoEvidenceMatch: jest.fn(),
   __esModule: true,
 }))
 
-import { getEvidenceObligations, reconcileEvidence, updateEvidenceMatch } from '@/lib/api/evidence'
+import { getEvidenceObligations, reconcileEvidence, undoEvidenceMatch, updateEvidenceMatch } from '@/lib/api/evidence'
 
 function wrap(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -40,6 +41,7 @@ const candidatePayload = [
         status: 'candidate',
         confidence: 0.8,
         reason: 'Possible',
+        decision_history: [],
         document: {
           id: 'd1',
           original_filename: 'bank-july.pdf',
@@ -56,7 +58,26 @@ const acceptedPayload = [
   {
     ...candidatePayload[0],
     status: 'matched',
-    matches: [{ ...candidatePayload[0].matches[0], status: 'accepted' }],
+    matches: [
+      {
+        ...candidatePayload[0].matches[0],
+        status: 'accepted',
+        decision_history: [
+          {
+            id: 'h1',
+            workspace_id: 'ws1',
+            evidence_match_id: 'm1',
+            evidence_obligation_id: 'o1',
+            action: 'accepted',
+            actor: 'user',
+            previous_status: 'candidate',
+            new_status: 'accepted',
+            note: null,
+            created_at: '2026-06-10T09:30:00+00:00',
+          },
+        ],
+      },
+    ],
   },
 ]
 
@@ -64,7 +85,26 @@ const rejectedPayload = [
   {
     ...candidatePayload[0],
     status: 'missing',
-    matches: [{ ...candidatePayload[0].matches[0], status: 'rejected' }],
+    matches: [
+      {
+        ...candidatePayload[0].matches[0],
+        status: 'rejected',
+        decision_history: [
+          {
+            id: 'h2',
+            workspace_id: 'ws1',
+            evidence_match_id: 'm1',
+            evidence_obligation_id: 'o1',
+            action: 'rejected',
+            actor: 'user',
+            previous_status: 'candidate',
+            new_status: 'rejected',
+            note: null,
+            created_at: '2026-06-10T09:31:00+00:00',
+          },
+        ],
+      },
+    ],
   },
 ]
 
@@ -109,6 +149,30 @@ describe('EvidenceChecklistPage decisions', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/unable to update evidence match/i)
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /accept match/i })).toBeInTheDocument()
+  })
+
+  it('undo button calls API, refetches, and shows success message', async () => {
+    ;(getEvidenceObligations as jest.Mock)
+      .mockResolvedValueOnce({ data: { data: { obligations: acceptedPayload } } })
+      .mockResolvedValueOnce({ data: { data: { obligations: candidatePayload } } })
+    ;(undoEvidenceMatch as jest.Mock).mockResolvedValue({ data: { data: {} } })
+
+    wrap(<EvidenceChecklistPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /undo last match decision/i }))
+
+    await waitFor(() => expect(undoEvidenceMatch).toHaveBeenCalledWith('m1'))
+    expect(await screen.findByText(/evidence match decision undone/i)).toBeInTheDocument()
+    expect(await screen.findByText(/Possible match found:/i)).toBeInTheDocument()
+  })
+
+  it('undo failure shows clear error', async () => {
+    ;(getEvidenceObligations as jest.Mock).mockResolvedValue({ data: { data: { obligations: acceptedPayload } } })
+    ;(undoEvidenceMatch as jest.Mock).mockRejectedValue(new Error('network'))
+
+    wrap(<EvidenceChecklistPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /undo last match decision/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/unable to undo evidence match decision/i)
   })
 
   it.each([

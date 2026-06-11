@@ -67,6 +67,7 @@ const obligations: EvidenceObligation[] = [
         status: 'candidate',
         confidence: 0.8,
         reason: 'Document type indicates bank-interest supporting statement.',
+        decision_history: [],
         document: {
           id: 'd1',
           original_filename: 'bank-july.pdf',
@@ -113,6 +114,20 @@ const obligations: EvidenceObligation[] = [
         status: 'accepted',
         confidence: 0.95,
         reason: 'Accepted by reviewer.',
+        decision_history: [
+          {
+            id: 'h1',
+            workspace_id: 'ws1',
+            evidence_match_id: 'm2',
+            evidence_obligation_id: 'o3',
+            action: 'accepted',
+            actor: 'user',
+            previous_status: 'candidate',
+            new_status: 'accepted',
+            note: 'Reviewed and accepted.',
+            created_at: '2026-06-10T09:30:00+00:00',
+          },
+        ],
         document: null,
         tax_event: {
           id: 'e1',
@@ -181,11 +196,86 @@ describe('EvidenceChecklist', () => {
             ...obligations[1].matches[0],
             id: 'm3',
             status: 'rejected',
+            decision_history: [
+              {
+                id: 'h2',
+                workspace_id: 'ws1',
+                evidence_match_id: 'm3',
+                evidence_obligation_id: 'o4',
+                action: 'rejected',
+                actor: 'user',
+                previous_status: 'candidate',
+                new_status: 'rejected',
+                note: null,
+                created_at: '2026-06-10T09:35:00+00:00',
+              },
+            ],
           },
         ],
       },
     ]
     render(<EvidenceChecklist obligations={rejected} />)
     expect(screen.getByText(/Rejected match:/i)).toBeInTheDocument()
+  })
+
+  it('renders undo button for accepted and rejected matches only', () => {
+    const onUndoMatch = jest.fn()
+    const rejected: EvidenceObligation[] = [
+      {
+        ...obligations[1],
+        id: 'o4',
+        matches: [
+          {
+            ...obligations[1].matches[0],
+            id: 'm3',
+            status: 'rejected',
+            decision_history: [
+              {
+                id: 'h2',
+                workspace_id: 'ws1',
+                evidence_match_id: 'm3',
+                evidence_obligation_id: 'o4',
+                action: 'rejected',
+                actor: 'user',
+                previous_status: 'candidate',
+                new_status: 'rejected',
+                note: null,
+                created_at: '2026-06-10T09:35:00+00:00',
+              },
+            ],
+          },
+        ],
+      },
+    ]
+    const { rerender } = render(<EvidenceChecklist obligations={obligations} onUndoMatch={onUndoMatch} />)
+    expect(screen.getByRole('button', { name: /undo last match decision/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /undo last match decision/i, hidden: false })).toBeInTheDocument()
+
+    rerender(<EvidenceChecklist obligations={rejected} onUndoMatch={onUndoMatch} />)
+    expect(screen.getByRole('button', { name: /undo last match decision/i })).toBeInTheDocument()
+
+    rerender(<EvidenceChecklist obligations={[obligations[1]]} onUndoMatch={onUndoMatch} />)
+    expect(screen.queryByRole('button', { name: /undo last match decision/i })).not.toBeInTheDocument()
+  })
+
+  it('calls undo callback when clicked', () => {
+    const onUndoMatch = jest.fn()
+    render(<EvidenceChecklist obligations={obligations} onUndoMatch={onUndoMatch} />)
+    fireEvent.click(screen.getByRole('button', { name: /undo last match decision/i }))
+    expect(onUndoMatch).toHaveBeenCalledWith('m2')
+  })
+
+  it('renders empty match history state when expanded', () => {
+    render(<EvidenceChecklist obligations={obligations} />)
+    fireEvent.click(screen.getByRole('button', { name: /match history for bank-july\.pdf/i }))
+    expect(screen.getByText(/no match history yet/i)).toBeInTheDocument()
+  })
+
+  it('renders match history entries when expanded', () => {
+    render(<EvidenceChecklist obligations={obligations} />)
+    fireEvent.click(screen.getByRole('button', { name: /match history for work_expense/i }))
+    expect(screen.getByText(/^accepted · user$/i)).toBeInTheDocument()
+    expect(screen.getByText(/candidate → accepted/i)).toBeInTheDocument()
+    expect(screen.getByText(/reviewed and accepted\./i)).toBeInTheDocument()
   })
 })

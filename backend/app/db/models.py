@@ -377,3 +377,18 @@ class EvidenceMatch(Base):
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class EvidenceMatchDecisionHistory(Base):
+    __tablename__ = "evidence_match_decision_history"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(String(36), ForeignKey("workspaces.id"), index=True)
+    evidence_match_id: Mapped[str] = mapped_column(String(36), ForeignKey("evidence_matches.id"), index=True)
+    evidence_obligation_id: Mapped[str] = mapped_column(String(36), ForeignKey("evidence_obligations.id"), index=True)
+    action: Mapped[str] = mapped_column(String(30))
+    actor: Mapped[str] = mapped_column(String(20), default="user")
+    previous_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    new_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

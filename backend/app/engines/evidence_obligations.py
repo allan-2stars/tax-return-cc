@@ -62,6 +62,55 @@ def _event_type(event: TaxEvent) -> str:
     return (event.event_type or "").strip().lower()
 
 
+def _event_metadata(event: TaxEvent) -> dict:
+    raw = event.event_metadata or {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _metadata_str(event: TaxEvent, *keys: str) -> str:
+    metadata = _event_metadata(event)
+    for key in keys:
+        value = metadata.get(key)
+        if value is not None:
+            return str(value).strip().lower()
+    return ""
+
+
+def _metadata_number(event: TaxEvent, *keys: str) -> float:
+    metadata = _event_metadata(event)
+    for key in keys:
+        value = metadata.get(key)
+        if value in {None, ""}:
+            continue
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            continue
+    return 0.0
+
+
+def _is_share_disposal(event: TaxEvent) -> bool:
+    if _event_category(event) not in {"capital_gain", "capital_loss"}:
+        return False
+    return _metadata_str(event, "investment_sub_type", "asset_class") == "shares"
+
+
+def _is_crypto_disposal(event: TaxEvent) -> bool:
+    if _event_category(event) not in {"capital_gain", "capital_loss"}:
+        return False
+    return _metadata_str(event, "investment_sub_type", "asset_class") == "crypto"
+
+
+def _is_crypto_staking_event(event: TaxEvent) -> bool:
+    if _event_category(event) == "crypto_staking_income":
+        return True
+    if _metadata_str(event, "investment_sub_type") != "crypto":
+        return False
+    if _metadata_str(event, "transaction_type") == "staking":
+        return True
+    return _metadata_number(event, "staking_income") > 0
+
+
 def _candidate_identity(match_type: str, document_id: str | None, tax_event_id: str | None) -> tuple[str, str | None, str | None]:
     return (match_type, document_id, tax_event_id)
 
@@ -283,6 +332,152 @@ async def reconcile_evidence_obligations(
                 required_level="recommended",
                 source_type="tax_event",
                 reason="Bank interest events are present.",
+            )
+        )
+    if any(_event_category(e) == "managed_fund_distribution" for e in events):
+        rules.append(
+            _new_rule(
+                obligation_key="managed_fund_annual_tax_statement",
+                category="managed_fund",
+                label="Managed Fund Annual Tax Statement",
+                description="Annual managed fund tax statement required to support reported distribution.",
+                required_level="required",
+                source_type="tax_event",
+                reason="Managed fund distribution events are present.",
+            )
+        )
+    if any(
+        _event_category(e) == "managed_fund_distribution"
+        and _metadata_number(e, "capital_gains_component") > 0
+        for e in events
+    ):
+        rules.append(
+            _new_rule(
+                obligation_key="managed_fund_capital_gains_schedule",
+                category="managed_fund",
+                label="Managed Fund Capital Gains Schedule",
+                description="Managed fund capital gains schedule required to support reported capital gains component.",
+                required_level="required",
+                source_type="tax_event",
+                reason="Managed fund distribution includes a capital gains component.",
+            )
+        )
+    if any(
+        _event_category(e) == "managed_fund_distribution"
+        and _metadata_number(e, "foreign_income_component") > 0
+        for e in events
+    ):
+        rules.append(
+            _new_rule(
+                obligation_key="managed_fund_foreign_income_support",
+                category="managed_fund",
+                label="Managed Fund Foreign Income Support",
+                description="Managed fund foreign income support required to validate reported foreign income component.",
+                required_level="required",
+                source_type="tax_event",
+                reason="Managed fund distribution includes a foreign income component.",
+            )
+        )
+    if any(_event_category(e) == "shares_acquisition" for e in events):
+        rules.append(
+            _new_rule(
+                obligation_key="share_buy_contract_note",
+                category="shares",
+                label="Share Buy Contract Note",
+                description="Broker contract note required to support recorded share acquisition.",
+                required_level="required",
+                source_type="tax_event",
+                reason="Share acquisition events are present.",
+            )
+        )
+    if any(_event_category(e) == "dividend" for e in events):
+        rules.append(
+            _new_rule(
+                obligation_key="share_dividend_statement",
+                category="shares",
+                label="Share Dividend Statement",
+                description="Dividend statement required to support reported dividend income.",
+                required_level="required",
+                source_type="tax_event",
+                reason="Dividend events are present.",
+            )
+        )
+    if any(_is_share_disposal(e) for e in events):
+        rules.append(
+            _new_rule(
+                obligation_key="share_sell_contract_note",
+                category="shares",
+                label="Share Sell Contract Note",
+                description="Broker contract note required to support recorded share disposal.",
+                required_level="required",
+                source_type="tax_event",
+                reason="Share capital gain or loss events are present.",
+            )
+        )
+    if any(
+        _event_category(e) in {"shares_acquisition", "dividend"} or _is_share_disposal(e)
+        for e in events
+    ):
+        rules.append(
+            _new_rule(
+                obligation_key="share_annual_broker_summary",
+                category="shares",
+                label="Share Annual Broker Summary",
+                description="Annual broker summary can help validate share transactions across the financial year.",
+                required_level="recommended",
+                source_type="tax_event",
+                reason="Share-related events are present.",
+            )
+        )
+    if any(_event_category(e) == "crypto_acquisition" for e in events):
+        rules.append(
+            _new_rule(
+                obligation_key="crypto_exchange_transaction_export",
+                category="crypto",
+                label="Crypto Exchange Transaction Export",
+                description="Exchange transaction export required to support recorded crypto acquisition activity.",
+                required_level="required",
+                source_type="tax_event",
+                reason="Crypto acquisition events are present.",
+            )
+        )
+    if any(_is_crypto_disposal(e) for e in events):
+        rules.append(
+            _new_rule(
+                obligation_key="crypto_disposal_supporting_records",
+                category="crypto",
+                label="Crypto Disposal Supporting Records",
+                description="Supporting records required to validate recorded crypto disposals and capital outcomes.",
+                required_level="required",
+                source_type="tax_event",
+                reason="Crypto capital gain or loss events are present.",
+            )
+        )
+    if any(_is_crypto_staking_event(e) for e in events):
+        rules.append(
+            _new_rule(
+                obligation_key="crypto_staking_income_statement",
+                category="crypto",
+                label="Crypto Staking Income Statement",
+                description="Staking income statement required to support reported crypto staking income.",
+                required_level="required",
+                source_type="tax_event",
+                reason="Crypto staking income activity is present.",
+            )
+        )
+    if any(
+        _event_category(e) == "crypto_acquisition" or _is_crypto_disposal(e) or _is_crypto_staking_event(e)
+        for e in events
+    ):
+        rules.append(
+            _new_rule(
+                obligation_key="crypto_wallet_activity_export",
+                category="crypto",
+                label="Crypto Wallet Activity Export",
+                description="Wallet activity export can help validate crypto transactions across the financial year.",
+                required_level="recommended",
+                source_type="tax_event",
+                reason="Crypto-related events are present.",
             )
         )
 

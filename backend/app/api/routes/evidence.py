@@ -8,6 +8,7 @@ from app.api.dependencies import require_auth
 from app.db.base import get_db
 from app.db.models import Document, EvidenceMatch, EvidenceObligation, TaxEvent, TaxProfile, Workspace
 from app.errors import error_response
+from app.repositories import evidence as evidence_repo
 from app.services.evidence_freshness import build_evidence_freshness
 from app.services.evidence_reconcile import EvidenceReconcileService
 from app.services.explanations import build_evidence_obligation_explanation
@@ -21,11 +22,38 @@ class MatchDecisionRequest(BaseModel):
     status: str
 
 
+async def _refresh_obligation_status(
+    db: AsyncSession,
+    *,
+    workspace_id: str,
+    obligation: EvidenceObligation,
+) -> EvidenceObligation:
+    all_matches = (
+        await db.execute(
+            select(EvidenceMatch).where(
+                EvidenceMatch.workspace_id == workspace_id,
+                EvidenceMatch.obligation_id == obligation.id,
+            )
+        )
+    ).scalars().all()
+
+    has_accepted = any(m.status == "accepted" for m in all_matches)
+    has_candidate = any(m.status == "candidate" for m in all_matches)
+    if has_accepted:
+        obligation.status = "matched"
+    elif has_candidate:
+        obligation.status = "partially_matched"
+    else:
+        obligation.status = "missing"
+    return obligation
+
+
 def _to_dict(
     obligation: EvidenceObligation,
     matches: list[EvidenceMatch],
     doc_map: dict[str, Document],
     event_map: dict[str, TaxEvent],
+    history_by_match: dict[str, list],
 ) -> dict:
     match_items: list[dict] = []
     for match in matches:
@@ -38,6 +66,21 @@ def _to_dict(
                 "status": match.status,
                 "confidence": match.confidence,
                 "reason": match.reason,
+                "decision_history": [
+                    {
+                        "id": history.id,
+                        "workspace_id": history.workspace_id,
+                        "evidence_match_id": history.evidence_match_id,
+                        "evidence_obligation_id": history.evidence_obligation_id,
+                        "action": history.action,
+                        "actor": history.actor,
+                        "previous_status": history.previous_status,
+                        "new_status": history.new_status,
+                        "note": history.note,
+                        "created_at": history.created_at.isoformat() if history.created_at else None,
+                    }
+                    for history in history_by_match.get(match.id, [])
+                ],
                 "document": (
                     {
                         "id": doc.id,
@@ -181,6 +224,7 @@ async def list_obligations(
     matches_by_obligation: dict[str, list[EvidenceMatch]] = {}
     for match in matches:
         matches_by_obligation.setdefault(match.obligation_id, []).append(match)
+    history_by_match = await evidence_repo.get_history_by_match_ids(db, [match.id for match in matches])
 
     doc_ids = sorted({m.document_id for m in matches if m.document_id})
     event_ids = sorted({m.tax_event_id for m in matches if m.tax_event_id})
@@ -219,6 +263,7 @@ async def list_obligations(
                     matches_by_obligation.get(o.id, []),
                     doc_map,
                     event_map,
+                    history_by_match,
                 )
                 for o in obligations
             ],
@@ -272,26 +317,117 @@ async def decide_match(
             detail=error_response("match_not_found", "Evidence match not found.", retryable=False),
         )
 
+    previous_status = match.status
+    if previous_status != status:
+        await evidence_repo.create_match_history(
+            db,
+            workspace_id=workspace_id,
+            evidence_match_id=match.id,
+            evidence_obligation_id=obligation.id,
+            action=status,
+            actor="user",
+            previous_status=previous_status,
+            new_status=status,
+        )
     match.status = status
     await db.flush()
+    await _refresh_obligation_status(db, workspace_id=workspace_id, obligation=obligation)
 
-    all_matches = (
-        await db.execute(
-            select(EvidenceMatch).where(
-                EvidenceMatch.workspace_id == workspace_id,
-                EvidenceMatch.obligation_id == obligation.id,
-            )
+    await db.commit()
+    await db.refresh(match)
+    await db.refresh(obligation)
+
+    return {
+        "data": {
+            "match": {
+                "id": match.id,
+                "status": match.status,
+            },
+            "obligation": {
+                "id": obligation.id,
+                "status": obligation.status,
+            },
+        }
+    }
+
+
+@router.post("/evidence/matches/{match_id}/undo")
+async def undo_match_decision(
+    match_id: str,
+    workspace_id: str = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    financial_year = await _resolve_financial_year(workspace_id, db)
+
+    match = await db.scalar(
+        select(EvidenceMatch).where(
+            EvidenceMatch.id == match_id,
+            EvidenceMatch.workspace_id == workspace_id,
         )
-    ).scalars().all()
+    )
+    if match is None:
+        raise HTTPException(
+            status_code=404,
+            detail=error_response("match_not_found", "Evidence match not found.", retryable=False),
+        )
+    if match.status == "candidate":
+        raise HTTPException(
+            status_code=422,
+            detail=error_response(
+                "undo_not_available",
+                "Candidate evidence matches cannot be undone.",
+                retryable=False,
+            ),
+        )
 
-    has_accepted = any(m.status == "accepted" for m in all_matches)
-    has_candidate = any(m.status == "candidate" for m in all_matches)
-    if has_accepted:
-        obligation.status = "matched"
-    elif has_candidate:
-        obligation.status = "partially_matched"
-    else:
-        obligation.status = "missing"
+    obligation = await db.scalar(
+        select(EvidenceObligation).where(
+            EvidenceObligation.id == match.obligation_id,
+            EvidenceObligation.workspace_id == workspace_id,
+            EvidenceObligation.financial_year == financial_year,
+        )
+    )
+    if obligation is None:
+        raise HTTPException(
+            status_code=404,
+            detail=error_response("match_not_found", "Evidence match not found.", retryable=False),
+        )
+
+    latest_history = await evidence_repo.get_latest_history_for_match(db, match.id)
+    if latest_history is None or latest_history.action not in {"accepted", "rejected"}:
+        raise HTTPException(
+            status_code=422,
+            detail=error_response(
+                "undo_not_available",
+                "Latest evidence match decision cannot be undone.",
+                retryable=False,
+            ),
+        )
+    if latest_history.new_status != match.status:
+        raise HTTPException(
+            status_code=422,
+            detail=error_response(
+                "undo_not_available",
+                "Latest evidence match decision cannot be undone.",
+                retryable=False,
+            ),
+        )
+
+    previous_status = match.status
+    match.status = "candidate"
+    await evidence_repo.create_match_history(
+        db,
+        workspace_id=workspace_id,
+        evidence_match_id=match.id,
+        evidence_obligation_id=obligation.id,
+        action="undo",
+        actor="user",
+        previous_status=previous_status,
+        new_status="candidate",
+        note=f"Undo history {latest_history.id}",
+    )
+    await db.flush()
+    await _refresh_obligation_status(db, workspace_id=workspace_id, obligation=obligation)
 
     await db.commit()
     await db.refresh(match)

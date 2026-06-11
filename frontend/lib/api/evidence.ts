@@ -32,3 +32,8 @@ export const updateEvidenceMatch = (matchId: string, status: 'accepted' | 'rejec
     `/api/v1/evidence/matches/${matchId}`,
     { status }
   )
+
+export const undoEvidenceMatch = (matchId: string) =>
+  client.post<ApiResponse<{ match: { id: string; status: string }; obligation: { id: string; status: string } }>>(
+    `/api/v1/evidence/matches/${matchId}/undo`
+  )

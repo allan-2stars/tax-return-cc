@@ -53,16 +53,20 @@ async def _create_event(
     *,
     category: str,
     document_id: str | None = None,
+    event_type: str | None = None,
+    amount: float = 100.0,
+    metadata: dict | None = None,
 ):
     event = TaxEvent(
         workspace_id=workspace_id,
         financial_year=financial_year,
-        event_type="deduction" if "deduction" in category or "expense" in category else "income",
+        event_type=event_type or ("deduction" if "deduction" in category or "expense" in category else "income"),
         category=category,
         description=f"Test {category}",
-        amount=100.0,
+        amount=amount,
         status="needs_user_review",
         document_id=document_id,
+        event_metadata=metadata or {},
     )
     db_session.add(event)
     await db_session.commit()
@@ -485,3 +489,241 @@ async def test_reconcile_creates_wfh_obligation_from_wfh_deduction_event_without
     wfh = next((o for o in obligations if o.obligation_key == "wfh_evidence_log"), None)
     assert wfh is not None
     assert wfh.source_type == "tax_event"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_creates_managed_fund_obligations(db_session, workspace):
+    await _create_event(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        category="managed_fund_distribution",
+        event_type="investment_income",
+        amount=1600.0,
+        metadata={
+            "investment_sub_type": "managed_fund",
+            "fund_name": "Example Fund",
+            "distribution_amount": 1600.0,
+            "capital_gains_component": 450.0,
+            "foreign_income_component": 120.0,
+            "distribution_date": "2025-06-20",
+        },
+    )
+
+    obligations = await reconcile_evidence_obligations(workspace.id, workspace.financial_year, db_session)
+
+    by_key = {o.obligation_key: o for o in obligations}
+    assert {
+        "managed_fund_annual_tax_statement",
+        "managed_fund_capital_gains_schedule",
+        "managed_fund_foreign_income_support",
+    }.issubset(by_key)
+    assert by_key["managed_fund_annual_tax_statement"].required_level == "required"
+    assert by_key["managed_fund_capital_gains_schedule"].required_level == "required"
+    assert by_key["managed_fund_foreign_income_support"].required_level == "required"
+    assert all(
+        by_key[key].rule_version == CURRENT_EVIDENCE_RULE_VERSION
+        for key in {
+            "managed_fund_annual_tax_statement",
+            "managed_fund_capital_gains_schedule",
+            "managed_fund_foreign_income_support",
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_reconcile_creates_share_obligations_and_deduplicates_broker_summary(db_session, workspace):
+    await _create_event(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        category="shares_acquisition",
+        event_type="investment_position",
+        amount=5020.0,
+        metadata={
+            "investment_sub_type": "shares",
+            "transaction_type": "buy",
+            "stock_code": "ABC",
+            "units": 100,
+            "price_per_unit": 50.0,
+            "brokerage_fee": 20.0,
+            "purchase_date": "2024-09-01",
+        },
+    )
+    await _create_event(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        category="dividend",
+        event_type="investment_income",
+        amount=180.0,
+        metadata={
+            "investment_sub_type": "shares",
+            "transaction_type": "dividend",
+            "stock_code": "ABC",
+            "dividend_amount": 180.0,
+            "franking_credits": 77.0,
+            "payment_date": "2025-03-12",
+        },
+    )
+    await _create_event(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        category="capital_gain",
+        event_type="capital",
+        amount=700.0,
+        metadata={
+            "investment_sub_type": "shares",
+            "transaction_type": "sell",
+            "stock_code": "ABC",
+            "purchase_date": "2024-09-01",
+            "sale_date": "2025-04-10",
+            "purchase_price": 5020.0,
+            "sale_price": 5720.0,
+            "amount_units": 100,
+        },
+    )
+
+    obligations = await reconcile_evidence_obligations(workspace.id, workspace.financial_year, db_session)
+
+    by_key = {o.obligation_key: o for o in obligations}
+    assert {
+        "share_buy_contract_note",
+        "share_sell_contract_note",
+        "share_dividend_statement",
+        "share_annual_broker_summary",
+    }.issubset(by_key)
+    assert by_key["share_annual_broker_summary"].required_level == "recommended"
+
+    count = (
+        await db_session.execute(
+            select(EvidenceObligation).where(
+                EvidenceObligation.workspace_id == workspace.id,
+                EvidenceObligation.obligation_key == "share_annual_broker_summary",
+            )
+        )
+    ).scalars().all()
+    assert len(count) == 1
+
+
+@pytest.mark.asyncio
+async def test_reconcile_creates_share_sell_contract_from_asset_class_compatibility(db_session, workspace):
+    await _create_event(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        category="capital_loss",
+        event_type="capital",
+        amount=300.0,
+        metadata={
+            "asset_class": "shares",
+            "stock_code": "ABC",
+            "purchase_date": "2024-09-01",
+            "disposal_date": "2025-04-10",
+            "cost_base": 1200.0,
+            "capital_proceeds": 900.0,
+        },
+    )
+
+    obligations = await reconcile_evidence_obligations(workspace.id, workspace.financial_year, db_session)
+    assert any(o.obligation_key == "share_sell_contract_note" for o in obligations)
+
+
+@pytest.mark.asyncio
+async def test_reconcile_creates_crypto_obligations_and_deduplicates_wallet_export(db_session, workspace):
+    await _create_event(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        category="crypto_acquisition",
+        event_type="investment_position",
+        amount=2000.0,
+        metadata={
+            "investment_sub_type": "crypto",
+            "transaction_type": "buy",
+            "coin": "BTC",
+            "amount_units": 0.05,
+            "purchase_price": 2000.0,
+            "transaction_fee": 0.0,
+            "purchase_date": "2024-08-01",
+        },
+    )
+    await _create_event(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        category="capital_loss",
+        event_type="capital",
+        amount=300.0,
+        metadata={
+            "investment_sub_type": "crypto",
+            "transaction_type": "sell",
+            "coin": "BTC",
+            "amount_units": 0.05,
+            "purchase_price": 1200.0,
+            "sale_price": 900.0,
+            "transaction_fee": 0.0,
+            "purchase_date": "2024-08-01",
+            "sale_date": "2025-02-01",
+        },
+    )
+    await _create_event(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        category="crypto",
+        event_type="investment_income",
+        amount=80.0,
+        metadata={
+            "investment_sub_type": "crypto",
+            "transaction_type": "staking",
+            "coin": "ETH",
+            "income_amount": 80.0,
+            "staking_income": 80.0,
+            "income_date": "2025-01-15",
+        },
+    )
+
+    obligations = await reconcile_evidence_obligations(workspace.id, workspace.financial_year, db_session)
+
+    by_key = {o.obligation_key: o for o in obligations}
+    assert {
+        "crypto_exchange_transaction_export",
+        "crypto_disposal_supporting_records",
+        "crypto_staking_income_statement",
+        "crypto_wallet_activity_export",
+    }.issubset(by_key)
+    assert by_key["crypto_wallet_activity_export"].required_level == "recommended"
+
+    count = (
+        await db_session.execute(
+            select(EvidenceObligation).where(
+                EvidenceObligation.workspace_id == workspace.id,
+                EvidenceObligation.obligation_key == "crypto_wallet_activity_export",
+            )
+        )
+    ).scalars().all()
+    assert len(count) == 1
+
+
+@pytest.mark.asyncio
+async def test_reconcile_creates_crypto_disposal_obligation_from_asset_class_compatibility(db_session, workspace):
+    await _create_event(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        category="capital_gain",
+        event_type="capital",
+        amount=700.0,
+        metadata={
+            "asset_class": "crypto",
+            "coin": "BTC",
+            "purchase_date": "2024-08-01",
+            "disposal_date": "2025-02-01",
+            "cost_base": 1200.0,
+            "capital_proceeds": 1900.0,
+        },
+    )
+    obligations = await reconcile_evidence_obligations(workspace.id, workspace.financial_year, db_session)
+    assert any(o.obligation_key == "crypto_disposal_supporting_records" for o in obligations)

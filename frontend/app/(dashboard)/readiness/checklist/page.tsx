@@ -5,12 +5,13 @@ import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import EvidenceChecklist from '@/components/readiness/EvidenceChecklist'
 import EvidenceFreshnessBadge from '@/components/shared/EvidenceFreshnessBadge'
-import { getEvidenceObligations, reconcileEvidence, updateEvidenceMatch } from '@/lib/api/evidence'
+import { getEvidenceObligations, reconcileEvidence, undoEvidenceMatch, updateEvidenceMatch } from '@/lib/api/evidence'
 import { normalizeApiError } from '@/lib/api/errors'
 
 export default function EvidenceChecklistPage() {
   const queryClient = useQueryClient()
   const [decisionError, setDecisionError] = useState<string | null>(null)
+  const [decisionMessage, setDecisionMessage] = useState<string | null>(null)
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null)
   const { data, isLoading, isError, dataUpdatedAt } = useQuery({
     queryKey: ['evidence', 'obligations'],
@@ -35,10 +36,24 @@ export default function EvidenceChecklistPage() {
       updateEvidenceMatch(matchId, status),
     onSuccess: async () => {
       setDecisionError(null)
+      setDecisionMessage(null)
       await queryClient.invalidateQueries({ queryKey: ['evidence', 'obligations'] })
     },
     onError: (err: unknown) => {
+      setDecisionMessage(null)
       setDecisionError(normalizeApiError(err, 'Unable to update evidence match. Try again.').message)
+    },
+  })
+  const undoMatch = useMutation({
+    mutationFn: (matchId: string) => undoEvidenceMatch(matchId),
+    onSuccess: async () => {
+      setDecisionError(null)
+      setDecisionMessage('Evidence match decision undone.')
+      await queryClient.invalidateQueries({ queryKey: ['evidence', 'obligations'] })
+    },
+    onError: (err: unknown) => {
+      setDecisionMessage(null)
+      setDecisionError(normalizeApiError(err, 'Unable to undo evidence match decision. Try again.').message)
     },
   })
 
@@ -92,14 +107,20 @@ export default function EvidenceChecklistPage() {
           )}
         </div>
       )}
+      {decisionMessage && (
+        <p className="rounded-md border border-ready bg-ready-bg p-3 text-sm font-ui text-ready">
+          {decisionMessage}
+        </p>
+      )}
 
       {isLoading && <p className="text-sm font-ui text-text-muted">Loading checklist…</p>}
       {isError && <p className="text-sm font-ui text-risk-high">Unable to load checklist.</p>}
       {!isLoading && !isError && (
         <EvidenceChecklist
           obligations={data?.obligations ?? []}
-          decidingMatchId={decideMatch.variables?.matchId ?? null}
+          decidingMatchId={decideMatch.variables?.matchId ?? (undoMatch.variables ?? null)}
           onDecideMatch={(matchId, status) => decideMatch.mutate({ matchId, status })}
+          onUndoMatch={(matchId) => undoMatch.mutate(matchId)}
         />
       )}
     </div>

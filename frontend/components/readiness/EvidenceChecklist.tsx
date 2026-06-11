@@ -26,16 +26,43 @@ function matchLine(match: EvidenceMatchItem): string {
   return 'Manual match'
 }
 
+function matchHistoryLabel(match: EvidenceMatchItem): string {
+  if (match.document) {
+    return match.document.original_filename
+  }
+  if (match.tax_event) {
+    return match.tax_event.category
+  }
+  return 'manual match'
+}
+
+function formatHistoryTransition(previousStatus: string | null, newStatus: string | null): string {
+  if (!previousStatus && !newStatus) return 'Status updated'
+  if (!previousStatus) return newStatus ?? 'updated'
+  if (!newStatus) return `${previousStatus} → cleared`
+  return `${previousStatus} → ${newStatus}`
+}
+
+function isUndoableMatch(match: EvidenceMatchItem): boolean {
+  if (!['accepted', 'rejected'].includes(match.status)) return false
+  const latest = match.decision_history[0]
+  if (!latest) return false
+  return ['accepted', 'rejected'].includes(latest.action) && latest.new_status === match.status
+}
+
 export default function EvidenceChecklist({
   obligations,
   onDecideMatch,
+  onUndoMatch,
   decidingMatchId,
 }: {
   obligations: EvidenceObligation[]
   onDecideMatch?: (matchId: string, status: 'accepted' | 'rejected') => void
+  onUndoMatch?: (matchId: string) => void
   decidingMatchId?: string | null
 }) {
   const [expandedExplanationIds, setExpandedExplanationIds] = useState<Record<string, boolean>>({})
+  const [expandedHistoryIds, setExpandedHistoryIds] = useState<Record<string, boolean>>({})
   const grouped = obligations.reduce<Record<string, EvidenceObligation[]>>((acc, item) => {
     const key = item.category || 'other'
     acc[key] = acc[key] || []
@@ -134,6 +161,51 @@ export default function EvidenceChecklist({
                             >
                               Reject match
                             </button>
+                          </div>
+                        )}
+                        {isUndoableMatch(match) && onUndoMatch && (
+                          <button
+                            type="button"
+                            onClick={() => onUndoMatch(match.id)}
+                            disabled={decidingMatchId === match.id}
+                            className="text-xs font-ui text-accent hover:underline disabled:opacity-60"
+                          >
+                            Undo last match decision
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedHistoryIds((prev) => ({ ...prev, [match.id]: !prev[match.id] }))
+                          }
+                          className="text-xs font-ui text-text-muted hover:text-text-body transition-colors"
+                          aria-label={`Match history for ${matchHistoryLabel(match)}`}
+                        >
+                          {expandedHistoryIds[match.id] ? 'Hide match history ↑' : 'Match history ↓'}
+                        </button>
+                        {expandedHistoryIds[match.id] && (
+                          <div className="rounded bg-surface-raised p-2 space-y-2">
+                            {match.decision_history.length === 0 ? (
+                              <p className="text-xs font-ui text-text-muted">No match history yet.</p>
+                            ) : (
+                              match.decision_history.map((history) => (
+                                <div key={history.id} className="space-y-1 text-xs font-ui text-text-body">
+                                  <p className="font-medium">
+                                    {history.action}
+                                    {history.actor ? ` · ${history.actor}` : ''}
+                                  </p>
+                                  <p className="text-text-muted">
+                                    {formatHistoryTransition(history.previous_status, history.new_status)}
+                                  </p>
+                                  {history.note && <p>{history.note}</p>}
+                                  {history.created_at && (
+                                    <p className="text-text-muted">
+                                      {new Date(history.created_at).toLocaleString()}
+                                    </p>
+                                  )}
+                                </div>
+                              ))
+                            )}
                           </div>
                         )}
                       </div>

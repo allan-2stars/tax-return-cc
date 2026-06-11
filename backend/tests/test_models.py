@@ -3,7 +3,7 @@ from sqlalchemy import inspect
 
 
 @pytest.mark.asyncio
-async def test_all_19_tables_created(test_engine):
+async def test_all_20_tables_created(test_engine):
     async with test_engine.connect() as conn:
         table_names = set(
             await conn.run_sync(lambda c: inspect(c).get_table_names())
@@ -15,6 +15,7 @@ async def test_all_19_tables_created(test_engine):
         "skill_version_locks", "feature_flags", "background_jobs",
         "tax_deadline_reminders", "encrypted_drafts",
         "evidence_obligations", "evidence_matches",
+        "evidence_match_decision_history",
         "review_decision_history",
     }
     assert expected == table_names

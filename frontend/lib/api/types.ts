@@ -170,12 +170,26 @@ export interface EvidenceMatchTaxEvent {
   status: string
 }
 
+export interface EvidenceMatchDecisionHistoryItem {
+  id: string
+  workspace_id: string
+  evidence_match_id: string
+  evidence_obligation_id: string
+  action: string
+  actor: string
+  previous_status: string | null
+  new_status: string | null
+  note: string | null
+  created_at: string | null
+}
+
 export interface EvidenceMatchItem {
   id: string
   match_type: 'document' | 'tax_event' | 'manual'
   status: 'candidate' | 'accepted' | 'rejected'
   confidence: number | null
   reason: string | null
+  decision_history: EvidenceMatchDecisionHistoryItem[]
   document: EvidenceMatchDocument | null
   tax_event: EvidenceMatchTaxEvent | null
 }
