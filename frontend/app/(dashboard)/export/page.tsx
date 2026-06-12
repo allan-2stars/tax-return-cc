@@ -14,6 +14,27 @@ import EligibilityCard from '@/components/export/EligibilityCard'
 import ExportHistoryCard from '@/components/export/ExportHistoryCard'
 import Disclaimer from '@/components/shared/Disclaimer'
 import EvidenceFreshnessBadge from '@/components/shared/EvidenceFreshnessBadge'
+import type { EvidenceDiagnosticItem } from '@/lib/api/types'
+
+function EvidenceDiagnosticsList({ items }: { items: EvidenceDiagnosticItem[] }) {
+  if (items.length === 0) return null
+  return (
+    <div className="space-y-2">
+      {items.map((item) => (
+        <div key={item.id} className="rounded-md border border-border bg-surface-raised px-3 py-2 space-y-1">
+          <p className="text-sm font-ui font-medium text-text-primary">{item.label}</p>
+          {item.reason && <p className="text-sm font-ui text-text-muted">{item.reason}</p>}
+          {item.explanation?.what_user_should_check && (
+            <p className="text-sm font-ui text-text-body">
+              <span className="text-text-muted">What to check: </span>
+              {item.explanation.what_user_should_check}
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
 
 export default function ExportPage() {
   const qc = useQueryClient()
@@ -158,6 +179,7 @@ export default function ExportPage() {
             {' · '}
             Recommended missing: {eligibility.evidence_recommended_missing_count ?? 0}
           </p>
+          <EvidenceDiagnosticsList items={eligibility.evidence_export_status.blocking_evidence_obligations} />
           <a href="/readiness/checklist" className="text-sm font-ui text-accent underline">
             Review evidence checklist
           </a>

@@ -109,6 +109,83 @@ describe('ExportPage', () => {
     expect(screen.getByRole('button', { name: /generate review pack/i })).toBeEnabled()
   })
 
+  it('renders investment evidence diagnostic text when provided by backend', async () => {
+    mockGetEligibility.mockResolvedValue({
+      data: {
+        data: {
+          ...readyEligibility,
+          evidence_required_missing_count: 1,
+          evidence_export_status: {
+            would_block_export: true,
+            blocking_required_count: 1,
+            missing_required_count: 1,
+            partial_required_count: 0,
+            blocking_evidence_obligations: [
+              {
+                id: 'obl-mf',
+                obligation_key: 'managed_fund_annual_tax_statement',
+                label: 'Managed fund annual tax statement',
+                description: 'Upload the annual tax statement or tax summary from your managed fund or investment platform.',
+                category: 'managed_fund',
+                required_level: 'required',
+                status: 'missing',
+                reason: 'Managed fund distribution events are present.',
+                rule_version: '2026.1',
+                explanation: {
+                  what_user_should_check: 'Upload the annual tax statement or tax summary from your managed fund or investment platform.',
+                },
+              },
+            ],
+            mode: 'soft_block',
+            message:
+              'Export is allowed for now, but required evidence is incomplete and may block export in a future hardening milestone.',
+          },
+        },
+      },
+    })
+
+    wrap(<ExportPage />)
+    expect(await screen.findByText(/managed fund annual tax statement/i)).toBeInTheDocument()
+    expect(screen.getByText(/upload the annual tax statement or tax summary from your managed fund or investment platform\./i)).toBeInTheDocument()
+  })
+
+  it('falls back safely when blocking evidence explanation is absent', async () => {
+    mockGetEligibility.mockResolvedValue({
+      data: {
+        data: {
+          ...readyEligibility,
+          evidence_required_missing_count: 1,
+          evidence_export_status: {
+            would_block_export: true,
+            blocking_required_count: 1,
+            missing_required_count: 1,
+            partial_required_count: 0,
+            blocking_evidence_obligations: [
+              {
+                id: 'obl-share',
+                obligation_key: 'share_buy_contract_note',
+                label: 'Share buy contract note',
+                category: 'shares',
+                required_level: 'required',
+                status: 'missing',
+                reason: 'Share acquisition events are present.',
+                rule_version: '2026.1',
+              },
+            ],
+            mode: 'soft_block',
+            message:
+              'Export is allowed for now, but required evidence is incomplete and may block export in a future hardening milestone.',
+          },
+        },
+      },
+    })
+
+    wrap(<ExportPage />)
+    expect(await screen.findByText(/share buy contract note/i)).toBeInTheDocument()
+    expect(screen.getByText(/share acquisition events are present\./i)).toBeInTheDocument()
+    expect(screen.queryByText(/what to check:/i)).not.toBeInTheDocument()
+  })
+
   it('renders evidence ready state when soft-block is false', async () => {
     mockGetEligibility.mockResolvedValue({ data: { data: readyEligibility } })
     wrap(<ExportPage />)

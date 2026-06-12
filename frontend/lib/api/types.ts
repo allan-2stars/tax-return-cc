@@ -57,6 +57,19 @@ export interface EvidenceFreshness {
   evidence_reconcile_meta?: Record<string, unknown> | null
 }
 
+export interface EvidenceDiagnosticItem {
+  id: string
+  obligation_key: string
+  label: string
+  description?: string | null
+  category: string | null
+  required_level: string
+  status: string
+  reason: string | null
+  rule_version?: string | null
+  explanation?: Partial<Pick<ExplanationSidecar, 'what_user_should_check' | 'plain_english_summary'>> | null
+}
+
 export interface ReadinessData {
   percentage: number
   breakdown: SkillBreakdownItem[]
@@ -73,15 +86,7 @@ export interface ReadinessData {
     recommended_missing: number
     recommended_partially_matched: number
     recommended_matched: number
-    blocking_evidence_obligations: Array<{
-      id: string
-      obligation_key: string
-      label: string
-      category: string | null
-      required_level: string
-      status: string
-      reason: string | null
-    }>
+    blocking_evidence_obligations: EvidenceDiagnosticItem[]
   }
   evidence_freshness?: EvidenceFreshness
   readiness_2_0?: {
@@ -117,16 +122,7 @@ export interface ReadinessData {
       candidate_match_count: number
       accepted_match_count: number
       rejected_match_count: number
-      blocking_obligations: Array<{
-        id: string
-        obligation_key: string
-        label: string
-        category: string | null
-        required_level: string
-        status: string
-        reason: string | null
-        rule_version?: string | null
-      }>
+      blocking_obligations: EvidenceDiagnosticItem[]
       state: 'blocked' | 'warning' | 'ready'
       current_rule_version: string
     }
@@ -440,16 +436,7 @@ export interface ExportEligibility {
   evidence_required_partial_count?: number
   evidence_required_matched_count?: number
   evidence_recommended_missing_count?: number
-  blocking_evidence_obligations?: Array<{
-    id: string
-    obligation_key: string
-    label: string
-    category: string | null
-    required_level: string
-    status: string
-    reason: string | null
-    rule_version?: string | null
-  }>
+  blocking_evidence_obligations?: EvidenceDiagnosticItem[]
   eligibility_preview?: {
     evidence_total?: number
     evidence_required_total: number
@@ -460,16 +447,7 @@ export interface ExportEligibility {
     evidence_recommended_missing_total?: number
     evidence_recommended_partial_total?: number
     evidence_recommended_matched_total?: number
-    blocking_evidence_obligations: Array<{
-      id: string
-      obligation_key: string
-      label: string
-      category: string | null
-      required_level: string
-      status: string
-      reason: string | null
-      rule_version?: string | null
-    }>
+    blocking_evidence_obligations: EvidenceDiagnosticItem[]
     would_block_export: boolean
   } | null
   evidence_export_status?: {
@@ -477,16 +455,7 @@ export interface ExportEligibility {
     blocking_required_count: number
     missing_required_count: number
     partial_required_count: number
-    blocking_evidence_obligations: Array<{
-      id: string
-      obligation_key: string
-      label: string
-      category: string | null
-      required_level: string
-      status: string
-      reason: string | null
-      rule_version?: string | null
-    }>
+    blocking_evidence_obligations: EvidenceDiagnosticItem[]
     mode: 'soft_block'
     message: string
   }

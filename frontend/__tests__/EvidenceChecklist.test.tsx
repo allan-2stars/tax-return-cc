@@ -177,6 +177,7 @@ describe('EvidenceChecklist', () => {
   it('renders explanation and rule version when expanded', () => {
     render(<EvidenceChecklist obligations={obligations} />)
     expect(screen.getByText(/a private health statement is expected/i)).toBeInTheDocument()
+    expect(screen.getByText(/check policy period and statement year\./i)).toBeInTheDocument()
     const toggles = screen.getAllByRole('button', { name: /why this matters/i })
     expect(toggles.length).toBeGreaterThan(0)
     fireEvent.click(toggles[0])
@@ -184,6 +185,14 @@ describe('EvidenceChecklist', () => {
     expect(within(details).getByText(/rule version:/i)).toBeInTheDocument()
     expect(within(details).getByText(/2026\.1/i)).toBeInTheDocument()
     expect(within(details).getByText(/expected evidence:/i)).toBeInTheDocument()
+  })
+
+  it('falls back safely when explanation is absent', () => {
+    render(<EvidenceChecklist obligations={[{ ...obligations[0], id: 'o-no-exp', explanation: null }]} />)
+    expect(screen.getByText(/private health insurance annual statement/i)).toBeInTheDocument()
+    expect(screen.getByText(/private health insurance is enabled in your profile/i)).toBeInTheDocument()
+    expect(screen.queryByText(/what to check:/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /why this matters/i })).not.toBeInTheDocument()
   })
 
   it('renders rejected match wording', () => {

@@ -11,6 +11,7 @@ from app.engines.readiness import ReadinessEngine, _get_fy_end_date
 from app.engines.interview import BRANCH_QUESTIONS, PLATFORM_QUESTIONS, _QUESTION_BY_ID
 from app.repositories import readiness as readiness_repo
 from app.services.evidence_freshness import build_evidence_freshness
+from app.services.explanations import build_evidence_obligation_explanation
 from app.repositories import profiles as profile_repo
 from app.services.evidence_rules import CURRENT_EVIDENCE_RULE_VERSION
 
@@ -69,10 +70,19 @@ async def _evidence_obligation_summary(workspace_id: str, db: AsyncSession) -> d
             "id": o.id,
             "obligation_key": o.obligation_key,
             "label": o.label,
+            "description": o.description,
             "category": o.category,
             "required_level": o.required_level,
             "status": o.status,
             "reason": o.reason,
+            "rule_version": o.rule_version,
+            "explanation": build_evidence_obligation_explanation(
+                target_id=o.id,
+                obligation_key=o.obligation_key,
+                obligation_category=o.category,
+                rule_version=o.rule_version,
+                source="rule",
+            ),
         }
         for o in required
         if o.status in {"missing", "partially_matched"}
@@ -229,11 +239,19 @@ async def _build_readiness_2_0(workspace_id: str, db: AsyncSession) -> dict:
             "id": o.id,
             "obligation_key": o.obligation_key,
             "label": o.label,
+            "description": o.description,
             "category": o.category,
             "required_level": o.required_level,
             "status": o.status,
             "reason": o.reason,
             "rule_version": o.rule_version,
+            "explanation": build_evidence_obligation_explanation(
+                target_id=o.id,
+                obligation_key=o.obligation_key,
+                obligation_category=o.category,
+                rule_version=o.rule_version,
+                source="rule",
+            ),
         }
         for o in required
         if o.status in {"missing", "partially_matched"}

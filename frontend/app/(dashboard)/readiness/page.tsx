@@ -12,12 +12,43 @@ import { getEstimatorSummary } from '@/lib/api/estimator'
 import { getSession } from '@/lib/api/interview'
 import useWorkspaceStore from '@/lib/stores/workspace.store'
 import { getFYEndLabel, isFYActive } from '@/lib/utils/fy'
+import type { EvidenceDiagnosticItem } from '@/lib/api/types'
 
 function readinessStateClasses(state: 'blocked' | 'warning' | 'ready') {
   if (state === 'blocked') return 'border-risk-high bg-review-bg text-risk-high'
   if (state === 'warning') return 'border-review bg-review-bg text-review'
   return 'border-ready bg-ready-bg text-ready'
 }
+
+function EvidenceDiagnosticsList({
+  title,
+  items,
+}: {
+  title: string
+  items: EvidenceDiagnosticItem[]
+}) {
+  if (items.length === 0) return null
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-ui font-semibold text-text-primary">{title}</p>
+      <div className="space-y-2">
+        {items.map((item) => (
+          <div key={item.id} className="rounded-md border border-border bg-surface-raised px-3 py-2 space-y-1">
+            <p className="text-xs font-ui font-medium text-text-primary">{item.label}</p>
+            {item.reason && <p className="text-xs font-ui text-text-muted">{item.reason}</p>}
+            {item.explanation?.what_user_should_check && (
+              <p className="text-xs font-ui text-text-body">
+                <span className="text-text-muted">What to check: </span>
+                {item.explanation.what_user_should_check}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function ReadinessPage() {
   const { data, isLoading, isError, recalcError } = useReadiness()
   const { data: estimate, isLoading: estimateLoading } = useQuery({
@@ -181,6 +212,10 @@ export default function ReadinessPage() {
                 <p className="text-xs font-ui text-risk-high">Evidence status may not be current.</p>
               )}
               <p className="text-xs font-ui text-text-muted">Confirm required evidence matches and resolve missing items.</p>
+              <EvidenceDiagnosticsList
+                title="Evidence needing attention"
+                items={data.readiness_2_0.evidence.blocking_obligations}
+              />
               <Link href="/readiness/checklist" className="text-xs font-ui text-accent hover:underline">Open checklist</Link>
             </div>
           </div>
@@ -241,6 +276,10 @@ export default function ReadinessPage() {
           <p className="text-xs font-ui text-text-muted">
             Evidence readiness is shown separately from your overall tax readiness score.
           </p>
+          <EvidenceDiagnosticsList
+            title="Evidence needing attention"
+            items={data.evidence_obligation_summary.blocking_evidence_obligations}
+          />
         </div>
       )}
 

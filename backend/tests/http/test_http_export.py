@@ -216,3 +216,91 @@ async def test_eligibility_missing_evidence_does_not_block_export_when_other_che
     assert body["can_export"] is True
     assert body["evidence_export_status"]["would_block_export"] is True
     assert body["evidence_required_missing_count"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_eligibility_includes_share_specific_blocking_evidence_copy(eligible_client, test_engine):
+    from app.db.models import EvidenceObligation
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        session.add(
+            EvidenceObligation(
+                workspace_id=eligible_client.workspace_id,
+                financial_year="2024-25",
+                source_type="tax_event",
+                obligation_key="share_buy_contract_note",
+                category="shares",
+                label="Share buy contract note",
+                description="Upload the broker contract note or transaction confirmation for share purchases.",
+                required_level="required",
+                status="missing",
+            )
+        )
+        await session.commit()
+
+    resp = await eligible_client.get("/api/v1/export/eligibility")
+    assert resp.status_code == 200
+    blocking = resp.json()["data"]["blocking_evidence_obligations"]
+    target = next(item for item in blocking if item["obligation_key"] == "share_buy_contract_note")
+    assert "share purchases" in target["description"].lower()
+    assert "share purchases" in target["explanation"]["what_user_should_check"].lower()
+
+
+@pytest.mark.asyncio
+async def test_eligibility_includes_crypto_specific_blocking_evidence_copy(eligible_client, test_engine):
+    from app.db.models import EvidenceObligation
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        session.add(
+            EvidenceObligation(
+                workspace_id=eligible_client.workspace_id,
+                financial_year="2024-25",
+                source_type="tax_event",
+                obligation_key="crypto_exchange_transaction_export",
+                category="crypto",
+                label="Crypto exchange transaction export",
+                description="Upload the CSV export, annual tax report, or transaction history from your crypto exchange.",
+                required_level="required",
+                status="missing",
+            )
+        )
+        await session.commit()
+
+    resp = await eligible_client.get("/api/v1/export/eligibility")
+    assert resp.status_code == 200
+    blocking = resp.json()["data"]["blocking_evidence_obligations"]
+    target = next(item for item in blocking if item["obligation_key"] == "crypto_exchange_transaction_export")
+    assert "crypto exchange" in target["label"].lower()
+    assert "csv export" in target["description"].lower()
+    assert "csv export" in target["explanation"]["what_user_should_check"].lower()
+
+
+@pytest.mark.asyncio
+async def test_eligibility_recommended_broker_summary_does_not_create_unexpected_hard_block(eligible_client, test_engine):
+    from app.db.models import EvidenceObligation
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        session.add(
+            EvidenceObligation(
+                workspace_id=eligible_client.workspace_id,
+                financial_year="2024-25",
+                source_type="tax_event",
+                obligation_key="share_annual_broker_summary",
+                category="shares",
+                label="Annual broker summary",
+                description="Upload the annual broker report or transaction summary if available.",
+                required_level="recommended",
+                status="missing",
+            )
+        )
+        await session.commit()
+
+    resp = await eligible_client.get("/api/v1/export/eligibility")
+    assert resp.status_code == 200
+    body = resp.json()["data"]
+    assert body["can_export"] is True
+    assert body["evidence_export_status"]["would_block_export"] is False
+    assert body["evidence_recommended_missing_count"] >= 1

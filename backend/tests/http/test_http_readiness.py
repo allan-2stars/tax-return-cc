@@ -117,6 +117,60 @@ async def test_get_readiness_includes_evidence_obligation_summary(auth_client, t
 
 
 @pytest.mark.asyncio
+async def test_get_readiness_includes_managed_fund_specific_missing_evidence_copy(auth_client, test_engine):
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        session.add(
+            EvidenceObligation(
+                workspace_id=auth_client.workspace_id,
+                financial_year="2024-25",
+                source_type="tax_event",
+                obligation_key="managed_fund_annual_tax_statement",
+                category="managed_fund",
+                label="Managed fund annual tax statement",
+                description="Upload the annual tax statement or tax summary from your managed fund or investment platform.",
+                required_level="required",
+                status="missing",
+            )
+        )
+        await session.commit()
+
+    response = await auth_client.get("/api/v1/readiness")
+    assert response.status_code == 200
+    blocking = response.json()["data"]["evidence_obligation_summary"]["blocking_evidence_obligations"]
+    target = next(item for item in blocking if item["obligation_key"] == "managed_fund_annual_tax_statement")
+    assert target["label"] == "Managed fund annual tax statement"
+    assert "managed fund or investment platform" in target["description"].lower()
+    assert "managed fund or investment platform" in target["explanation"]["what_user_should_check"].lower()
+
+
+@pytest.mark.asyncio
+async def test_get_readiness_preserves_existing_non_investment_evidence_wording(auth_client, test_engine):
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        session.add(
+            EvidenceObligation(
+                workspace_id=auth_client.workspace_id,
+                financial_year="2024-25",
+                source_type="tax_event",
+                obligation_key="donation_receipt",
+                category="donation",
+                label="Donation receipt",
+                description="Provide receipts for donation claims.",
+                required_level="required",
+                status="missing",
+            )
+        )
+        await session.commit()
+
+    response = await auth_client.get("/api/v1/readiness")
+    assert response.status_code == 200
+    blocking = response.json()["data"]["evidence_obligation_summary"]["blocking_evidence_obligations"]
+    target = next(item for item in blocking if item["obligation_key"] == "donation_receipt")
+    assert "donation entry indicates a receipt should be available" in target["explanation"]["plain_english_summary"].lower()
+
+
+@pytest.mark.asyncio
 async def test_get_readiness_candidate_and_accepted_affect_counts(auth_client, test_engine):
     maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
     async with maker() as session:

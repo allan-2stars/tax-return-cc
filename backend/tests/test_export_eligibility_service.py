@@ -107,3 +107,58 @@ async def test_export_eligibility_preview_not_blocking_when_required_matched(db_
     assert preview.evidence_required_partial_total == 0
     assert preview.evidence_required_matched_total == 1
     assert preview.would_block_export is False
+
+
+@pytest.mark.asyncio
+async def test_export_eligibility_preview_includes_investment_specific_wording(db_session, workspace):
+    db_session.add(
+        EvidenceObligation(
+            workspace_id=workspace.id,
+            financial_year="2024-25",
+            source_type="tax_event",
+            obligation_key="share_buy_contract_note",
+            category="shares",
+            label="Share buy contract note",
+            description="Upload the broker contract note or transaction confirmation for share purchases.",
+            required_level="required",
+            status="missing",
+        )
+    )
+    await db_session.commit()
+
+    preview = await ExportEligibilityService().build_preview(
+        workspace_id=workspace.id,
+        financial_year="2024-25",
+        db=db_session,
+    )
+    row = preview.blocking_evidence_obligations[0]
+    assert row["obligation_key"] == "share_buy_contract_note"
+    assert "share purchases" in row["description"].lower()
+    assert "share purchases" in row["explanation"]["what_user_should_check"].lower()
+
+
+@pytest.mark.asyncio
+async def test_export_eligibility_preview_recommended_only_investment_obligation_does_not_block(db_session, workspace):
+    db_session.add(
+        EvidenceObligation(
+            workspace_id=workspace.id,
+            financial_year="2024-25",
+            source_type="tax_event",
+            obligation_key="crypto_wallet_activity_export",
+            category="crypto",
+            label="Crypto wallet activity export",
+            description="Upload wallet activity exports or transaction history for self-custody wallets if available.",
+            required_level="recommended",
+            status="missing",
+        )
+    )
+    await db_session.commit()
+
+    preview = await ExportEligibilityService().build_preview(
+        workspace_id=workspace.id,
+        financial_year="2024-25",
+        db=db_session,
+    )
+    assert preview.evidence_recommended_missing_total == 1
+    assert preview.evidence_required_blocking_total == 0
+    assert preview.would_block_export is False

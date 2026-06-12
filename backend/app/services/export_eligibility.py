@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import EvidenceObligation
+from app.services.explanations import build_evidence_obligation_explanation
 
 
 @dataclass
@@ -54,11 +55,19 @@ class ExportEligibilityService:
                 "id": o.id,
                 "obligation_key": o.obligation_key,
                 "label": o.label,
+                "description": o.description,
                 "category": o.category,
                 "required_level": o.required_level,
                 "status": o.status,
                 "reason": o.reason,
                 "rule_version": o.rule_version,
+                "explanation": build_evidence_obligation_explanation(
+                    target_id=o.id,
+                    obligation_key=o.obligation_key,
+                    obligation_category=o.category,
+                    rule_version=o.rule_version,
+                    source="rule",
+                ),
             }
             for o in blocking
         ]

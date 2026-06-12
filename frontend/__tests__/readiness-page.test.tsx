@@ -203,6 +203,41 @@ describe('ReadinessPage', () => {
     expect(screen.getAllByRole('link', { name: /open checklist/i })[0]).toHaveAttribute('href', '/readiness/checklist')
   })
 
+  it('renders investment evidence diagnostic text when provided by backend', () => {
+    ;(mockUseReadiness as jest.Mock).mockReturnValue({
+      isLoading: false,
+      data: {
+        ...MOCK_DATA,
+        readiness_2_0: {
+          ...MOCK_DATA.readiness_2_0,
+          evidence: {
+            ...MOCK_DATA.readiness_2_0.evidence,
+            blocking_obligations: [
+              {
+                id: 'obl-crypto',
+                obligation_key: 'crypto_exchange_transaction_export',
+                label: 'Crypto exchange transaction export',
+                description: 'Upload the CSV export, annual tax report, or transaction history from your crypto exchange.',
+                category: 'crypto',
+                required_level: 'required',
+                status: 'missing',
+                reason: 'Crypto acquisition events are present.',
+                rule_version: '2026.1',
+                explanation: {
+                  what_user_should_check: 'Upload the CSV export, annual tax report, or transaction history from your crypto exchange.',
+                },
+              },
+            ],
+          },
+        },
+      },
+      isError: false,
+    })
+    wrap(<ReadinessPage />)
+    expect(screen.getByText(/crypto exchange transaction export/i)).toBeInTheDocument()
+    expect(screen.getByText(/upload the csv export, annual tax report, or transaction history from your crypto exchange\./i)).toBeInTheDocument()
+  })
+
   it('reduces duplicate evidence messaging when readiness_2_0 is present', () => {
     ;(mockUseReadiness as jest.Mock).mockReturnValue({ isLoading: false, data: MOCK_DATA, isError: false })
     wrap(<ReadinessPage />)

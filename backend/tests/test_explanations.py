@@ -1,3 +1,5 @@
+import pytest
+
 from app.services.explanations import (
     build_evidence_obligation_explanation,
     build_tax_item_explanation,
@@ -60,3 +62,32 @@ def test_evidence_obligation_explanation_includes_rule_version():
     assert payload["rule_version"] == CURRENT_EVIDENCE_RULE_VERSION
     assert payload["source"] == "rule"
     assert payload["confidence_level"] in {"low", "medium", "high"}
+
+
+@pytest.mark.parametrize(
+    ("obligation_key", "expected_check"),
+    [
+        ("managed_fund_annual_tax_statement", "annual tax statement or tax summary"),
+        ("managed_fund_capital_gains_schedule", "capital gains and cgt components"),
+        ("managed_fund_foreign_income_support", "foreign income, foreign tax paid, or foreign tax offset"),
+        ("share_buy_contract_note", "contract note or transaction confirmation for share purchases"),
+        ("share_sell_contract_note", "contract note or transaction confirmation for share sales"),
+        ("share_dividend_statement", "dividend statement"),
+        ("share_annual_broker_summary", "annual broker report or transaction summary"),
+        ("crypto_exchange_transaction_export", "csv export, annual tax report, or transaction history"),
+        ("crypto_disposal_supporting_records", "disposals, swaps, sales, fees, and acquisition cost basis"),
+        ("crypto_staking_income_statement", "staking rewards or crypto income"),
+        ("crypto_wallet_activity_export", "wallet activity exports or transaction history"),
+    ],
+)
+def test_investment_evidence_obligation_explanations_are_specific(obligation_key, expected_check):
+    payload = build_evidence_obligation_explanation(
+        target_id="obl-investment",
+        obligation_key=obligation_key,
+        obligation_category="investment",
+        rule_version=CURRENT_EVIDENCE_RULE_VERSION,
+        source="rule",
+    )
+    assert payload["plain_english_summary"]
+    assert expected_check in payload["what_user_should_check"].lower()
+    assert payload["confidence_level"] in {"medium", "high"}

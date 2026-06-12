@@ -92,6 +92,12 @@ export default function EvidenceChecklist({
                   <div>
                     <p className="text-sm font-ui font-medium text-text-primary">{item.label}</p>
                     {item.reason && <p className="text-xs font-ui text-text-muted">{item.reason}</p>}
+                    {item.explanation?.what_user_should_check && (
+                      <p className="text-xs font-ui text-text-body">
+                        <span className="text-text-muted">What to check: </span>
+                        {item.explanation.what_user_should_check}
+                      </p>
+                    )}
                     {item.explanation && (
                       <div className="mt-1">
                         <p className="text-xs font-ui text-text-body">{item.explanation.plain_english_summary}</p>
