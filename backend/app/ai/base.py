@@ -4,6 +4,83 @@ from dataclasses import dataclass, field
 from app.engines.sanitize import sanitize_for_ai  # noqa: F401 — module-level so tests can patch it
 
 
+_CANONICAL_DOCUMENT_TYPES = {
+    "payg_summary",
+    "bank_statement",
+    "bank_interest_statement",
+    "receipt",
+    "invoice",
+    "csv",
+    "other",
+    "unknown",
+    "private_health_statement",
+    "phi_statement",
+    "wfh_diary",
+    "timesheet",
+    "wfh_evidence",
+    "work_from_home_diary",
+    "donation_receipt",
+    "work_expense_receipt",
+    "managed_fund_annual_tax_statement",
+    "managed_fund_distribution_statement",
+    "share_buy_contract_note",
+    "share_sell_contract_note",
+    "share_dividend_statement",
+    "share_annual_broker_summary",
+    "crypto_exchange_transaction_export",
+    "crypto_wallet_activity_export",
+    "crypto_staking_income_statement",
+}
+
+_DOCUMENT_TYPE_ALIASES = {
+    "annual tax statement": "managed_fund_annual_tax_statement",
+    "investor tax statement": "managed_fund_annual_tax_statement",
+    "annual tax report": "managed_fund_annual_tax_statement",
+    "managed fund tax summary": "managed_fund_annual_tax_statement",
+    "distribution statement": "managed_fund_distribution_statement",
+    "fund distribution summary": "managed_fund_distribution_statement",
+    "contract note": "share_buy_contract_note",
+    "buy confirmation": "share_buy_contract_note",
+    "trade confirmation": "share_buy_contract_note",
+    "sale contract note": "share_sell_contract_note",
+    "sell confirmation": "share_sell_contract_note",
+    "broker confirmation": "share_sell_contract_note",
+    "dividend statement": "share_dividend_statement",
+    "dividend advice": "share_dividend_statement",
+    "distribution advice": "share_dividend_statement",
+    "annual broker summary": "share_annual_broker_summary",
+    "annual trading summary": "share_annual_broker_summary",
+    "broker tax report": "share_annual_broker_summary",
+    "coinspot csv": "crypto_exchange_transaction_export",
+    "binance export": "crypto_exchange_transaction_export",
+    "kraken export": "crypto_exchange_transaction_export",
+    "exchange transaction history": "crypto_exchange_transaction_export",
+    "exchange tax report": "crypto_exchange_transaction_export",
+    "wallet transaction export": "crypto_wallet_activity_export",
+    "wallet activity report": "crypto_wallet_activity_export",
+    "staking report": "crypto_staking_income_statement",
+    "rewards statement": "crypto_staking_income_statement",
+    "staking summary": "crypto_staking_income_statement",
+}
+
+
+def _normalize_document_type(value: str | None) -> str:
+    raw = (value or "").strip().lower()
+    if not raw:
+        return "unknown"
+    if raw in _CANONICAL_DOCUMENT_TYPES:
+        return raw
+    normalized = raw.replace("-", " ").replace("_", " ")
+    normalized = " ".join(normalized.split())
+    alias = _DOCUMENT_TYPE_ALIASES.get(normalized)
+    if alias:
+        return alias
+    underscored = normalized.replace(" ", "_")
+    if underscored in _CANONICAL_DOCUMENT_TYPES:
+        return underscored
+    return "unknown"
+
+
 @dataclass
 class AIResponse:
     content: str
@@ -148,7 +225,7 @@ class AIAdapter:
         self._fire_audit("classify", response, duration_ms, True)
         data = json.loads(response.content)
         return ClassificationResult(
-            document_type=data.get("document_type", "unknown"),
+            document_type=_normalize_document_type(data.get("document_type", "unknown")),
             confidence=float(data.get("confidence", 0.0)),
             skill_id=data.get("skill_id"),
             suggested_category=data.get("suggested_category"),

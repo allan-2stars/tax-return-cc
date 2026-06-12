@@ -19,7 +19,7 @@ Analyse the provided document text and classify it.
 
 Respond with JSON only (no preamble, no backticks):
 {
-  "document_type": "<payg_summary|bank_statement|receipt|invoice|csv|other|unknown>",
+  "document_type": "<payg_summary|bank_statement|receipt|invoice|csv|managed_fund_annual_tax_statement|managed_fund_distribution_statement|share_buy_contract_note|share_sell_contract_note|share_dividend_statement|share_annual_broker_summary|crypto_exchange_transaction_export|crypto_wallet_activity_export|crypto_staking_income_statement|other|unknown>",
   "confidence": <0.0-1.0>,
   "skill_id": "<employee_tax_au|investment_skill|wfh_skill|crypto_skill_au|null>",
   "suggested_category": "<category string or null>",
@@ -30,6 +30,7 @@ Respond with JSON only (no preamble, no backticks):
 Rules:
 - confidence below 0.5 means uncertain — use document_type "unknown"
 - skill_id null if document does not clearly belong to a skill
+- Use investment document types when the document is clearly a managed fund statement, broker contract note, dividend statement, broker summary, crypto exchange export, wallet export, or staking report
 - Never say "deductible" or "ATO-approved" in notes
 - All amounts in AUD
 """

@@ -18,6 +18,7 @@ from app.ai.base import (
     ClassificationResult,
     RiskAssessment,
 )
+from app.ai.prompts import CLASSIFY_SYSTEM
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -237,3 +238,67 @@ async def test_provider_swap_same_output_schema(workspace):
     assert hasattr(result, "confidence")
     assert hasattr(result, "skill_id")
     assert hasattr(result, "notes")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("raw_type", "expected"),
+    [
+        ("annual tax statement", "managed_fund_annual_tax_statement"),
+        ("managed fund tax summary", "managed_fund_annual_tax_statement"),
+        ("distribution statement", "managed_fund_distribution_statement"),
+        ("contract note", "share_buy_contract_note"),
+        ("trade confirmation", "share_buy_contract_note"),
+        ("sale contract note", "share_sell_contract_note"),
+        ("dividend advice", "share_dividend_statement"),
+        ("annual trading summary", "share_annual_broker_summary"),
+        ("CoinSpot CSV", "crypto_exchange_transaction_export"),
+        ("Binance export", "crypto_exchange_transaction_export"),
+        ("wallet activity report", "crypto_wallet_activity_export"),
+        ("staking report", "crypto_staking_income_statement"),
+    ],
+)
+async def test_classify_normalizes_investment_document_type_aliases(workspace, raw_type, expected):
+    provider = _mock_provider(_make_response(_classify_json(document_type=raw_type)))
+    adapter = AIAdapter(provider=provider, workspace_id=workspace.id)
+
+    result = await adapter.classify(text="investment document", fields=None, profile=None)
+
+    assert result.document_type == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "raw_type",
+    [
+        "receipt",
+        "invoice",
+        "payg_summary",
+        "bank_statement",
+        "csv",
+        "other",
+        "unknown",
+    ],
+)
+async def test_classify_preserves_existing_document_types(workspace, raw_type):
+    provider = _mock_provider(_make_response(_classify_json(document_type=raw_type)))
+    adapter = AIAdapter(provider=provider, workspace_id=workspace.id)
+
+    result = await adapter.classify(text="legacy document", fields=None, profile=None)
+
+    assert result.document_type == raw_type
+
+
+def test_classify_prompt_lists_investment_document_categories():
+    for expected in [
+        "managed_fund_annual_tax_statement",
+        "managed_fund_distribution_statement",
+        "share_buy_contract_note",
+        "share_sell_contract_note",
+        "share_dividend_statement",
+        "share_annual_broker_summary",
+        "crypto_exchange_transaction_export",
+        "crypto_wallet_activity_export",
+        "crypto_staking_income_statement",
+    ]:
+        assert expected in CLASSIFY_SYSTEM
