@@ -231,6 +231,136 @@ def _build_candidates(
                     )
                 )
 
+    elif obligation_key == "managed_fund_annual_tax_statement":
+        for doc in docs:
+            if _doc_type(doc) in {"managed_fund_annual_tax_statement", "managed_fund_distribution_statement"} and doc.status == "ready":
+                candidates.append(
+                    CandidateMatch(
+                        match_type="document",
+                        document_id=doc.id,
+                        tax_event_id=None,
+                        confidence=0.8,
+                        reason="Managed fund statement may support the annual tax statement obligation.",
+                    )
+                )
+
+    elif obligation_key in {"managed_fund_capital_gains_schedule", "managed_fund_foreign_income_support"}:
+        for doc in docs:
+            if _doc_type(doc) == "managed_fund_distribution_statement" and doc.status == "ready":
+                candidates.append(
+                    CandidateMatch(
+                        match_type="document",
+                        document_id=doc.id,
+                        tax_event_id=None,
+                        confidence=0.75,
+                        reason="Managed fund distribution statement may support this managed fund schedule obligation.",
+                    )
+                )
+
+    elif obligation_key == "share_buy_contract_note":
+        for doc in docs:
+            if _doc_type(doc) in {"share_buy_contract_note", "share_annual_broker_summary"} and doc.status == "ready":
+                candidates.append(
+                    CandidateMatch(
+                        match_type="document",
+                        document_id=doc.id,
+                        tax_event_id=None,
+                        confidence=0.8,
+                        reason="Share buy contract note evidence may be supported by this document.",
+                    )
+                )
+
+    elif obligation_key == "share_sell_contract_note":
+        for doc in docs:
+            if _doc_type(doc) in {"share_sell_contract_note", "share_annual_broker_summary"} and doc.status == "ready":
+                candidates.append(
+                    CandidateMatch(
+                        match_type="document",
+                        document_id=doc.id,
+                        tax_event_id=None,
+                        confidence=0.8,
+                        reason="Share sale evidence may be supported by this document.",
+                    )
+                )
+
+    elif obligation_key == "share_dividend_statement":
+        for doc in docs:
+            if _doc_type(doc) in {"share_dividend_statement", "share_annual_broker_summary"} and doc.status == "ready":
+                candidates.append(
+                    CandidateMatch(
+                        match_type="document",
+                        document_id=doc.id,
+                        tax_event_id=None,
+                        confidence=0.8,
+                        reason="Share dividend evidence may be supported by this document.",
+                    )
+                )
+
+    elif obligation_key == "share_annual_broker_summary":
+        for doc in docs:
+            if _doc_type(doc) == "share_annual_broker_summary" and doc.status == "ready":
+                candidates.append(
+                    CandidateMatch(
+                        match_type="document",
+                        document_id=doc.id,
+                        tax_event_id=None,
+                        confidence=0.75,
+                        reason="Annual broker summary directly supports broker summary evidence.",
+                    )
+                )
+
+    elif obligation_key == "crypto_exchange_transaction_export":
+        for doc in docs:
+            if _doc_type(doc) == "crypto_exchange_transaction_export" and doc.status == "ready":
+                candidates.append(
+                    CandidateMatch(
+                        match_type="document",
+                        document_id=doc.id,
+                        tax_event_id=None,
+                        confidence=0.8,
+                        reason="Crypto exchange export may support exchange transaction evidence.",
+                    )
+                )
+
+    elif obligation_key == "crypto_disposal_supporting_records":
+        for doc in docs:
+            if _doc_type(doc) in {"crypto_exchange_transaction_export", "crypto_wallet_activity_export"} and doc.status == "ready":
+                candidates.append(
+                    CandidateMatch(
+                        match_type="document",
+                        document_id=doc.id,
+                        tax_event_id=None,
+                        confidence=0.75,
+                        reason="Crypto activity export may support disposal evidence.",
+                    )
+                )
+
+    elif obligation_key == "crypto_staking_income_statement":
+        for doc in docs:
+            if _doc_type(doc) in {"crypto_exchange_transaction_export", "crypto_staking_income_statement"} and doc.status == "ready":
+                candidates.append(
+                    CandidateMatch(
+                        match_type="document",
+                        document_id=doc.id,
+                        tax_event_id=None,
+                        confidence=0.75,
+                        reason="Crypto report may support staking income evidence.",
+                    )
+                )
+
+    elif obligation_key == "crypto_wallet_activity_export":
+        for doc in docs:
+            if _doc_type(doc) == "crypto_wallet_activity_export" and doc.status == "ready":
+                candidates.append(
+                    CandidateMatch(
+                        match_type="document",
+                        document_id=doc.id,
+                        tax_event_id=None,
+                        confidence=0.75,
+                        reason="Crypto wallet export may support wallet activity evidence.",
+                    )
+                )
+
     # Deduplicate deterministically by identity and keep first reason/confidence.
     seen: set[tuple[str, str | None, str | None]] = set()
     deduped: list[CandidateMatch] = []

@@ -727,3 +727,437 @@ async def test_reconcile_creates_crypto_disposal_obligation_from_asset_class_com
     )
     obligations = await reconcile_evidence_obligations(workspace.id, workspace.financial_year, db_session)
     assert any(o.obligation_key == "crypto_disposal_supporting_records" for o in obligations)
+
+
+@pytest.mark.asyncio
+async def test_reconcile_matches_managed_fund_annual_tax_statement_document(db_session, workspace):
+    await _create_event(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        category="managed_fund_distribution",
+        event_type="investment_income",
+        metadata={
+            "investment_sub_type": "managed_fund",
+            "fund_name": "Example Fund",
+            "distribution_amount": 1600.0,
+            "distribution_date": "2025-06-20",
+        },
+    )
+    doc = await _create_document(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        document_type="managed_fund_annual_tax_statement",
+        original_filename="managed-fund-tax-statement.pdf",
+    )
+
+    obligations = await reconcile_evidence_obligations(workspace.id, workspace.financial_year, db_session)
+    annual = next(o for o in obligations if o.obligation_key == "managed_fund_annual_tax_statement")
+    assert annual.status == "partially_matched"
+
+    matches = (
+        await db_session.execute(
+            select(EvidenceMatch).where(
+                EvidenceMatch.workspace_id == workspace.id,
+                EvidenceMatch.obligation_id == annual.id,
+                EvidenceMatch.document_id == doc.id,
+            )
+        )
+    ).scalars().all()
+    assert len(matches) == 1
+    assert matches[0].status == "candidate"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_matches_managed_fund_distribution_statement_to_multiple_obligations(db_session, workspace):
+    await _create_event(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        category="managed_fund_distribution",
+        event_type="investment_income",
+        metadata={
+            "investment_sub_type": "managed_fund",
+            "fund_name": "Example Fund",
+            "distribution_amount": 1600.0,
+            "capital_gains_component": 450.0,
+            "foreign_income_component": 120.0,
+            "distribution_date": "2025-06-20",
+        },
+    )
+    doc = await _create_document(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        document_type="managed_fund_distribution_statement",
+        original_filename="managed-fund-distribution.pdf",
+    )
+
+    obligations = await reconcile_evidence_obligations(workspace.id, workspace.financial_year, db_session)
+    target_keys = {
+        "managed_fund_annual_tax_statement",
+        "managed_fund_capital_gains_schedule",
+        "managed_fund_foreign_income_support",
+    }
+    matched_keys = set()
+    for obligation in obligations:
+        if obligation.obligation_key not in target_keys:
+            continue
+        match = (
+            await db_session.execute(
+                select(EvidenceMatch).where(
+                    EvidenceMatch.workspace_id == workspace.id,
+                    EvidenceMatch.obligation_id == obligation.id,
+                    EvidenceMatch.document_id == doc.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if match:
+            matched_keys.add(obligation.obligation_key)
+    assert matched_keys == target_keys
+
+
+@pytest.mark.asyncio
+async def test_reconcile_investment_document_candidates_do_not_duplicate_on_repeat(db_session, workspace):
+    await _create_event(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        category="shares_acquisition",
+        event_type="investment_position",
+        metadata={
+            "investment_sub_type": "shares",
+            "transaction_type": "buy",
+            "stock_code": "ABC",
+            "units": 100,
+            "price_per_unit": 50.0,
+            "brokerage_fee": 20.0,
+            "purchase_date": "2024-09-01",
+        },
+    )
+    doc = await _create_document(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        document_type="share_buy_contract_note",
+        original_filename="share-buy.pdf",
+    )
+
+    await reconcile_evidence_obligations(workspace.id, workspace.financial_year, db_session)
+    await reconcile_evidence_obligations(workspace.id, workspace.financial_year, db_session)
+
+    obligation = (
+        await db_session.execute(
+            select(EvidenceObligation).where(
+                EvidenceObligation.workspace_id == workspace.id,
+                EvidenceObligation.obligation_key == "share_buy_contract_note",
+            )
+        )
+    ).scalar_one()
+    matches = (
+        await db_session.execute(
+            select(EvidenceMatch).where(
+                EvidenceMatch.workspace_id == workspace.id,
+                EvidenceMatch.obligation_id == obligation.id,
+                EvidenceMatch.document_id == doc.id,
+            )
+        )
+    ).scalars().all()
+    assert len(matches) == 1
+
+
+@pytest.mark.asyncio
+async def test_reconcile_matches_share_documents_to_expected_obligations(db_session, workspace):
+    await _create_event(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        category="shares_acquisition",
+        event_type="investment_position",
+        metadata={
+            "investment_sub_type": "shares",
+            "transaction_type": "buy",
+            "stock_code": "ABC",
+            "units": 100,
+            "price_per_unit": 50.0,
+            "brokerage_fee": 20.0,
+            "purchase_date": "2024-09-01",
+        },
+    )
+    await _create_event(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        category="dividend",
+        event_type="investment_income",
+        metadata={
+            "investment_sub_type": "shares",
+            "transaction_type": "dividend",
+            "stock_code": "ABC",
+            "dividend_amount": 180.0,
+            "franking_credits": 77.0,
+            "payment_date": "2025-03-12",
+        },
+    )
+    await _create_event(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        category="capital_gain",
+        event_type="capital",
+        metadata={
+            "investment_sub_type": "shares",
+            "transaction_type": "sell",
+            "stock_code": "ABC",
+            "purchase_date": "2024-09-01",
+            "sale_date": "2025-04-10",
+            "purchase_price": 5020.0,
+            "sale_price": 5720.0,
+            "amount_units": 100,
+        },
+    )
+    buy_doc = await _create_document(db_session, workspace.id, workspace.financial_year, document_type="share_buy_contract_note", original_filename="buy-note.pdf")
+    sell_doc = await _create_document(db_session, workspace.id, workspace.financial_year, document_type="share_sell_contract_note", original_filename="sell-note.pdf")
+    dividend_doc = await _create_document(db_session, workspace.id, workspace.financial_year, document_type="share_dividend_statement", original_filename="dividend.pdf")
+    summary_doc = await _create_document(db_session, workspace.id, workspace.financial_year, document_type="share_annual_broker_summary", original_filename="broker-summary.pdf")
+
+    obligations = await reconcile_evidence_obligations(workspace.id, workspace.financial_year, db_session)
+    by_key = {o.obligation_key: o for o in obligations}
+
+    expected_pairs = {
+        "share_buy_contract_note": buy_doc.id,
+        "share_sell_contract_note": sell_doc.id,
+        "share_dividend_statement": dividend_doc.id,
+    }
+    for obligation_key, document_id in expected_pairs.items():
+        match = (
+            await db_session.execute(
+                select(EvidenceMatch).where(
+                    EvidenceMatch.workspace_id == workspace.id,
+                    EvidenceMatch.obligation_id == by_key[obligation_key].id,
+                    EvidenceMatch.document_id == document_id,
+                )
+            )
+        ).scalar_one_or_none()
+        assert match is not None
+        assert match.status == "candidate"
+
+    summary_target_keys = {
+        "share_buy_contract_note",
+        "share_sell_contract_note",
+        "share_dividend_statement",
+        "share_annual_broker_summary",
+    }
+    matched_summary_keys = set()
+    for obligation_key in summary_target_keys:
+        match = (
+            await db_session.execute(
+                select(EvidenceMatch).where(
+                    EvidenceMatch.workspace_id == workspace.id,
+                    EvidenceMatch.obligation_id == by_key[obligation_key].id,
+                    EvidenceMatch.document_id == summary_doc.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if match:
+            matched_summary_keys.add(obligation_key)
+    assert matched_summary_keys == summary_target_keys
+
+
+@pytest.mark.asyncio
+async def test_reconcile_matches_crypto_documents_to_expected_obligations(db_session, workspace):
+    await _create_event(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        category="crypto_acquisition",
+        event_type="investment_position",
+        metadata={
+            "investment_sub_type": "crypto",
+            "transaction_type": "buy",
+            "coin": "BTC",
+            "amount_units": 0.05,
+            "purchase_price": 2000.0,
+            "transaction_fee": 0.0,
+            "purchase_date": "2024-08-01",
+        },
+    )
+    await _create_event(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        category="capital_loss",
+        event_type="capital",
+        metadata={
+            "investment_sub_type": "crypto",
+            "transaction_type": "sell",
+            "coin": "BTC",
+            "amount_units": 0.05,
+            "purchase_price": 1200.0,
+            "sale_price": 900.0,
+            "transaction_fee": 0.0,
+            "purchase_date": "2024-08-01",
+            "sale_date": "2025-02-01",
+        },
+    )
+    await _create_event(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        category="crypto",
+        event_type="investment_income",
+        metadata={
+            "investment_sub_type": "crypto",
+            "transaction_type": "staking",
+            "coin": "ETH",
+            "income_amount": 80.0,
+            "staking_income": 80.0,
+            "income_date": "2025-01-15",
+        },
+    )
+    exchange_doc = await _create_document(db_session, workspace.id, workspace.financial_year, document_type="crypto_exchange_transaction_export", original_filename="exchange.csv")
+    wallet_doc = await _create_document(db_session, workspace.id, workspace.financial_year, document_type="crypto_wallet_activity_export", original_filename="wallet.csv")
+    staking_doc = await _create_document(db_session, workspace.id, workspace.financial_year, document_type="crypto_staking_income_statement", original_filename="staking.pdf")
+
+    obligations = await reconcile_evidence_obligations(workspace.id, workspace.financial_year, db_session)
+    by_key = {o.obligation_key: o for o in obligations}
+
+    exchange_target_keys = {
+        "crypto_exchange_transaction_export",
+        "crypto_disposal_supporting_records",
+        "crypto_staking_income_statement",
+    }
+    matched_exchange_keys = set()
+    for obligation_key in exchange_target_keys:
+        match = (
+            await db_session.execute(
+                select(EvidenceMatch).where(
+                    EvidenceMatch.workspace_id == workspace.id,
+                    EvidenceMatch.obligation_id == by_key[obligation_key].id,
+                    EvidenceMatch.document_id == exchange_doc.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if match:
+            matched_exchange_keys.add(obligation_key)
+    assert matched_exchange_keys == exchange_target_keys
+
+    wallet_target_keys = {
+        "crypto_wallet_activity_export",
+        "crypto_disposal_supporting_records",
+    }
+    matched_wallet_keys = set()
+    for obligation_key in wallet_target_keys:
+        match = (
+            await db_session.execute(
+                select(EvidenceMatch).where(
+                    EvidenceMatch.workspace_id == workspace.id,
+                    EvidenceMatch.obligation_id == by_key[obligation_key].id,
+                    EvidenceMatch.document_id == wallet_doc.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if match:
+            matched_wallet_keys.add(obligation_key)
+    assert matched_wallet_keys == wallet_target_keys
+
+    staking_match = (
+        await db_session.execute(
+            select(EvidenceMatch).where(
+                EvidenceMatch.workspace_id == workspace.id,
+                EvidenceMatch.obligation_id == by_key["crypto_staking_income_statement"].id,
+                EvidenceMatch.document_id == staking_doc.id,
+            )
+        )
+    ).scalar_one_or_none()
+    assert staking_match is not None
+    assert staking_match.status == "candidate"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_preserves_investment_manual_decisions_and_status_recalculation(db_session, workspace):
+    await _create_event(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        category="shares_acquisition",
+        event_type="investment_position",
+        metadata={
+            "investment_sub_type": "shares",
+            "transaction_type": "buy",
+            "stock_code": "ABC",
+            "units": 100,
+            "price_per_unit": 50.0,
+            "brokerage_fee": 20.0,
+            "purchase_date": "2024-09-01",
+        },
+    )
+    buy_doc = await _create_document(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        document_type="share_buy_contract_note",
+        original_filename="buy-note.pdf",
+    )
+
+    obligations = await reconcile_evidence_obligations(workspace.id, workspace.financial_year, db_session)
+    buy_obligation = next(o for o in obligations if o.obligation_key == "share_buy_contract_note")
+    existing = (
+        await db_session.execute(
+            select(EvidenceMatch).where(
+                EvidenceMatch.workspace_id == workspace.id,
+                EvidenceMatch.obligation_id == buy_obligation.id,
+                EvidenceMatch.document_id == buy_doc.id,
+            )
+        )
+    ).scalar_one()
+    existing.status = "accepted"
+    await db_session.commit()
+
+    await reconcile_evidence_obligations(workspace.id, workspace.financial_year, db_session)
+    await db_session.refresh(buy_obligation)
+    matches = (
+        await db_session.execute(
+            select(EvidenceMatch).where(
+                EvidenceMatch.workspace_id == workspace.id,
+                EvidenceMatch.obligation_id == buy_obligation.id,
+                EvidenceMatch.document_id == buy_doc.id,
+            )
+        )
+    ).scalars().all()
+    assert len(matches) == 1
+    assert matches[0].status == "accepted"
+    assert buy_obligation.status == "matched"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_existing_non_investment_matching_remains_unchanged(db_session, workspace):
+    await _create_event(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        category="donation",
+    )
+    doc = await _create_document(
+        db_session,
+        workspace.id,
+        workspace.financial_year,
+        document_type="receipt",
+        original_filename="donation-receipt.pdf",
+    )
+
+    obligations = await reconcile_evidence_obligations(workspace.id, workspace.financial_year, db_session)
+    donation = next(o for o in obligations if o.obligation_key == "donation_receipt")
+    assert donation.status == "partially_matched"
+    match = (
+        await db_session.execute(
+            select(EvidenceMatch).where(
+                EvidenceMatch.workspace_id == workspace.id,
+                EvidenceMatch.obligation_id == donation.id,
+                EvidenceMatch.document_id == doc.id,
+            )
+        )
+    ).scalar_one_or_none()
+    assert match is not None
+    assert match.status == "candidate"
