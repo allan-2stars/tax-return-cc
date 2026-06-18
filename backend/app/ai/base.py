@@ -109,6 +109,7 @@ class EventCandidate:
     date: str | None = None
     confidence: float = 0.0
     ai_reasoning: str = ""
+    metadata: dict | None = None
 
 
 @dataclass

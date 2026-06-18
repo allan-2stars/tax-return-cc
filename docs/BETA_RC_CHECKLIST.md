@@ -25,7 +25,7 @@ Summary:
 ## Backend
 
 - Latest full backend baseline: `make test`
-- Result: 378 passed
+- Result: 444 passed
 - Includes:
   - recovery tests
   - evidence freshness tests
@@ -36,8 +36,8 @@ Summary:
 ## Frontend
 
 - Latest recorded frontend baseline: `make test-fe`
-- Result: 61 suites passed, 436 tests passed
-- Source: `REVIEW_AUDITABILITY_ACCEPTANCE.md`
+- Result: 61 suites passed, 467 tests passed
+- Source: current Beta RC1 validation baseline
 
 ## Dry-run Harness
 
@@ -68,7 +68,7 @@ If those conditions are not enforced operationally and in-product, the Beta reco
 
 1. Split shares into buy-only and buy-plus-sell dry-run scenarios.
 2. Split crypto into buy, sell, and staking dry-run scenarios.
-3. Improve explicit support messaging for managed fund, shares, and crypto evidence-rule gaps.
+3. Add parser/extraction support for managed funds, shares, and crypto uploads so classified investment documents can create or enrich TaxEvents automatically.
 4. Add a consolidated accountant handoff index artifact in export.
 5. Tighten mobile/tablet ergonomics for long review and evidence lists.
 6. Expand structured manual-entry templates for remaining common fallback domains.
@@ -80,7 +80,11 @@ If those conditions are not enforced operationally and in-product, the Beta reco
 3. Unified end-to-end audit timeline across Journey, Evidence, Review, and Export.
 4. Export ZIP artifact assertions in the dry-run harness.
 5. Frontend/manual UX automation beyond backend state validation.
-6. Additional evidence rules for managed funds, shares, crypto, and future domains.
+6. Deeper investment automation:
+   - parsers
+   - candidate-to-fact extraction
+   - parcel/tax-lot logic
+   - wallet reconciliation
 7. Offline/resumable upload or richer interruption tolerance beyond current MVP.
 
 ## 6. Beta Scope
@@ -116,6 +120,7 @@ If those conditions are not enforced operationally and in-product, the Beta reco
 - managed fund distribution
 - simple shares acquisition/disposal review facts
 - simple crypto acquisition/disposal/staking review facts
+- investment evidence obligations, diagnostics, classification, and candidate matching for those supported light-investment paths
 
 ## Unsupported or only partially supported domains
 
@@ -123,6 +128,8 @@ If those conditions are not enforced operationally and in-product, the Beta reco
 - complex business income workflows
 - advanced portfolio cost-base tracing
 - complex corporate actions
+- automatic investment document extraction/parsing into TaxEvents
+- crypto wallet reconciliation, DeFi, and NFT support
 - broad generic manual-entry categories not yet schema-hardened
 
 ## 7. Operational Runbook

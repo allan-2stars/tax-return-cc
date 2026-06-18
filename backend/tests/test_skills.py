@@ -161,6 +161,149 @@ def test_extract_events_returns_event_candidates_from_classification():
     assert candidates[0].category == "payg_income"
 
 
+def test_investment_skill_extracts_share_buy_contract_note_fields():
+    from app.skills.investment_skill import InvestmentSkill
+
+    skill = InvestmentSkill()
+    classification = ClassificationResult(
+        document_type="share_buy_contract_note",
+        confidence=0.95,
+        skill_id="investment_skill",
+        suggested_category=None,
+        extracted_amounts=[],
+    )
+    doc = Document(
+        workspace_id="ws-test",
+        financial_year="2024-25",
+        original_filename="buy-note.pdf",
+        storage_key="ws-test/buy-note.pdf",
+        sha256_hash="buy123",
+        extracted_text=(
+            "Broker: CommSec\n"
+            "Stock Code: BHP\n"
+            "Exchange: ASX\n"
+            "Trade Date: 01/09/2024\n"
+            "Settlement Date: 03/09/2024\n"
+            "100 shares\n"
+            "Price: $52.10\n"
+            "Gross Amount: $5210.00\n"
+            "Brokerage: $19.95\n"
+        ),
+    )
+
+    candidates = skill.extract_events(doc, classification)
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.category == "shares_acquisition"
+    assert candidate.event_type == "investment"
+    assert candidate.metadata["stock_code"] == "BHP"
+    assert candidate.metadata["exchange"] == "ASX"
+    assert candidate.metadata["units"] == 100.0
+    assert candidate.metadata["price_per_unit"] == 52.10
+    assert candidate.metadata["gross_amount"] == 5210.0
+    assert candidate.metadata["brokerage_fee"] == 19.95
+    assert candidate.metadata["trade_date"] == "2024-09-01"
+    assert candidate.metadata["settlement_date"] == "2024-09-03"
+
+
+def test_investment_skill_extracts_share_sell_contract_note_fields():
+    from app.skills.investment_skill import InvestmentSkill
+
+    skill = InvestmentSkill()
+    classification = ClassificationResult(
+        document_type="share_sell_contract_note",
+        confidence=0.95,
+        skill_id="investment_skill",
+        suggested_category=None,
+        extracted_amounts=[],
+    )
+    doc = Document(
+        workspace_id="ws-test",
+        financial_year="2024-25",
+        original_filename="sell-note.pdf",
+        storage_key="ws-test/sell-note.pdf",
+        sha256_hash="sell123",
+        extracted_text=(
+            "Platform: Nabtrade\n"
+            "Code: CBA\n"
+            "ASX\n"
+            "Trade Date: 10/04/2025\n"
+            "Settlement Date: 14/04/2025\n"
+            "Units: 50\n"
+            "Price per unit: $120.40\n"
+            "Gross Consideration: $6020.00\n"
+            "Brokerage Fee: $14.95\n"
+        ),
+    )
+
+    candidates = skill.extract_events(doc, classification)
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.category == "capital_gain_candidate"
+    assert candidate.event_type == "investment"
+    assert candidate.metadata["stock_code"] == "CBA"
+    assert candidate.metadata["units"] == 50.0
+    assert candidate.metadata["price_per_unit"] == 120.40
+    assert candidate.metadata["gross_amount"] == 6020.0
+    assert candidate.metadata["brokerage_fee"] == 14.95
+
+
+def test_investment_skill_returns_empty_for_unknown_contract_note_layout():
+    from app.skills.investment_skill import InvestmentSkill
+
+    skill = InvestmentSkill()
+    classification = ClassificationResult(
+        document_type="share_buy_contract_note",
+        confidence=0.95,
+        skill_id="investment_skill",
+        suggested_category=None,
+        extracted_amounts=[],
+    )
+    doc = Document(
+        workspace_id="ws-test",
+        financial_year="2024-25",
+        original_filename="unknown-layout.pdf",
+        storage_key="ws-test/unknown-layout.pdf",
+        sha256_hash="unknown123",
+        extracted_text="Unstructured broker note with no recognizable trade details.",
+    )
+
+    assert skill.extract_events(doc, classification) == []
+
+
+def test_investment_skill_partial_extraction_still_creates_reviewable_candidate():
+    from app.skills.investment_skill import InvestmentSkill
+
+    skill = InvestmentSkill()
+    classification = ClassificationResult(
+        document_type="share_buy_contract_note",
+        confidence=0.95,
+        skill_id="investment_skill",
+        suggested_category=None,
+        extracted_amounts=[],
+    )
+    doc = Document(
+        workspace_id="ws-test",
+        financial_year="2024-25",
+        original_filename="partial-buy-note.pdf",
+        storage_key="ws-test/partial-buy-note.pdf",
+        sha256_hash="partial123",
+        extracted_text=(
+            "Stock Code: BHP\n"
+            "100 shares\n"
+            "Trade Date: 01/09/2024\n"
+        ),
+    )
+
+    candidates = skill.extract_events(doc, classification)
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.category == "shares_acquisition"
+    assert candidate.metadata["stock_code"] == "BHP"
+    assert candidate.metadata["units"] == 100.0
+    assert candidate.date == "2024-09-01"
+
+
 # ── 8. Skill conflict → warning logged + AuditLog written ────────────────────
 
 @pytest.mark.asyncio

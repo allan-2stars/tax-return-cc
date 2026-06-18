@@ -448,14 +448,14 @@ Fail criteria:
 
 ## BETA-006: PAYG Plus Managed Fund
 
-Purpose: validate managed fund distribution metadata, review handling, explanations, and current evidence-rule limitations.
+Purpose: validate managed fund distribution metadata, generated evidence obligations, candidate matching, and current parser/extraction limitations.
 
 Uploaded documents:
 
 | Document | Expected classification/use |
 | --- | --- |
 | Synthetic income statement | PAYG income source |
-| Managed fund annual tax statement | Managed fund source document and possible evidence candidate if rule exists |
+| Managed fund annual tax statement | Managed fund source document and candidate evidence match for annual statement obligation |
 
 Journey answers:
 
@@ -482,44 +482,48 @@ Expected evidence obligations:
 
 | Obligation | Level | Expected state |
 | --- | --- | --- |
-| Managed fund annual tax statement | recommended if implemented; otherwise no first-class obligation |
+| Managed fund annual tax statement | required | candidate or partially matched until accepted |
+| Managed fund capital gains schedule | required | missing unless the uploaded document supports it and the tester accepts a candidate |
+| Managed fund foreign income support | required | missing unless the uploaded document supports it and the tester accepts a candidate |
 
-Known limitation:
+Expected evidence matching behavior:
 
-- Current explicit evidence mappings list managed fund annual tax statement as a proposed addition, not guaranteed current behavior. If no obligation appears, record as a coverage gap, not a scenario failure.
+- Uploading a document classified as `managed_fund_annual_tax_statement` should create a candidate match for the annual statement obligation.
+- Candidate matches remain candidate until the tester accepts them.
+- No document parser/extraction exists yet, so the upload does not create or amend TaxEvents automatically.
 
 Expected readiness state:
 
 - Journey ready after investment answers complete.
 - Review warning until item confirmed.
-- Evidence warning only if recommended managed fund statement obligation exists and remains missing/partial.
-- No evidence blocker should appear unless current rules explicitly mark this required.
+- Evidence blocked while required managed fund obligations remain missing or candidate-only.
 
 Expected export eligibility:
 
 - Export allowed after legacy hard gates are satisfied.
-- Evidence preview may include managed fund warning only if obligation rule exists.
+- Evidence preview includes managed fund missing/candidate obligations as soft warnings.
 
 Expected explanation coverage:
 
 - `managed_fund_distribution` explanation renders in Review.
-- Evidence explanation renders if the managed fund obligation exists.
+- Evidence explanation renders for managed fund obligations and should show investment-specific `What to check` guidance where supported.
 
 Pass criteria:
 
 - Managed fund metadata validates and persists.
-- Capital gains component remains visible in review/export JSON.
-- Export package includes managed fund event and review explanation.
+- Capital gains and foreign income components remain visible in review/export JSON.
+- Export package includes managed fund event, review explanation, and evidence status showing the missing/candidate obligations.
 
 Fail criteria:
 
 - Managed fund event is stored as generic low-confidence without structured metadata.
 - Negative distribution components are accepted.
+- A managed fund upload is treated as fully matched without user acceptance.
 - Export omits the managed fund review item after confirmation.
 
 ## BETA-007: PAYG Plus Shares
 
-Purpose: validate share acquisition/disposal semantics and prevent buy transactions from being treated as capital gain/loss events.
+Purpose: validate share acquisition/disposal semantics, generated evidence obligations, and conservative share evidence candidate matching.
 
 Variants:
 
@@ -560,22 +564,28 @@ Expected evidence obligations:
 
 | Obligation | Level | Expected state |
 | --- | --- | --- |
-| Trade contract note | recommended if implemented; otherwise no first-class obligation |
+| Share buy contract note | required | candidate or partially matched until accepted |
+| Share sell contract note | required | candidate or partially matched until accepted when disposal exists |
+| Share annual broker summary | recommended | missing unless a broker summary is uploaded |
 
-Known limitation:
+Expected evidence matching behavior:
 
-- Explicit share/ETF evidence rules are proposed additions. Absence of a share contract-note obligation is a coverage gap, not a current failure.
+- Uploading a document classified as `share_buy_contract_note` should create a candidate match for the buy obligation.
+- Uploading a document classified as `share_sell_contract_note` should create a candidate match for the sell obligation.
+- Uploading `share_annual_broker_summary` may create broad candidate matches for buy, sell, dividend, and broker summary obligations when those obligations exist.
+- Candidate matches remain candidate until the tester accepts them.
+- No parcel-matching, cost-base engine, or parser/extraction logic exists yet.
 
 Expected readiness state:
 
 - Journey ready after investment branch complete.
 - Review warning until investment review items are confirmed.
-- Evidence warning only if recommended share obligation exists and remains missing/partial.
+- Evidence blocked while required share obligations remain missing or candidate-only.
 
 Expected export eligibility:
 
 - Export allowed after existing hard gates are satisfied.
-- Evidence warning should remain soft.
+- Evidence warning should remain soft at export even when readiness evidence is blocked.
 
 Expected explanation coverage:
 
@@ -586,6 +596,7 @@ Pass criteria:
 
 - Share buy submits/stores acquisition semantics, not capital gain/loss.
 - Share sell creates a disposal/capital review item with calculation inputs visible.
+- Uploaded buy/sell documents create candidate evidence matches, not auto-accepted matches.
 - Export package contains separate acquisition and disposal facts where applicable.
 
 Fail criteria:
@@ -593,10 +604,11 @@ Fail criteria:
 - Share buy appears as a capital gain or capital loss.
 - Buy-only scenario creates a misleading taxable disposal review item.
 - Purchase date after sale date is accepted.
+- A share evidence document is treated as matched without explicit acceptance.
 
 ## BETA-008: PAYG Plus Crypto
 
-Purpose: validate crypto acquisition/disposal/staking semantics, review visibility, and current evidence-rule limitations.
+Purpose: validate crypto acquisition/disposal/staking semantics, generated evidence obligations, conservative crypto candidate matching, and current parser/reconciliation limitations.
 
 Variants:
 
@@ -639,33 +651,43 @@ Expected evidence obligations:
 
 | Obligation | Level | Expected state |
 | --- | --- | --- |
-| Exchange report / transaction statement | recommended if implemented; otherwise no first-class obligation |
+| Crypto exchange transaction export | required | candidate or partially matched until accepted |
+| Crypto disposal supporting records | required | candidate or partially matched until accepted when disposal exists |
+| Crypto staking income statement | required | candidate or partially matched until accepted when staking exists |
+| Crypto wallet activity export | recommended | missing unless a wallet export is uploaded |
 
-Known limitation:
+Expected evidence matching behavior:
 
-- Explicit crypto evidence rules are not part of the current explicit mapping. Absence of a crypto exchange-report obligation is a coverage gap, not a current failure.
+- Uploading a document classified as `crypto_exchange_transaction_export` should create candidate matches for the exchange-export, disposal-support, and staking obligations when those obligations exist.
+- Uploading `crypto_wallet_activity_export` may create candidate matches for wallet/disposal obligations.
+- Uploading `crypto_staking_income_statement` should create a candidate match for the staking obligation.
+- Candidate matches remain candidate until the tester accepts them.
+- No crypto parser, wallet reconciliation, DeFi/NFT support, or tax-lot engine exists yet.
+- Crypto staking event shape remains known technical debt; coverage depends on the current accepted event shapes.
 
 Expected readiness state:
 
 - Journey ready after crypto branch complete.
 - Review warning until crypto review items are confirmed.
-- Evidence warning only if recommended crypto obligation exists and remains missing/partial.
+- Evidence blocked while required crypto obligations remain missing or candidate-only.
 
 Expected export eligibility:
 
 - Export allowed after existing hard gates are satisfied.
-- Evidence warnings remain soft.
+- Evidence warnings remain soft at export even when readiness evidence is blocked.
 
 Expected explanation coverage:
 
 - `crypto_acquisition` explanation for buy-only item.
 - `capital_gain` or `capital_loss` explanation for sell/disposal item where current mapping creates those categories.
-- Generic safe explanation is acceptable for staking if the current template service does not yet include `crypto_staking_income`.
+- `crypto_staking_income` explanation or current generic fallback is acceptable, depending template coverage.
+- Evidence explanations should show investment-specific `What to check` guidance where supported.
 
 Pass criteria:
 
 - Crypto buy stores acquisition semantics, not capital gain/loss.
 - Crypto sell stores disposal/capital semantics only for the sell event.
+- Exchange export upload creates candidate evidence matches but does not auto-create new TaxEvents.
 - Coin/token validation prevents invalid symbols.
 - Export package includes crypto review items and explanations/fallbacks.
 
@@ -674,6 +696,7 @@ Fail criteria:
 - Crypto buy appears as capital gain/loss.
 - Staking income is hidden from Review.
 - Invalid negative quantities or amounts are accepted.
+- A crypto evidence upload is treated as fully matched without explicit acceptance.
 
 ## Cross-Scenario Recovery And Session Checks
 
@@ -731,14 +754,14 @@ Rationale:
 
 - Start with the simplest PAYG path to validate baseline Journey, Review, Readiness, Export, and artifact generation.
 - Validate required evidence blocker behavior before investment complexity.
-- Run investment scenarios after core income/deduction paths because their evidence rules intentionally have known coverage gaps.
+- Run investment scenarios after core income/deduction paths because their evidence pipeline is now present, but parser/extraction and advanced tax logic are still intentionally limited.
 
 ## Beta Exit Criteria For This Pack
 
 The platform is acceptable for invite-only Beta dry-run completion when:
 
 - BETA-001 through BETA-005 pass without critical failures.
-- BETA-006 through BETA-008 either pass or record only known evidence-rule coverage gaps.
+- BETA-006 through BETA-008 pass with generated obligations, candidate matching, and clear parser/extraction limitations only.
 - No scenario reveals a data-loss, workspace recovery, stale readiness, invisible blocker, or misleading export eligibility defect.
 - Export packages are understandable to a reviewer using `04A-REVIEW-ITEMS.json` and `05A-EVIDENCE-STATUS.json`.
 - All failures are triaged as either Must Fix Before Beta, Recommended Before Beta, or Post-Beta.
@@ -746,4 +769,4 @@ The platform is acceptable for invite-only Beta dry-run completion when:
 Recommended Beta user profile after this pack:
 
 - Primary: simple PAYG user with bank interest, WFH, donations, and modest work expenses.
-- Secondary controlled cohort: PAYG user with managed fund or simple shares/crypto transactions, only if testers understand these are evidence-rule coverage validation scenarios and not full investment tax automation.
+- Secondary controlled cohort: PAYG user with managed fund or simple shares/crypto transactions, only if testers understand these scenarios validate the evidence pipeline and review flow, not full investment parser/tax automation.

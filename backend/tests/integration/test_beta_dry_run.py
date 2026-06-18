@@ -65,6 +65,7 @@ class BetaScenario:
     expected_export_can_export: bool
     expected_evidence_would_block_export: bool
     expected_explanation_categories: set[str]
+    expected_candidate_obligation_keys: set[str] = field(default_factory=set)
     known_gap_obligation_keys: set[str] = field(default_factory=set)
 
 
@@ -104,6 +105,7 @@ SCENARIOS = [
         expected_export_can_export=True,
         expected_evidence_would_block_export=False,
         expected_explanation_categories={"bank_interest"},
+        expected_candidate_obligation_keys={"bank_interest_statement"},
     ),
     BetaScenario(
         scenario_id="BETA-002",
@@ -139,6 +141,7 @@ SCENARIOS = [
         expected_export_can_export=True,
         expected_evidence_would_block_export=True,
         expected_explanation_categories={"wfh_deduction"},
+        expected_candidate_obligation_keys={"wfh_evidence_log"},
     ),
     BetaScenario(
         scenario_id="BETA-003",
@@ -209,6 +212,7 @@ SCENARIOS = [
         expected_export_can_export=True,
         expected_evidence_would_block_export=True,
         expected_explanation_categories={"donation"},
+        expected_candidate_obligation_keys={"donation_receipt"},
     ),
     BetaScenario(
         scenario_id="BETA-005",
@@ -257,6 +261,7 @@ SCENARIOS = [
         expected_export_can_export=True,
         expected_evidence_would_block_export=True,
         expected_explanation_categories={"work_expense"},
+        expected_candidate_obligation_keys={"work_expense_receipt"},
     ),
     BetaScenario(
         scenario_id="BETA-006",
@@ -265,7 +270,7 @@ SCENARIOS = [
         answers={"employment_type": "employee", "has_investments": "yes", "investment_type": "managed_fund"},
         documents=(
             DocumentSeed("income_statement", "income-statement.pdf"),
-            DocumentSeed("managed_fund_statement", "managed-fund-tax-statement.pdf"),
+            DocumentSeed("managed_fund_annual_tax_statement", "managed-fund-tax-statement.pdf"),
         ),
         events=(
             EventSeed("payg_income", "income", 84000.0, "PAYG income"),
@@ -297,6 +302,7 @@ SCENARIOS = [
         expected_export_can_export=True,
         expected_evidence_would_block_export=True,
         expected_explanation_categories={"managed_fund_distribution"},
+        expected_candidate_obligation_keys={"managed_fund_annual_tax_statement"},
         known_gap_obligation_keys=set(),
     ),
     BetaScenario(
@@ -306,8 +312,8 @@ SCENARIOS = [
         answers={"employment_type": "employee", "has_investments": "yes", "investment_type": "shares"},
         documents=(
             DocumentSeed("income_statement", "income-statement.pdf"),
-            DocumentSeed("broker_contract_note", "shares-buy-contract.pdf"),
-            DocumentSeed("broker_contract_note", "shares-sell-contract.pdf"),
+            DocumentSeed("share_buy_contract_note", "shares-buy-contract.pdf"),
+            DocumentSeed("share_sell_contract_note", "shares-sell-contract.pdf"),
         ),
         events=(
             EventSeed("payg_income", "income", 84000.0, "PAYG income"),
@@ -354,6 +360,7 @@ SCENARIOS = [
         expected_export_can_export=True,
         expected_evidence_would_block_export=True,
         expected_explanation_categories={"shares_acquisition", "capital_gain"},
+        expected_candidate_obligation_keys={"share_buy_contract_note", "share_sell_contract_note"},
         known_gap_obligation_keys=set(),
     ),
     BetaScenario(
@@ -363,7 +370,7 @@ SCENARIOS = [
         answers={"employment_type": "employee", "has_investments": "yes", "investment_type": "crypto"},
         documents=(
             DocumentSeed("income_statement", "income-statement.pdf"),
-            DocumentSeed("crypto_exchange_statement", "crypto-transactions.csv"),
+            DocumentSeed("crypto_exchange_transaction_export", "crypto-transactions.csv"),
         ),
         events=(
             EventSeed("payg_income", "income", 84000.0, "PAYG income"),
@@ -421,6 +428,11 @@ SCENARIOS = [
         expected_export_can_export=True,
         expected_evidence_would_block_export=True,
         expected_explanation_categories={"crypto_acquisition", "capital_loss", "crypto_staking_income"},
+        expected_candidate_obligation_keys={
+            "crypto_exchange_transaction_export",
+            "crypto_disposal_supporting_records",
+            "crypto_staking_income_statement",
+        },
         known_gap_obligation_keys=set(),
     ),
 ]
@@ -580,6 +592,24 @@ async def test_beta_dry_run_scenario_outputs(db_session: AsyncSession, scenario:
     ).scalars().all()
     review_categories = {item.category for item in review_items}
     assert scenario.expected_review_categories <= review_categories
+
+    candidate_matches = (
+        await db_session.execute(
+            select(EvidenceMatch).where(
+                EvidenceMatch.workspace_id == workspace.id,
+                EvidenceMatch.status == "candidate",
+            )
+        )
+    ).scalars().all()
+    candidate_obligation_ids = {match.obligation_id for match in candidate_matches}
+    candidate_obligation_keys = {
+        obligation.obligation_key
+        for obligation in obligations
+        if obligation.id in candidate_obligation_ids
+    }
+    assert scenario.expected_candidate_obligation_keys <= candidate_obligation_keys
+    for match in candidate_matches:
+        assert match.status == "candidate"
 
     readiness_2_0 = await _build_readiness_2_0(workspace.id, db_session)
     assert readiness_2_0["journey"]["state"] == scenario.expected_journey_state

@@ -173,3 +173,340 @@ async def test_upload_uses_workspace_financial_year(auth_client, test_engine, tm
 
     assert doc.workspace_id == new_ws_id
     assert doc.financial_year == "2025-26"
+
+
+@pytest.mark.asyncio
+async def test_share_buy_contract_note_upload_creates_reviewable_event_and_item(auth_client, test_engine, tmp_path, monkeypatch):
+    from app.config import settings
+    from app.db.models import ReviewItem, TaxEvent
+    from app.ai.base import ClassificationResult
+
+    monkeypatch.setattr(settings, "STORAGE_PATH", str(tmp_path / "docs"))
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key-present")
+
+    class _FakeAdapter:
+        async def classify(self, text: str, fields: dict | None, profile: dict | None) -> ClassificationResult:
+            return ClassificationResult(
+                document_type="share_buy_contract_note",
+                confidence=0.92,
+                skill_id="investment_skill",
+                suggested_category=None,
+                extracted_amounts=[],
+                notes="mocked investment classification",
+            )
+
+    import app.ai as ai_mod
+    monkeypatch.setattr(ai_mod, "get_ai_adapter", lambda workspace_id="": _FakeAdapter())
+
+    from app.engines.evidence import EvidenceEngine
+    monkeypatch.setattr(
+        EvidenceEngine,
+        "_extract_pdf",
+        lambda self, doc: (
+            "Broker: CommSec\n"
+            "Stock Code: BHP\n"
+            "Exchange: ASX\n"
+            "Trade Date: 01/09/2024\n"
+            "Settlement Date: 03/09/2024\n"
+            "100 shares\n"
+            "Price: $52.10\n"
+            "Gross Amount: $5210.00\n"
+            "Brokerage: $19.95\n",
+            {},
+            "pdfplumber",
+            0.95,
+        ),
+    )
+
+    upload = await auth_client.post(
+        "/api/v1/documents/upload",
+        files={"file": ("share-buy.pdf", _MINIMAL_PDF, "application/pdf")},
+    )
+    assert upload.status_code == 200, upload.text
+    doc_id = upload.json()["document_id"]
+
+    from app.api.routes.documents import _run_extraction
+    await _run_extraction(doc_id)
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        event = (
+            await session.execute(
+                select(TaxEvent).where(TaxEvent.document_id == doc_id)
+            )
+        ).scalar_one()
+        assert event.category == "shares_acquisition"
+        assert event.event_type == "investment"
+        assert event.event_metadata["stock_code"] == "BHP"
+        assert event.event_metadata["units"] == 100.0
+        assert event.event_metadata["price_per_unit"] == 52.10
+
+        item = (
+            await session.execute(
+                select(ReviewItem).where(ReviewItem.tax_event_id == event.id)
+            )
+        ).scalar_one()
+        assert item.category == "shares_acquisition"
+        assert item.status == "needs_user_review"
+
+
+@pytest.mark.asyncio
+async def test_share_sell_contract_note_upload_creates_capital_gain_candidate_and_can_confirm(auth_client, test_engine, tmp_path, monkeypatch):
+    from app.config import settings
+    from app.db.models import ReviewItem, TaxEvent
+    from app.ai.base import ClassificationResult
+
+    monkeypatch.setattr(settings, "STORAGE_PATH", str(tmp_path / "docs"))
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key-present")
+
+    class _FakeAdapter:
+        async def classify(self, text: str, fields: dict | None, profile: dict | None) -> ClassificationResult:
+            return ClassificationResult(
+                document_type="share_sell_contract_note",
+                confidence=0.92,
+                skill_id="investment_skill",
+                suggested_category=None,
+                extracted_amounts=[],
+                notes="mocked investment classification",
+            )
+
+    import app.ai as ai_mod
+    monkeypatch.setattr(ai_mod, "get_ai_adapter", lambda workspace_id="": _FakeAdapter())
+
+    from app.engines.evidence import EvidenceEngine
+    monkeypatch.setattr(
+        EvidenceEngine,
+        "_extract_pdf",
+        lambda self, doc: (
+            "Platform: Nabtrade\n"
+            "Code: CBA\n"
+            "ASX\n"
+            "Trade Date: 10/04/2025\n"
+            "Settlement Date: 14/04/2025\n"
+            "Units: 50\n"
+            "Price per unit: $120.40\n"
+            "Gross Consideration: $6020.00\n"
+            "Brokerage Fee: $14.95\n",
+            {},
+            "pdfplumber",
+            0.95,
+        ),
+    )
+
+    upload = await auth_client.post(
+        "/api/v1/documents/upload",
+        files={"file": ("share-sell.pdf", _MINIMAL_PDF, "application/pdf")},
+    )
+    assert upload.status_code == 200, upload.text
+    doc_id = upload.json()["document_id"]
+
+    from app.api.routes.documents import _run_extraction
+    await _run_extraction(doc_id)
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        event = (
+            await session.execute(
+                select(TaxEvent).where(TaxEvent.document_id == doc_id)
+            )
+        ).scalar_one()
+        assert event.category == "capital_gain_candidate"
+        assert event.event_type == "investment"
+        assert event.event_metadata["stock_code"] == "CBA"
+        item = (
+            await session.execute(
+                select(ReviewItem).where(ReviewItem.tax_event_id == event.id)
+            )
+        ).scalar_one()
+        item_id = item.id
+
+    confirm = await auth_client.post(
+        f"/api/v1/review/{item_id}/action",
+        json={"action": "confirmed"},
+    )
+    assert confirm.status_code == 200, confirm.text
+    assert confirm.json()["data"]["status"] == "confirmed"
+
+
+@pytest.mark.asyncio
+async def test_reprocessing_same_share_contract_note_does_not_duplicate_events(auth_client, test_engine, tmp_path, monkeypatch):
+    from app.config import settings
+    from app.db.models import TaxEvent
+    from app.ai.base import ClassificationResult
+
+    monkeypatch.setattr(settings, "STORAGE_PATH", str(tmp_path / "docs"))
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key-present")
+
+    class _FakeAdapter:
+        async def classify(self, text: str, fields: dict | None, profile: dict | None) -> ClassificationResult:
+            return ClassificationResult(
+                document_type="share_buy_contract_note",
+                confidence=0.92,
+                skill_id="investment_skill",
+                suggested_category=None,
+                extracted_amounts=[],
+                notes="mocked investment classification",
+            )
+
+    import app.ai as ai_mod
+    monkeypatch.setattr(ai_mod, "get_ai_adapter", lambda workspace_id="": _FakeAdapter())
+
+    from app.engines.evidence import EvidenceEngine
+    monkeypatch.setattr(
+        EvidenceEngine,
+        "_extract_pdf",
+        lambda self, doc: (
+            "Stock Code: BHP\n"
+            "100 shares\n"
+            "Price: $52.10\n"
+            "Trade Date: 01/09/2024\n",
+            {},
+            "pdfplumber",
+            0.95,
+        ),
+    )
+
+    upload = await auth_client.post(
+        "/api/v1/documents/upload",
+        files={"file": ("share-buy-idempotent.pdf", _MINIMAL_PDF, "application/pdf")},
+    )
+    assert upload.status_code == 200, upload.text
+    doc_id = upload.json()["document_id"]
+
+    from app.api.routes.documents import _run_extraction
+    await _run_extraction(doc_id)
+    await _run_extraction(doc_id)
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        event_count = (
+            await session.execute(
+                select(func.count(TaxEvent.id)).where(TaxEvent.document_id == doc_id)
+            )
+        ).scalar_one()
+
+    assert event_count == 1
+
+
+@pytest.mark.asyncio
+async def test_unknown_share_contract_note_layout_does_not_crash_processing(auth_client, test_engine, tmp_path, monkeypatch):
+    from app.config import settings
+    from app.db.models import Document, TaxEvent
+    from app.ai.base import ClassificationResult
+
+    monkeypatch.setattr(settings, "STORAGE_PATH", str(tmp_path / "docs"))
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key-present")
+
+    class _FakeAdapter:
+        async def classify(self, text: str, fields: dict | None, profile: dict | None) -> ClassificationResult:
+            return ClassificationResult(
+                document_type="share_buy_contract_note",
+                confidence=0.92,
+                skill_id="investment_skill",
+                suggested_category=None,
+                extracted_amounts=[],
+                notes="mocked investment classification",
+            )
+
+    import app.ai as ai_mod
+    monkeypatch.setattr(ai_mod, "get_ai_adapter", lambda workspace_id="": _FakeAdapter())
+
+    from app.engines.evidence import EvidenceEngine
+    monkeypatch.setattr(
+        EvidenceEngine,
+        "_extract_pdf",
+        lambda self, doc: (
+            "Unstructured broker note with no recognizable fields.",
+            {},
+            "pdfplumber",
+            0.95,
+        ),
+    )
+
+    upload = await auth_client.post(
+        "/api/v1/documents/upload",
+        files={"file": ("unknown-share-layout.pdf", _MINIMAL_PDF, "application/pdf")},
+    )
+    assert upload.status_code == 200, upload.text
+    doc_id = upload.json()["document_id"]
+
+    from app.api.routes.documents import _run_extraction
+    await _run_extraction(doc_id)
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        doc = (await session.execute(select(Document).where(Document.id == doc_id))).scalar_one()
+        event_count = (
+            await session.execute(
+                select(func.count(TaxEvent.id)).where(TaxEvent.document_id == doc_id)
+            )
+        ).scalar_one()
+
+    assert doc.status == "ready"
+    assert event_count == 0
+
+
+@pytest.mark.asyncio
+async def test_partial_share_contract_note_extraction_still_creates_reviewable_output(auth_client, test_engine, tmp_path, monkeypatch):
+    from app.config import settings
+    from app.db.models import ReviewItem, TaxEvent
+    from app.ai.base import ClassificationResult
+
+    monkeypatch.setattr(settings, "STORAGE_PATH", str(tmp_path / "docs"))
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key-present")
+
+    class _FakeAdapter:
+        async def classify(self, text: str, fields: dict | None, profile: dict | None) -> ClassificationResult:
+            return ClassificationResult(
+                document_type="share_buy_contract_note",
+                confidence=0.92,
+                skill_id="investment_skill",
+                suggested_category=None,
+                extracted_amounts=[],
+                notes="mocked investment classification",
+            )
+
+    import app.ai as ai_mod
+    monkeypatch.setattr(ai_mod, "get_ai_adapter", lambda workspace_id="": _FakeAdapter())
+
+    from app.engines.evidence import EvidenceEngine
+    monkeypatch.setattr(
+        EvidenceEngine,
+        "_extract_pdf",
+        lambda self, doc: (
+            "Stock Code: BHP\n"
+            "100 shares\n"
+            "Trade Date: 01/09/2024\n",
+            {},
+            "pdfplumber",
+            0.95,
+        ),
+    )
+
+    upload = await auth_client.post(
+        "/api/v1/documents/upload",
+        files={"file": ("partial-share-layout.pdf", _MINIMAL_PDF, "application/pdf")},
+    )
+    assert upload.status_code == 200, upload.text
+    doc_id = upload.json()["document_id"]
+
+    from app.api.routes.documents import _run_extraction
+    await _run_extraction(doc_id)
+
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        event = (
+            await session.execute(
+                select(TaxEvent).where(TaxEvent.document_id == doc_id)
+            )
+        ).scalar_one()
+        item = (
+            await session.execute(
+                select(ReviewItem).where(ReviewItem.tax_event_id == event.id)
+            )
+        ).scalar_one()
+
+    assert event.category == "shares_acquisition"
+    assert event.event_metadata["stock_code"] == "BHP"
+    assert event.event_metadata["units"] == 100.0
+    assert item.status == "needs_user_review"

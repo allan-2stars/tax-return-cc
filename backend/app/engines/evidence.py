@@ -13,6 +13,7 @@ from app.config import settings
 from app.engines.sanitize import sanitize_for_ai
 from app.errors import AppError, DuplicateDocumentError
 from app.repositories import documents as doc_repo
+from app.repositories import events as events_repo
 from app.skills.registry import get_registry
 from app.storage.base import StorageBackend
 
@@ -180,33 +181,40 @@ class EvidenceEngine:
                 # get_owner expects a category, so use get_skill here.
                 skill = get_registry().get_skill(classification.skill_id or "")
                 if skill:
-                    candidates = skill.extract_events(doc, classification)
-                    new_events = []
-                    for c in candidates:
-                        ev = TaxEvent(
-                            workspace_id=doc.workspace_id,
-                            document_id=doc.id,
-                            financial_year=doc.financial_year,
-                            event_type=c.event_type,
-                            category=c.category,
-                            description=c.description,
-                            amount=c.amount,
-                            date=c.date,
-                            source="document_extracted",
-                            ai_reasoning=c.ai_reasoning,
-                            confidence=c.confidence,
-                            status="needs_user_review",
-                            skill_id=classification.skill_id,
-                            skill_version=skill.version if isinstance(getattr(skill, "version", None), str) else None,
-                        )
-                        self._db.add(ev)
-                        new_events.append(ev)
-                    await self._db.commit()
-                    for ev in new_events:
-                        await self._db.refresh(ev)
-                    if self._review_engine is not None:
+                    existing_event_count = await events_repo.count_by_document(
+                        self._db,
+                        workspace_id=doc.workspace_id,
+                        document_id=doc.id,
+                    )
+                    if existing_event_count == 0:
+                        candidates = skill.extract_events(doc, classification)
+                        new_events = []
+                        for c in candidates:
+                            ev = TaxEvent(
+                                workspace_id=doc.workspace_id,
+                                document_id=doc.id,
+                                financial_year=doc.financial_year,
+                                event_type=c.event_type,
+                                category=c.category,
+                                description=c.description,
+                                amount=c.amount,
+                                date=c.date,
+                                source="document_extracted",
+                                ai_reasoning=c.ai_reasoning,
+                                confidence=c.confidence,
+                                status="needs_user_review",
+                                skill_id=classification.skill_id,
+                                skill_version=skill.version if isinstance(getattr(skill, "version", None), str) else None,
+                                event_metadata=c.metadata,
+                            )
+                            self._db.add(ev)
+                            new_events.append(ev)
+                        await self._db.commit()
                         for ev in new_events:
-                            await self._review_engine.create_review_item(ev, self._db)
+                            await self._db.refresh(ev)
+                        if self._review_engine is not None:
+                            for ev in new_events:
+                                await self._review_engine.create_review_item(ev, self._db)
                 await doc_repo.update_status(self._db, document_id, "ready")
             else:
                 await doc_repo.update_status(self._db, document_id, "ready")
