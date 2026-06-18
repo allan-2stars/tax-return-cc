@@ -3,3 +3,6 @@ version: 1.0.0
 owned_categories:
   - shares_acquisition
   - capital_gain_candidate
+  - share_annual_summary
+  - dividend
+  - managed_fund_distribution

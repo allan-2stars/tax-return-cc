@@ -1,4 +1,5 @@
 # Environment secrets — never commit
+ai_reminder.md
 .env
 
 # Python

@@ -304,6 +304,308 @@ def test_investment_skill_partial_extraction_still_creates_reviewable_candidate(
     assert candidate.date == "2024-09-01"
 
 
+def test_investment_skill_extracts_dividend_statement_fields():
+    from app.skills.investment_skill import InvestmentSkill
+
+    skill = InvestmentSkill()
+    classification = ClassificationResult(
+        document_type="share_dividend_statement",
+        confidence=0.95,
+        skill_id="investment_skill",
+        suggested_category=None,
+        extracted_amounts=[],
+    )
+    doc = Document(
+        workspace_id="ws-test",
+        financial_year="2024-25",
+        original_filename="dividend.pdf",
+        storage_key="ws-test/dividend.pdf",
+        sha256_hash="div123",
+        extracted_text=(
+            "BHP Group Limited\n"
+            "ASX Code: BHP\n"
+            "Dividend: $145.20\n"
+            "Franking Credits: $62.23\n"
+            "Payment Date: 15 Sep 2025\n"
+            "Record Date: 01 Sep 2025\n"
+            "Shares Held: 200\n"
+            "Currency: AUD\n"
+        ),
+    )
+
+    candidates = skill.extract_events(doc, classification)
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.category == "dividend"
+    assert candidate.event_type == "investment"
+    assert candidate.metadata["company_name"] == "BHP Group Limited"
+    assert candidate.metadata["stock_code"] == "BHP"
+    assert candidate.metadata["dividend_amount"] == 145.20
+    assert candidate.metadata["franking_credits"] == 62.23
+    assert candidate.metadata["payment_date"] == "2025-09-15"
+    assert candidate.metadata["record_date"] == "2025-09-01"
+    assert candidate.metadata["shares_held"] == 200.0
+    assert candidate.metadata["currency"] == "AUD"
+
+
+def test_investment_skill_dividend_partial_extraction_still_creates_reviewable_candidate():
+    from app.skills.investment_skill import InvestmentSkill
+
+    skill = InvestmentSkill()
+    classification = ClassificationResult(
+        document_type="share_dividend_statement",
+        confidence=0.95,
+        skill_id="investment_skill",
+        suggested_category=None,
+        extracted_amounts=[],
+    )
+    doc = Document(
+        workspace_id="ws-test",
+        financial_year="2024-25",
+        original_filename="partial-dividend.pdf",
+        storage_key="ws-test/partial-dividend.pdf",
+        sha256_hash="divpartial123",
+        extracted_text=(
+            "Company: BHP Group Limited\n"
+            "Dividend Amount: $145.20\n"
+            "Payment Date: 15 Sep 2025\n"
+        ),
+    )
+
+    candidates = skill.extract_events(doc, classification)
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.category == "dividend"
+    assert candidate.metadata["company_name"] == "BHP Group Limited"
+    assert candidate.metadata["dividend_amount"] == 145.20
+    assert candidate.metadata["payment_date"] == "2025-09-15"
+
+
+def test_investment_skill_dividend_unknown_layout_returns_empty():
+    from app.skills.investment_skill import InvestmentSkill
+
+    skill = InvestmentSkill()
+    classification = ClassificationResult(
+        document_type="share_dividend_statement",
+        confidence=0.95,
+        skill_id="investment_skill",
+        suggested_category=None,
+        extracted_amounts=[],
+    )
+    doc = Document(
+        workspace_id="ws-test",
+        financial_year="2024-25",
+        original_filename="unknown-dividend.pdf",
+        storage_key="ws-test/unknown-dividend.pdf",
+        sha256_hash="divunknown123",
+        extracted_text="Registry correspondence with no recognizable dividend fields.",
+    )
+
+    assert skill.extract_events(doc, classification) == []
+
+
+def test_investment_skill_extracts_managed_fund_statement_fields():
+    from app.skills.investment_skill import InvestmentSkill
+
+    skill = InvestmentSkill()
+    classification = ClassificationResult(
+        document_type="managed_fund_annual_tax_statement",
+        confidence=0.95,
+        skill_id="investment_skill",
+        suggested_category=None,
+        extracted_amounts=[],
+    )
+    doc = Document(
+        workspace_id="ws-test",
+        financial_year="2024-25",
+        original_filename="managed-fund.pdf",
+        storage_key="ws-test/managed-fund.pdf",
+        sha256_hash="mf123",
+        extracted_text=(
+            "Vanguard Australian Shares Index Fund\n"
+            "Fund Manager: Vanguard\n"
+            "Distribution: $1,245.80\n"
+            "Capital Gains: $215.40\n"
+            "Foreign Income: $37.20\n"
+            "TFN Withholding: $0.00\n"
+            "Statement Date: 30 Jun 2025\n"
+            "Financial Year: 2024-25\n"
+        ),
+    )
+
+    candidates = skill.extract_events(doc, classification)
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.category == "managed_fund_distribution"
+    assert candidate.event_type == "investment"
+    assert candidate.metadata["fund_name"] == "Vanguard Australian Shares Index Fund"
+    assert candidate.metadata["fund_manager"] == "Vanguard"
+    assert candidate.metadata["distribution_amount"] == 1245.80
+    assert candidate.metadata["capital_gains_component"] == 215.40
+    assert candidate.metadata["foreign_income_component"] == 37.20
+    assert candidate.metadata["tfn_withholding"] == 0.0
+    assert candidate.metadata["statement_date"] == "2025-06-30"
+    assert candidate.metadata["financial_year"] == "2024-25"
+
+
+def test_investment_skill_managed_fund_partial_extraction_still_creates_reviewable_candidate():
+    from app.skills.investment_skill import InvestmentSkill
+
+    skill = InvestmentSkill()
+    classification = ClassificationResult(
+        document_type="managed_fund_annual_tax_statement",
+        confidence=0.95,
+        skill_id="investment_skill",
+        suggested_category=None,
+        extracted_amounts=[],
+    )
+    doc = Document(
+        workspace_id="ws-test",
+        financial_year="2024-25",
+        original_filename="partial-managed-fund.pdf",
+        storage_key="ws-test/partial-managed-fund.pdf",
+        sha256_hash="mfpartial123",
+        extracted_text=(
+            "Fund Name: Vanguard Australian Shares Index Fund\n"
+            "Distribution Amount: $1,245.80\n"
+            "Statement Date: 30 Jun 2025\n"
+        ),
+    )
+
+    candidates = skill.extract_events(doc, classification)
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.category == "managed_fund_distribution"
+    assert candidate.metadata["fund_name"] == "Vanguard Australian Shares Index Fund"
+    assert candidate.metadata["distribution_amount"] == 1245.80
+    assert candidate.metadata["statement_date"] == "2025-06-30"
+
+
+def test_investment_skill_managed_fund_unknown_layout_returns_empty():
+    from app.skills.investment_skill import InvestmentSkill
+
+    skill = InvestmentSkill()
+    classification = ClassificationResult(
+        document_type="managed_fund_annual_tax_statement",
+        confidence=0.95,
+        skill_id="investment_skill",
+        suggested_category=None,
+        extracted_amounts=[],
+    )
+    doc = Document(
+        workspace_id="ws-test",
+        financial_year="2024-25",
+        original_filename="unknown-managed-fund.pdf",
+        storage_key="ws-test/unknown-managed-fund.pdf",
+        sha256_hash="mfunknown123",
+        extracted_text="Investor correspondence with no recognizable tax statement fields.",
+    )
+
+    assert skill.extract_events(doc, classification) == []
+
+
+def test_investment_skill_extracts_share_annual_broker_summary_fields():
+    from app.skills.investment_skill import InvestmentSkill
+
+    skill = InvestmentSkill()
+    classification = ClassificationResult(
+        document_type="share_annual_broker_summary",
+        confidence=0.95,
+        skill_id="investment_skill",
+        suggested_category=None,
+        extracted_amounts=[],
+    )
+    doc = Document(
+        workspace_id="ws-test",
+        financial_year="2024-25",
+        original_filename="broker-summary.pdf",
+        storage_key="ws-test/broker-summary.pdf",
+        sha256_hash="broker123",
+        extracted_text=(
+            "Broker: SelfWealth\n"
+            "Financial Year: 2024-25\n"
+            "Buy Transactions: 12\n"
+            "Sell Transactions: 7\n"
+            "Purchases: $12,400\n"
+            "Sales: $8,700\n"
+            "Dividends: $640\n"
+            "Brokerage: $95\n"
+            "Holdings Count: 5\n"
+        ),
+    )
+
+    candidates = skill.extract_events(doc, classification)
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.category == "share_annual_summary"
+    assert candidate.event_type == "investment"
+    assert candidate.metadata["broker_name"] == "SelfWealth"
+    assert candidate.metadata["financial_year"] == "2024-25"
+    assert candidate.metadata["total_buy_transactions"] == 12.0
+    assert candidate.metadata["total_sell_transactions"] == 7.0
+    assert candidate.metadata["total_purchase_value"] == 12400.0
+    assert candidate.metadata["total_sale_value"] == 8700.0
+    assert candidate.metadata["total_dividend_income"] == 640.0
+    assert candidate.metadata["total_brokerage_fees"] == 95.0
+    assert candidate.metadata["reported_holdings_count"] == 5.0
+
+
+def test_investment_skill_broker_summary_partial_extraction_still_creates_reviewable_candidate():
+    from app.skills.investment_skill import InvestmentSkill
+
+    skill = InvestmentSkill()
+    classification = ClassificationResult(
+        document_type="share_annual_broker_summary",
+        confidence=0.95,
+        skill_id="investment_skill",
+        suggested_category=None,
+        extracted_amounts=[],
+    )
+    doc = Document(
+        workspace_id="ws-test",
+        financial_year="2024-25",
+        original_filename="partial-broker-summary.pdf",
+        storage_key="ws-test/partial-broker-summary.pdf",
+        sha256_hash="brokerpartial123",
+        extracted_text=(
+            "Broker: SelfWealth\n"
+            "FY: 2024-25\n"
+            "Dividends: $640\n"
+        ),
+    )
+
+    candidates = skill.extract_events(doc, classification)
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.category == "share_annual_summary"
+    assert candidate.metadata["broker_name"] == "SelfWealth"
+    assert candidate.metadata["financial_year"] == "2024-25"
+    assert candidate.metadata["total_dividend_income"] == 640.0
+
+
+def test_investment_skill_broker_summary_unknown_layout_returns_empty():
+    from app.skills.investment_skill import InvestmentSkill
+
+    skill = InvestmentSkill()
+    classification = ClassificationResult(
+        document_type="share_annual_broker_summary",
+        confidence=0.95,
+        skill_id="investment_skill",
+        suggested_category=None,
+        extracted_amounts=[],
+    )
+    doc = Document(
+        workspace_id="ws-test",
+        financial_year="2024-25",
+        original_filename="unknown-broker-summary.pdf",
+        storage_key="ws-test/unknown-broker-summary.pdf",
+        sha256_hash="brokerunknown123",
+        extracted_text="General broker correspondence with no recognizable annual summary fields.",
+    )
+
+    assert skill.extract_events(doc, classification) == []
+
+
 # ── 8. Skill conflict → warning logged + AuditLog written ────────────────────
 
 @pytest.mark.asyncio
