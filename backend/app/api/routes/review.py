@@ -7,6 +7,7 @@ from app.db.base import get_db
 from app.db.models import ReviewItem
 from app.engines.review import ReviewEngine, UserAction
 from app.errors import error_response
+from app.repositories import documents as doc_repo
 from app.repositories import interview as interview_repo
 from app.repositories import profiles as profile_repo
 from app.repositories import review as review_repo
@@ -63,8 +64,22 @@ def _history_dict(history) -> dict:
     }
 
 
-def _item_dict(item: ReviewItem, decision_history: list | None = None) -> dict:
+def _source_document_dict(document) -> dict | None:
+    if document is None:
+        return None
+    return {
+        "document_id": document.id,
+        "original_filename": document.original_filename,
+    }
+
+
+def _item_dict(
+    item: ReviewItem,
+    decision_history: list | None = None,
+    source_document=None,
+) -> dict:
     explanation_category = (item.category or (item.tax_event.category if item.tax_event else None))
+    event = item.tax_event
     return {
         "id": item.id,
         "workspace_id": item.workspace_id,
@@ -90,6 +105,9 @@ def _item_dict(item: ReviewItem, decision_history: list | None = None) -> dict:
         "review_duration_seconds": item.review_duration_seconds,
         "group_id": item.tax_event.group_id if item.tax_event else None,
         "group_display": item.tax_event.group_display if item.tax_event else None,
+        "source": event.source if event else None,
+        "event_metadata": event.event_metadata if event else None,
+        "source_document": _source_document_dict(source_document),
         "decision_history": [_history_dict(h) for h in (decision_history or [])],
         "explanation": build_tax_item_explanation(
             target_type="review_item",
@@ -110,22 +128,57 @@ async def get_review_queue(
     queue = await _engine.get_queue(workspace_id, db)
     all_items = queue.agent_required + queue.high_risk + queue.needs_review + queue.confirmed
     history_by_item = await review_repo.get_history_by_item_ids(db, [item.id for item in all_items])
+    document_ids = sorted({
+        item.tax_event.document_id
+        for item in all_items
+        if item.tax_event and item.tax_event.document_id
+    })
+    documents = await doc_repo.get_by_ids(db, document_ids)
+    documents_by_id = {document.id: document for document in documents}
     return {
         "data": {
             "agent_required": {
-                "items": [_item_dict(i, history_by_item.get(i.id, [])) for i in queue.agent_required],
+                "items": [
+                    _item_dict(
+                        i,
+                        history_by_item.get(i.id, []),
+                        documents_by_id.get(i.tax_event.document_id) if i.tax_event and i.tax_event.document_id else None,
+                    )
+                    for i in queue.agent_required
+                ],
                 "count": len(queue.agent_required),
             },
             "high_risk": {
-                "items": [_item_dict(i, history_by_item.get(i.id, [])) for i in queue.high_risk],
+                "items": [
+                    _item_dict(
+                        i,
+                        history_by_item.get(i.id, []),
+                        documents_by_id.get(i.tax_event.document_id) if i.tax_event and i.tax_event.document_id else None,
+                    )
+                    for i in queue.high_risk
+                ],
                 "count": len(queue.high_risk),
             },
             "needs_review": {
-                "items": [_item_dict(i, history_by_item.get(i.id, [])) for i in queue.needs_review],
+                "items": [
+                    _item_dict(
+                        i,
+                        history_by_item.get(i.id, []),
+                        documents_by_id.get(i.tax_event.document_id) if i.tax_event and i.tax_event.document_id else None,
+                    )
+                    for i in queue.needs_review
+                ],
                 "count": len(queue.needs_review),
             },
             "confirmed": {
-                "items": [_item_dict(i, history_by_item.get(i.id, [])) for i in queue.confirmed],
+                "items": [
+                    _item_dict(
+                        i,
+                        history_by_item.get(i.id, []),
+                        documents_by_id.get(i.tax_event.document_id) if i.tax_event and i.tax_event.document_id else None,
+                    )
+                    for i in queue.confirmed
+                ],
                 "count": len(queue.confirmed),
             },
             "total": queue.total,
@@ -149,7 +202,10 @@ async def get_review_item(
             detail=error_response("item_not_found", "Review item not found.", retryable=False),
         )
     history = await review_repo.get_history_for_item(db, item.id)
-    return {"data": _item_dict(item, history)}
+    document = None
+    if item.tax_event and item.tax_event.document_id:
+        document = await doc_repo.get_by_id(db, item.tax_event.document_id)
+    return {"data": _item_dict(item, history, document)}
 
 
 @router.get("/review/{item_id}/history")
@@ -210,7 +266,10 @@ async def take_action(
     await _reconcile_service.trigger(workspace_id=workspace_id, trigger_source="event_update", db=db)
 
     history = await review_repo.get_history_for_item(db, item.id)
-    return {"data": _item_dict(item, history)}
+    document = None
+    if item.tax_event and item.tax_event.document_id:
+        document = await doc_repo.get_by_id(db, item.tax_event.document_id)
+    return {"data": _item_dict(item, history, document)}
 
 
 @router.post("/review/{item_id}/undo")
@@ -234,7 +293,10 @@ async def undo_review_decision(
         )
     await _reconcile_service.trigger(workspace_id=workspace_id, trigger_source="event_update", db=db)
     history = await review_repo.get_history_for_item(db, item.id)
-    return {"data": _item_dict(item, history)}
+    document = None
+    if item.tax_event and item.tax_event.document_id:
+        document = await doc_repo.get_by_id(db, item.tax_event.document_id)
+    return {"data": _item_dict(item, history, document)}
 
 
 # ── POST /review/{item_id}/inline-answer ──────────────────────────────────────
@@ -265,10 +327,13 @@ async def submit_inline_answer(
 
     session_after = await interview_repo.get_active_by_workspace(db, workspace_id)
     skills_after = len(session_after.activated_skills or []) if session_after else 0
+    document = None
+    if item.tax_event and item.tax_event.document_id:
+        document = await doc_repo.get_by_id(db, item.tax_event.document_id)
 
     return {
         "data": {
-            **_item_dict(item),
+            **_item_dict(item, source_document=document),
             "new_skill_pending": skills_after > skills_before,
         }
     }
@@ -303,10 +368,24 @@ async def bulk_action(
         )
     await _reconcile_service.trigger(workspace_id=workspace_id, trigger_source="event_update", db=db)
     history_by_item = await review_repo.get_history_by_item_ids(db, [item.id for item in results])
+    document_ids = sorted({
+        item.tax_event.document_id
+        for item in results
+        if item.tax_event and item.tax_event.document_id
+    })
+    documents = await doc_repo.get_by_ids(db, document_ids)
+    documents_by_id = {document.id: document for document in documents}
 
     return {
         "data": {
-            "items": [_item_dict(i, history_by_item.get(i.id, [])) for i in results],
+            "items": [
+                _item_dict(
+                    i,
+                    history_by_item.get(i.id, []),
+                    documents_by_id.get(i.tax_event.document_id) if i.tax_event and i.tax_event.document_id else None,
+                )
+                for i in results
+            ],
             "count": len(results),
         }
     }
@@ -327,10 +406,24 @@ async def undo_bulk_review_decision(
         )
     await _reconcile_service.trigger(workspace_id=workspace_id, trigger_source="event_update", db=db)
     history_by_item = await review_repo.get_history_by_item_ids(db, [item.id for item in results])
+    document_ids = sorted({
+        item.tax_event.document_id
+        for item in results
+        if item.tax_event and item.tax_event.document_id
+    })
+    documents = await doc_repo.get_by_ids(db, document_ids)
+    documents_by_id = {document.id: document for document in documents}
 
     return {
         "data": {
-            "items": [_item_dict(i, history_by_item.get(i.id, [])) for i in results],
+            "items": [
+                _item_dict(
+                    i,
+                    history_by_item.get(i.id, []),
+                    documents_by_id.get(i.tax_event.document_id) if i.tax_event and i.tax_event.document_id else None,
+                )
+                for i in results
+            ],
             "count": len(results),
         }
     }

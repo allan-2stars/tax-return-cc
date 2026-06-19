@@ -28,6 +28,9 @@ const baseItem: ReviewItem = {
   group_id: null,
   group_display: null,
   decision_history: [],
+  source: null,
+  event_metadata: null,
+  source_document: null,
   explanation: {
     explanation_id: 'review_item:item-1',
     target_type: 'review_item',
@@ -40,6 +43,28 @@ const baseItem: ReviewItem = {
     confidence_level: 'medium',
     rule_version: null,
     source: 'review',
+  },
+}
+
+const extractedShareBuyItem: ReviewItem = {
+  ...baseItem,
+  id: 'item-extracted-buy',
+  tax_event_id: 'evt-extracted-buy',
+  title: 'BHP contract note',
+  category: 'shares_acquisition',
+  source: 'document_extracted',
+  confidence: 0.92,
+  source_document: {
+    document_id: 'doc-1',
+    original_filename: 'BHP_Contract_Note.pdf',
+  },
+  event_metadata: {
+    stock_code: 'BHP',
+    exchange: 'ASX',
+    units: 100,
+    price_per_unit: 52.10,
+    brokerage_fee: 19.95,
+    transaction_type: 'buy',
   },
 }
 
@@ -56,6 +81,142 @@ describe('ReviewCard', () => {
     expect(screen.getByText('Work laptop purchase')).toBeInTheDocument()
     const amountEl = screen.getByText('$1,299.00')
     expect(amountEl).toHaveClass('font-mono')
+  })
+
+  it('renders Document Extracted badge and source document details for extracted items', () => {
+    render(<ReviewCard item={extractedShareBuyItem} onAction={mockOnAction} onInlineAnswer={mockOnInlineAnswer} />)
+    expect(screen.getByText('Document Extracted')).toBeInTheDocument()
+    expect(screen.getByText(/source document:/i)).toBeInTheDocument()
+    expect(screen.getByText('BHP_Contract_Note.pdf')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /view source document/i })).toHaveAttribute('href', '/api/v1/documents/doc-1/file')
+  })
+
+  it('does not show extracted badge for manual entries', () => {
+    render(
+      <ReviewCard
+        item={{ ...baseItem, source: 'manual_entry' }}
+        onAction={mockOnAction}
+        onInlineAnswer={mockOnInlineAnswer}
+      />
+    )
+    expect(screen.queryByText('Document Extracted')).not.toBeInTheDocument()
+  })
+
+  it('renders share acquisition extraction preview', () => {
+    render(<ReviewCard item={extractedShareBuyItem} onAction={mockOnAction} onInlineAnswer={mockOnInlineAnswer} />)
+    expect(screen.getByText('BHP')).toBeInTheDocument()
+    expect(screen.getByText('ASX')).toBeInTheDocument()
+    expect(screen.getByText('100 units')).toBeInTheDocument()
+    expect(screen.getByText('$52.10 each')).toBeInTheDocument()
+    expect(screen.getByText('Brokerage $19.95')).toBeInTheDocument()
+  })
+
+  it('renders share disposal extraction preview', () => {
+    render(
+      <ReviewCard
+        item={{
+          ...extractedShareBuyItem,
+          id: 'item-sell',
+          category: 'capital_gain_candidate',
+          event_metadata: {
+            stock_code: 'BHP',
+            units: 100,
+            price_per_unit: 58.2,
+            brokerage_fee: 19.95,
+            transaction_type: 'sell',
+          },
+        }}
+        onAction={mockOnAction}
+        onInlineAnswer={mockOnInlineAnswer}
+      />
+    )
+    expect(screen.getByText('100 units sold')).toBeInTheDocument()
+    expect(screen.getByText('$58.20 each')).toBeInTheDocument()
+  })
+
+  it('renders dividend extraction preview', () => {
+    render(
+      <ReviewCard
+        item={{
+          ...extractedShareBuyItem,
+          id: 'item-dividend',
+          category: 'dividend',
+          event_metadata: {
+            dividend_amount: 145.2,
+            franking_credits: 62.23,
+            payment_date: '2025-09-15',
+          },
+        }}
+        onAction={mockOnAction}
+        onInlineAnswer={mockOnInlineAnswer}
+      />
+    )
+    expect(screen.getByText('Dividend $145.20')).toBeInTheDocument()
+    expect(screen.getByText('Franking $62.23')).toBeInTheDocument()
+    expect(screen.getByText((text) => /^Payment 15 Sep[t]? 2025$/.test(text))).toBeInTheDocument()
+  })
+
+  it('renders managed fund extraction preview', () => {
+    render(
+      <ReviewCard
+        item={{
+          ...extractedShareBuyItem,
+          id: 'item-managed',
+          category: 'managed_fund_distribution',
+          event_metadata: {
+            distribution_amount: 1245.8,
+            capital_gains_component: 215.4,
+            foreign_income_component: 37.2,
+          },
+        }}
+        onAction={mockOnAction}
+        onInlineAnswer={mockOnInlineAnswer}
+      />
+    )
+    expect(screen.getByText('Distribution $1,245.80')).toBeInTheDocument()
+    expect(screen.getByText('Capital gains component $215.40')).toBeInTheDocument()
+    expect(screen.getByText('Foreign income component $37.20')).toBeInTheDocument()
+  })
+
+  it('renders broker annual summary extraction preview', () => {
+    render(
+      <ReviewCard
+        item={{
+          ...extractedShareBuyItem,
+          id: 'item-summary',
+          category: 'share_annual_summary',
+          event_metadata: {
+            total_purchase_value: 12400,
+            total_sale_value: 8700,
+            total_dividend_income: 640,
+            total_brokerage_fees: 95,
+          },
+        }}
+        onAction={mockOnAction}
+        onInlineAnswer={mockOnInlineAnswer}
+      />
+    )
+    expect(screen.getByText('Purchases $12,400.00')).toBeInTheDocument()
+    expect(screen.getByText('Sales $8,700.00')).toBeInTheDocument()
+    expect(screen.getByText('Dividends $640.00')).toBeInTheDocument()
+    expect(screen.getByText('Brokerage $95.00')).toBeInTheDocument()
+  })
+
+  it('renders extracted confidence indicator and auditability hint when confidence exists', () => {
+    render(<ReviewCard item={extractedShareBuyItem} onAction={mockOnAction} onInlineAnswer={mockOnInlineAnswer} />)
+    expect(screen.getByText('Extraction confidence: High')).toBeInTheDocument()
+    expect(screen.getByText(/review extracted information and correct any fields that appear inaccurate/i)).toBeInTheDocument()
+  })
+
+  it('hides extracted confidence indicator when confidence is unavailable', () => {
+    render(
+      <ReviewCard
+        item={{ ...extractedShareBuyItem, confidence: null }}
+        onAction={mockOnAction}
+        onInlineAnswer={mockOnInlineAnswer}
+      />
+    )
+    expect(screen.queryByText(/extraction confidence:/i)).not.toBeInTheDocument()
   })
 
   it('renders AI reasoning in italic', () => {

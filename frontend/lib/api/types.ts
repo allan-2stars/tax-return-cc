@@ -379,6 +379,12 @@ export interface ReviewItem {
   review_duration_seconds: number | null
   group_id: string | null
   group_display: string | null
+  source?: string | null
+  event_metadata?: Record<string, unknown> | null
+  source_document?: {
+    document_id: string
+    original_filename: string
+  } | null
   decision_history?: ReviewDecisionHistory[]
   explanation?: ExplanationSidecar | null
 }

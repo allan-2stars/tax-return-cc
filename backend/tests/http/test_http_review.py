@@ -3,7 +3,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.models import ReviewDecisionHistory, ReviewItem, TaxProfile
+from app.db.models import Document, ReviewDecisionHistory, ReviewItem, TaxEvent, TaxProfile
 
 
 @pytest.mark.asyncio
@@ -28,6 +28,75 @@ async def test_get_queue(auth_client):
         assert "explanation" in first
         assert first["explanation"]["target_type"] == "review_item"
         assert first["explanation"]["target_id"] == first["id"]
+
+
+@pytest.mark.asyncio
+async def test_get_queue_includes_extracted_source_metadata(auth_client, test_engine):
+    maker = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as session:
+        doc = Document(
+            workspace_id=auth_client.workspace_id,
+            financial_year="2024-25",
+            original_filename="BHP_Contract_Note.pdf",
+            storage_key=f"{auth_client.workspace_id}/doc-1/original.pdf",
+            sha256_hash="a" * 64,
+            status="ready",
+            document_type="share_buy_contract_note",
+        )
+        session.add(doc)
+        await session.flush()
+
+        event = TaxEvent(
+            workspace_id=auth_client.workspace_id,
+            document_id=doc.id,
+            financial_year="2024-25",
+            event_type="investment",
+            category="shares_acquisition",
+            description="BHP contract note",
+            amount=5210.0,
+            date="2025-09-15",
+            source="document_extracted",
+            confidence=0.92,
+            status="needs_user_review",
+            review_status="pending",
+            event_metadata={
+                "stock_code": "BHP",
+                "exchange": "ASX",
+                "units": 100,
+                "price_per_unit": 52.10,
+                "brokerage_fee": 19.95,
+                "transaction_type": "buy",
+            },
+        )
+        session.add(event)
+        await session.flush()
+
+        item = ReviewItem(
+            workspace_id=auth_client.workspace_id,
+            tax_event_id=event.id,
+            title="BHP contract note",
+            category="shares_acquisition",
+            amount=5210.0,
+            date="2025-09-15",
+            risk_level="low",
+            confidence=0.92,
+            questions_complete=True,
+            status="needs_user_review",
+        )
+        session.add(item)
+        await session.commit()
+        review_item_id = item.id
+
+    resp = await auth_client.get("/api/v1/review/queue")
+    assert resp.status_code == 200
+    items = resp.json()["data"]["needs_review"]["items"]
+    payload = next(i for i in items if i["id"] == review_item_id)
+    assert payload["source"] == "document_extracted"
+    assert payload["event_metadata"]["stock_code"] == "BHP"
+    assert payload["source_document"] == {
+        "document_id": doc.id,
+        "original_filename": "BHP_Contract_Note.pdf",
+    }
 
 
 @pytest.mark.asyncio

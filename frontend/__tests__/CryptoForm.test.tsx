@@ -105,6 +105,44 @@ test('buy form submits acquisition category', async () => {
   )
 })
 
+test('buy form rejects future purchase date with field-level error and does not submit', async () => {
+  const user = userEvent.setup()
+  render(<CryptoForm onSuccess={jest.fn()} onBack={jest.fn()} onCancel={jest.fn()} />)
+  await user.click(screen.getByRole('button', { name: /^buy$/i }))
+
+  await user.type(screen.getByLabelText(/exchange \/ wallet/i), 'CoinSpot')
+  await user.type(screen.getByLabelText(/coin \/ token/i), 'BTC')
+  await user.type(screen.getByLabelText(/amount \(units\)/i), '1')
+  await user.type(screen.getByLabelText(/purchase price \(AUD\)/i), '100000')
+  fireEvent.change(screen.getByLabelText(/purchase date/i), { target: { value: '2026-12-18' } })
+
+  await user.click(screen.getByRole('button', { name: /add item/i }))
+
+  await waitFor(() => {
+    expect(screen.getByRole('alert')).toHaveTextContent(/future/i)
+  })
+  expect(mockCreate).not.toHaveBeenCalled()
+})
+
+test('buy form rejects year 0001 and does not submit', async () => {
+  const user = userEvent.setup()
+  render(<CryptoForm onSuccess={jest.fn()} onBack={jest.fn()} onCancel={jest.fn()} />)
+  await user.click(screen.getByRole('button', { name: /^buy$/i }))
+
+  await user.type(screen.getByLabelText(/exchange \/ wallet/i), 'CoinSpot')
+  await user.type(screen.getByLabelText(/coin \/ token/i), 'BTC')
+  await user.type(screen.getByLabelText(/amount \(units\)/i), '1')
+  await user.type(screen.getByLabelText(/purchase price \(AUD\)/i), '100000')
+  fireEvent.change(screen.getByLabelText(/purchase date/i), { target: { value: '0001-01-01' } })
+
+  await user.click(screen.getByRole('button', { name: /add item/i }))
+
+  await waitFor(() => {
+    expect(screen.getByRole('alert')).toHaveTextContent(/1900/i)
+  })
+  expect(mockCreate).not.toHaveBeenCalled()
+})
+
 test('buy form saves and restores draft fields', async () => {
   const user = userEvent.setup()
   const { unmount } = render(<CryptoForm onSuccess={jest.fn()} onBack={jest.fn()} onCancel={jest.fn()} />)

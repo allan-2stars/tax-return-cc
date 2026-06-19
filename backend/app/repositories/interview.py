@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import InterviewSession
@@ -40,6 +40,17 @@ async def get_by_id(db: AsyncSession, session_id: str) -> InterviewSession | Non
 async def get_active_by_workspace(
     db: AsyncSession, workspace_id: str
 ) -> InterviewSession | None:
+    state_priority = case(
+        (InterviewSession.state == "in_progress", 0),
+        (InterviewSession.state == "paused", 1),
+        (InterviewSession.state == "awaiting_evidence", 2),
+        (InterviewSession.state == "not_started", 3),
+        else_=4,
+    )
+    current_step_priority = case(
+        (InterviewSession.current_step.is_not(None), 0),
+        else_=1,
+    )
     result = await db.execute(
         select(InterviewSession)
         .where(
@@ -48,7 +59,12 @@ async def get_active_by_workspace(
                 ["not_started", "in_progress", "paused", "awaiting_evidence"]
             ),
         )
-        .order_by(InterviewSession.created_at.desc())
+        .order_by(
+            state_priority.asc(),
+            current_step_priority.asc(),
+            InterviewSession.last_active_at.desc(),
+            InterviewSession.created_at.desc(),
+        )
         .limit(1)
     )
     return result.scalar_one_or_none()

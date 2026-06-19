@@ -2,6 +2,7 @@
 import { useForm } from 'react-hook-form'
 import { useState } from 'react'
 import { createManualEvent } from '@/lib/api/events'
+import { normalizeApiError } from '@/lib/api/errors'
 import { Info } from 'lucide-react'
 import { validateDate } from '@/lib/utils/fy'
 import useWorkspaceStore from '@/lib/stores/workspace.store'
@@ -74,7 +75,7 @@ export default function ForeignIncomeForm({ onSuccess, onBack, onCancel }: Inves
       })
       clearDraft(true)
       onSuccess()
-    } catch { setError('Something went wrong. Please try again.') }
+    } catch (err: unknown) { setError(normalizeApiError(err).message) }
     finally { setPending(false) }
   }
 
@@ -150,7 +151,7 @@ export default function ForeignIncomeForm({ onSuccess, onBack, onCancel }: Inves
           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono"
           {...register('income_date', {
             required: 'Income date is required.',
-            validate: { notFuture: (v) => { const e = validateDate(v, null).error; return e === undefined ? true : e } },
+            validate: { validDate: (v) => { const e = validateDate(v, financialYear ?? null).error; return e === undefined ? true : e } },
           })} />
         {errors.income_date && <p role="alert" className="text-sm font-ui text-risk-high mt-1">{errors.income_date.message}</p>}
         {incomeDateWarning && <p className="text-sm font-ui text-review mt-1">⚠ {incomeDateWarning}</p>}

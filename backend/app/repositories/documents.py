@@ -56,6 +56,15 @@ async def get_by_id(db: AsyncSession, document_id: str) -> Document | None:
     return result.scalar_one_or_none()
 
 
+async def get_by_ids(db: AsyncSession, document_ids: list[str]) -> list[Document]:
+    if not document_ids:
+        return []
+    result = await db.execute(
+        select(Document).where(Document.id.in_(document_ids))
+    )
+    return list(result.scalars().all())
+
+
 async def get_ready_docs(db: AsyncSession, workspace_id: str) -> list[Document]:
     result = await db.execute(
         select(Document).where(

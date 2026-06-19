@@ -123,6 +123,8 @@ describe('UploadZone', () => {
 
     await waitFor(() => expect(onUploadComplete).toHaveBeenCalledWith('doc-1'))
     expect(onUploadComplete).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.getByText(/drop your document here/i)).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /^remove$/i })).not.toBeInTheDocument()
   })
 
   it('falls back to summary polling when SSE errors and resolves ready once', async () => {
@@ -215,5 +217,20 @@ describe('UploadZone', () => {
       expect(screen.getByText(/still processing/i)).toBeInTheDocument()
       expect(screen.getByText(/you can keep working/i)).toBeInTheDocument()
     })
+  })
+
+  it('never renders Remove inside the drop zone after upload completes', async () => {
+    mockUpload.mockResolvedValue({ data: { status: 'processing', document_id: 'doc-9' } })
+    mockUseSSE.mockImplementation((url: string | null) => url
+      ? { data: { document_id: 'doc-9', status: 'ready', events_created: 1 }, status: 'closed', error: null }
+      : { data: null, status: 'closed', error: null })
+
+    renderZone()
+    const input = screen.getByLabelText(/upload document/i)
+    const file = new File(['%PDF-content'], 'statement.pdf', { type: 'application/pdf' })
+    fireEvent.change(input, { target: { files: [file] } })
+
+    await waitFor(() => expect(onUploadComplete).toHaveBeenCalledWith('doc-9'))
+    expect(screen.queryByRole('button', { name: /^remove$/i })).not.toBeInTheDocument()
   })
 })

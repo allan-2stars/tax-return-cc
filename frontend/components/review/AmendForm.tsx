@@ -58,6 +58,12 @@ export default function AmendForm({ item, onSave, onCancel }: AmendFormProps) {
 
   return (
     <div data-testid="amend-form" className="space-y-3">
+      {item.source === 'document_extracted' && (
+        <p className="text-xs font-ui text-text-muted">
+          <span className="text-text-body">Source:</span> Document Extraction
+        </p>
+      )}
+
       <div>
         <label htmlFor="amend-amount" className="block text-xs font-ui text-text-muted mb-1">
           Amount ($)

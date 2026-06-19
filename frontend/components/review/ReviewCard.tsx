@@ -41,6 +41,102 @@ function formatHistoryDate(value: string | null): string {
   })
 }
 
+function formatMoney(value: unknown): string | null {
+  if (typeof value !== 'number' || Number.isNaN(value)) return null
+  return `$${value.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function formatPreviewDate(value: unknown): string | null {
+  if (typeof value !== 'string' || !value) return null
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return null
+  return parsed.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function formatUnits(value: unknown, suffix = 'units'): string | null {
+  if (typeof value !== 'number' || Number.isNaN(value)) return null
+  return `${value.toLocaleString('en-AU')} ${suffix}`
+}
+
+function getSourceBadgeLabel(source: string | null | undefined): string | null {
+  if (source === 'document_extracted') return 'Document Extracted'
+  if (source === 'manual_entry') return 'Manual Entry'
+  return null
+}
+
+function getExtractionConfidenceLabel(confidence: number | null): string | null {
+  if (confidence == null) return null
+  if (confidence >= 0.9) return 'High'
+  if (confidence >= 0.7) return 'Medium'
+  return 'Low'
+}
+
+function getInvestmentPreview(item: ReviewItem): string[] {
+  const metadata = item.event_metadata ?? {}
+  const lines: string[] = []
+
+  if (item.category === 'shares_acquisition') {
+    if (typeof metadata.stock_code === 'string' && metadata.stock_code) lines.push(metadata.stock_code)
+    if (typeof metadata.exchange === 'string' && metadata.exchange) lines.push(metadata.exchange)
+    const units = formatUnits(metadata.units)
+    if (units) lines.push(units)
+    const pricePerUnit = formatMoney(metadata.price_per_unit)
+    if (pricePerUnit) lines.push(`${pricePerUnit} each`)
+    const brokerage = formatMoney(metadata.brokerage_fee)
+    if (brokerage) lines.push(`Brokerage ${brokerage}`)
+    return lines
+  }
+
+  if (
+    item.category === 'capital_gain_candidate' ||
+    item.category === 'capital_gain' ||
+    item.category === 'capital_loss'
+  ) {
+    if (typeof metadata.stock_code === 'string' && metadata.stock_code) lines.push(metadata.stock_code)
+    const units = formatUnits(metadata.units, 'units sold')
+    if (units) lines.push(units)
+    const pricePerUnit = formatMoney(metadata.price_per_unit)
+    if (pricePerUnit) lines.push(`${pricePerUnit} each`)
+    const brokerage = formatMoney(metadata.brokerage_fee)
+    if (brokerage) lines.push(`Brokerage ${brokerage}`)
+    return lines
+  }
+
+  if (item.category === 'dividend') {
+    const dividendAmount = formatMoney(metadata.dividend_amount)
+    if (dividendAmount) lines.push(`Dividend ${dividendAmount}`)
+    const franking = formatMoney(metadata.franking_credits)
+    if (franking) lines.push(`Franking ${franking}`)
+    const paymentDate = formatPreviewDate(metadata.payment_date)
+    if (paymentDate) lines.push(`Payment ${paymentDate}`)
+    return lines
+  }
+
+  if (item.category === 'managed_fund_distribution') {
+    const distribution = formatMoney(metadata.distribution_amount)
+    if (distribution) lines.push(`Distribution ${distribution}`)
+    const capitalGains = formatMoney(metadata.capital_gains_component)
+    if (capitalGains) lines.push(`Capital gains component ${capitalGains}`)
+    const foreignIncome = formatMoney(metadata.foreign_income_component)
+    if (foreignIncome) lines.push(`Foreign income component ${foreignIncome}`)
+    return lines
+  }
+
+  if (item.category === 'share_annual_summary') {
+    const purchases = formatMoney(metadata.total_purchase_value)
+    if (purchases) lines.push(`Purchases ${purchases}`)
+    const sales = formatMoney(metadata.total_sale_value)
+    if (sales) lines.push(`Sales ${sales}`)
+    const dividends = formatMoney(metadata.total_dividend_income)
+    if (dividends) lines.push(`Dividends ${dividends}`)
+    const brokerage = formatMoney(metadata.total_brokerage_fees)
+    if (brokerage) lines.push(`Brokerage ${brokerage}`)
+    return lines
+  }
+
+  return lines
+}
+
 interface ReviewCardProps {
   item: ReviewItem
   onAction: (
@@ -75,6 +171,10 @@ export default function ReviewCard({ item, onAction, onInlineAnswer, onUndo, onU
   const decisionHistory = item.decision_history ?? []
   const latestHistory = decisionHistory[0]
   const canUndoLatest = latestHistory?.action === 'confirmed' || latestHistory?.action === 'amended'
+  const sourceBadgeLabel = getSourceBadgeLabel(item.source)
+  const extractionConfidenceLabel =
+    item.source === 'document_extracted' ? getExtractionConfidenceLabel(item.confidence) : null
+  const investmentPreview = item.source === 'document_extracted' ? getInvestmentPreview(item) : []
 
   const d = item.date ? new Date(item.date) : null
   const displayDate =
@@ -123,6 +223,55 @@ export default function ReviewCard({ item, onAction, onInlineAnswer, onUndo, onU
         </div>
         <StatusBadge status={getStatusBadge(item)} />
       </div>
+
+      {sourceBadgeLabel && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-accent-soft px-2 py-1 text-xs font-ui text-accent">
+            {sourceBadgeLabel}
+          </span>
+          {extractionConfidenceLabel && (
+            <span className="text-xs font-ui text-text-muted">
+              Extraction confidence: {extractionConfidenceLabel}
+            </span>
+          )}
+        </div>
+      )}
+
+      {item.source === 'document_extracted' && item.source_document && (
+        <div className="mt-3 rounded bg-surface-raised p-3 text-xs font-ui text-text-muted">
+          <p>
+            <span className="text-text-body">Source document:</span>{' '}
+            {item.source_document.original_filename}
+          </p>
+          <a
+            href={`/api/v1/documents/${item.source_document.document_id}/file`}
+            className="mt-1 inline-block text-accent underline"
+          >
+            View source document
+          </a>
+        </div>
+      )}
+
+      {investmentPreview.length > 0 && (
+        <div className="mt-3 rounded bg-surface-raised p-3">
+          <div className="flex flex-wrap gap-2">
+            {investmentPreview.map((line) => (
+              <span
+                key={line}
+                className="rounded-full bg-surface px-2 py-1 text-xs font-ui text-text-body"
+              >
+                {line}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {item.source === 'document_extracted' && (
+        <p className="mt-3 text-xs font-ui text-text-muted">
+          Review extracted information and correct any fields that appear inaccurate.
+        </p>
+      )}
 
       {item.ai_reasoning && (
         <p className="mt-2 text-sm font-ui italic text-text-muted">{item.ai_reasoning}</p>

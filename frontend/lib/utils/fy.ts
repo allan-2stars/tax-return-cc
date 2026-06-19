@@ -29,16 +29,45 @@ export function deadlineState(fy: string): 'amber' | 'terracotta' | null {
   return null
 }
 
+const MIN_TAX_YEAR = 1900
+
+function toIsoDateString(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
 export function validateDate(
   value: string,
   financialYear: string | null,
 ): { error?: string; warning?: string } {
   if (!value) return {}
 
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return { error: 'Enter a valid date in YYYY-MM-DD format.' }
+  }
+
+  const [yearText, monthText, dayText] = value.split('-')
+  const year = parseInt(yearText, 10)
+  const month = parseInt(monthText, 10)
+  const day = parseInt(dayText, 10)
+
+  if (year < MIN_TAX_YEAR) {
+    return { error: `Year must be ${MIN_TAX_YEAR} or later.` }
+  }
+
+  const parsed = new Date(year, month - 1, day)
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day
+  ) {
+    return { error: 'Enter a real calendar date.' }
+  }
+
   const today = new Date()
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+  const todayStr = toIsoDateString(today)
   if (value > todayStr) {
-    return { error: 'Date cannot be in the future' }
+    return { error: 'Date cannot be in the future.' }
   }
 
   if (!financialYear) return {}

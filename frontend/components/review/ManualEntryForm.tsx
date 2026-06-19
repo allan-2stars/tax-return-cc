@@ -540,6 +540,12 @@ export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
             <label htmlFor="donation-date" className="text-sm font-ui text-text-body block mb-1">Donation date</label>
             <input id="donation-date" type="date" value={donationDate} onChange={(e) => setDonationDate(e.target.value)}
               className={`w-full rounded-md border bg-surface px-3 py-2 text-sm font-mono ${donationDateValidation.error ? 'border-risk-high' : 'border-border'}`} aria-label="Donation date" />
+            {donationDateValidation.error && (
+              <p role="alert" className="text-sm font-ui text-risk-high mt-1">{donationDateValidation.error}</p>
+            )}
+            {!donationDateValidation.error && donationDateValidation.warning && (
+              <p className="text-sm font-ui text-review mt-1">⚠ {donationDateValidation.warning}</p>
+            )}
           </div>
           <label className="flex items-start gap-2 cursor-pointer">
             <input type="checkbox" checked={donationReceiptAvailable} onChange={(e) => setDonationReceiptAvailable(e.target.checked)} aria-label="Receipt available" />
@@ -568,6 +574,12 @@ export default function ManualEntryForm({ onSuccess, onCancel }: Props) {
             <label htmlFor="work-expense-date" className="text-sm font-ui text-text-body block mb-1">Purchase date</label>
             <input id="work-expense-date" type="date" value={workExpensePurchaseDate} onChange={(e) => setWorkExpensePurchaseDate(e.target.value)}
               className={`w-full rounded-md border bg-surface px-3 py-2 text-sm font-mono ${workExpenseDateValidation.error ? 'border-risk-high' : 'border-border'}`} aria-label="Purchase date" />
+            {workExpenseDateValidation.error && (
+              <p role="alert" className="text-sm font-ui text-risk-high mt-1">{workExpenseDateValidation.error}</p>
+            )}
+            {!workExpenseDateValidation.error && workExpenseDateValidation.warning && (
+              <p className="text-sm font-ui text-review mt-1">⚠ {workExpenseDateValidation.warning}</p>
+            )}
           </div>
           <div>
             <label htmlFor="work-expense-pct" className="text-sm font-ui text-text-body block mb-1">Work-related percentage</label>

@@ -82,10 +82,13 @@ export default function UploadZone({ onUploadComplete, onDuplicate }: UploadZone
     resolvedRef.current = true
     clearPoll()
     clearLongProcessingTimer()
-    setKind('success')
+    setKind('idle')
+    setFilename('')
+    setSseStage('')
     setStillProcessing(false)
     setFailedDocumentId(null)
     setDocumentId(null)
+    if (inputRef.current) inputRef.current.value = ''
     onUploadComplete(id)
   }, [clearLongProcessingTimer, clearPoll, onUploadComplete])
 
@@ -99,6 +102,7 @@ export default function UploadZone({ onUploadComplete, onDuplicate }: UploadZone
     setStillProcessing(false)
     setFailedDocumentId(id ?? documentId)
     setDocumentId(null)
+    if (inputRef.current) inputRef.current.value = ''
   }, [clearLongProcessingTimer, clearPoll, documentId])
 
   useEffect(() => {
@@ -197,6 +201,7 @@ export default function UploadZone({ onUploadComplete, onDuplicate }: UploadZone
         const normalized = normalizeApiError(err, 'Your network connection was interrupted. You can retry the upload.')
         setKind('error')
         setErrorMessage(normalized.message)
+        if (inputRef.current) inputRef.current.value = ''
       } finally {
         uploadingRef.current = false
       }
@@ -264,7 +269,6 @@ export default function UploadZone({ onUploadComplete, onDuplicate }: UploadZone
       className={[
         'rounded-md border-2 border-dashed p-8 text-center transition-all',
         kind === 'hover' ? 'border-accent scale-[1.01]' : 'border-border-strong',
-        kind === 'success' ? 'border-ready' : '',
       ]
         .filter(Boolean)
         .join(' ')}
@@ -301,17 +305,6 @@ export default function UploadZone({ onUploadComplete, onDuplicate }: UploadZone
           <div className="w-full bg-progress-track rounded-full h-1.5">
             <div className="bg-progress-fill h-1.5 rounded-full animate-pulse w-1/2" />
           </div>
-        </div>
-      ) : kind === 'success' ? (
-        <div className="space-y-2">
-          <p className="text-ready font-ui font-medium">✓ {filename}</p>
-          <button
-            type="button"
-            onClick={handleReset}
-            className="text-sm font-ui text-text-muted hover:text-text-body transition-colors"
-          >
-            Remove
-          </button>
         </div>
       ) : (
         <div className="space-y-3">

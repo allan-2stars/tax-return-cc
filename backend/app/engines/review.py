@@ -282,6 +282,8 @@ class ReviewEngine:
             parsed = datetime.strptime(value, "%Y-%m-%d").date()
         except Exception as exc:
             raise ValueError(f"{field} must be a valid ISO date (YYYY-MM-DD).") from exc
+        if parsed.year < 1900:
+            raise ValueError(f"{field} year must be 1900 or later.")
         if parsed > datetime.now(timezone.utc).date():
             raise ValueError(f"{field} cannot be in the future.")
         return parsed

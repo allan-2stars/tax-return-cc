@@ -27,6 +27,9 @@ const baseItem: ReviewItem = {
   review_duration_seconds: null,
   group_id: null,
   group_display: null,
+  source: null,
+  event_metadata: null,
+  source_document: null,
 }
 
 const mockOnSave = jest.fn()
@@ -81,5 +84,18 @@ describe('AmendForm', () => {
     )
     const select = screen.getByLabelText(/category/i)
     expect(select.querySelectorAll('option').length).toBeGreaterThan(0)
+  })
+
+  it('shows document extraction source context when editing extracted items', () => {
+    render(
+      <AmendForm
+        item={{ ...baseItem, source: 'document_extracted' }}
+        onSave={mockOnSave}
+        onCancel={mockOnCancel}
+      />
+    )
+    expect(
+      screen.getByText((_, element) => element?.textContent?.replace(/\s+/g, ' ').trim() === 'Source: Document Extraction')
+    ).toBeInTheDocument()
   })
 })

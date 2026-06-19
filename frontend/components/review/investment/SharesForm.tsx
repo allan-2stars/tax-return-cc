@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Info } from 'lucide-react'
 import { createManualEvent } from '@/lib/api/events'
+import { normalizeApiError } from '@/lib/api/errors'
 import { daysBetween, cgtDiscountEligible } from '@/lib/utils/investment'
 import { validateDate } from '@/lib/utils/fy'
 import useWorkspaceStore from '@/lib/stores/workspace.store'
@@ -124,7 +125,7 @@ function SharesBuySubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) 
       })
       clearDraft(true)
       onSuccess()
-    } catch { setError('Something went wrong. Please try again.') }
+    } catch (err: unknown) { setError(normalizeApiError(err).message) }
     finally { setPending(false) }
   }
 
@@ -181,7 +182,7 @@ function SharesBuySubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps) 
           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono"
           {...register('purchase_date', {
             required: 'Purchase date is required.',
-            validate: { notFuture: (v) => { const e = validateDate(v, null).error; return e === undefined ? true : e } },
+            validate: { validDate: (v) => { const e = validateDate(v, financialYear ?? null).error; return e === undefined ? true : e } },
           })} />
         {errors.purchase_date && <p role="alert" className="text-sm font-ui text-risk-high mt-1">{errors.purchase_date.message}</p>}
         {purchaseDateWarning && <p className="text-sm font-ui text-review mt-1">⚠ {purchaseDateWarning}</p>}
@@ -265,7 +266,7 @@ function SharesSellSubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps)
       })
       clearDraft(true)
       onSuccess()
-    } catch { setError('Something went wrong. Please try again.') }
+    } catch (err: unknown) { setError(normalizeApiError(err).message) }
     finally { setPending(false) }
   }
 
@@ -325,7 +326,7 @@ function SharesSellSubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps)
           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono"
           {...register('sale_date', {
             required: 'Sale date is required.',
-            validate: { notFuture: (v) => { const e = validateDate(v, null).error; return e === undefined ? true : e } },
+            validate: { validDate: (v) => { const e = validateDate(v, financialYear ?? null).error; return e === undefined ? true : e } },
           })} />
         {errors.sale_date && <p role="alert" className="text-sm font-ui text-risk-high mt-1">{errors.sale_date.message}</p>}
         {saleDateWarning && <p className="text-sm font-ui text-review mt-1">⚠ {saleDateWarning}</p>}
@@ -336,7 +337,7 @@ function SharesSellSubForm({ onSuccess, onBack, onCancel }: InvestmentFormProps)
           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono"
           {...register('purchase_date', {
             required: 'Purchase date is required.',
-            validate: { notFuture: (v) => { const e = validateDate(v, null).error; return e === undefined ? true : e } },
+            validate: { validDate: (v) => { const e = validateDate(v, financialYear ?? null).error; return e === undefined ? true : e } },
           })} />
         {errors.purchase_date && <p role="alert" className="text-sm font-ui text-risk-high mt-1">{errors.purchase_date.message}</p>}
         {purchaseDateWarning && <p className="text-sm font-ui text-review mt-1">⚠ {purchaseDateWarning}</p>}
@@ -426,7 +427,7 @@ function SharesDividendSubForm({ onSuccess, onBack, onCancel }: InvestmentFormPr
       })
       clearDraft(true)
       onSuccess()
-    } catch { setError('Something went wrong. Please try again.') }
+    } catch (err: unknown) { setError(normalizeApiError(err).message) }
     finally { setPending(false) }
   }
 
@@ -474,7 +475,7 @@ function SharesDividendSubForm({ onSuccess, onBack, onCancel }: InvestmentFormPr
           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono"
           {...register('payment_date', {
             required: 'Payment date is required.',
-            validate: { notFuture: (v) => { const e = validateDate(v, null).error; return e === undefined ? true : e } },
+            validate: { validDate: (v) => { const e = validateDate(v, financialYear ?? null).error; return e === undefined ? true : e } },
           })} />
         {errors.payment_date && <p role="alert" className="text-sm font-ui text-risk-high mt-1">{errors.payment_date.message}</p>}
         {paymentDateWarning && <p className="text-sm font-ui text-review mt-1">⚠ {paymentDateWarning}</p>}

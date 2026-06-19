@@ -2,6 +2,8 @@
 import { useForm } from 'react-hook-form'
 import { useState } from 'react'
 import { createManualEvent } from '@/lib/api/events'
+import { normalizeApiError } from '@/lib/api/errors'
+import { validateDate } from '@/lib/utils/fy'
 import useWorkspaceStore from '@/lib/stores/workspace.store'
 import { useSessionDraft } from '@/lib/hooks/useSessionDraft'
 import DraftStatus from '../DraftStatus'
@@ -41,6 +43,13 @@ export default function BankInterestForm({ onSuccess, onBack, onCancel }: Invest
     applyDraft: (draft) => reset(draft),
   })
 
+  const statementPeriodStart = watch('statement_period_start')
+  const statementPeriodEnd = watch('statement_period_end')
+  const statementPeriodStartWarning = !errors.statement_period_start && statementPeriodStart
+    ? validateDate(statementPeriodStart, financialYear ?? null).warning : undefined
+  const statementPeriodEndWarning = !errors.statement_period_end && statementPeriodEnd
+    ? validateDate(statementPeriodEnd, financialYear ?? null).warning : undefined
+
   async function onSubmit(data: BankInterestFields) {
     const amt = parseFloat(data.interest_amount)
     setPending(true); setError(null)
@@ -63,7 +72,7 @@ export default function BankInterestForm({ onSuccess, onBack, onCancel }: Invest
       })
       clearDraft(true)
       onSuccess()
-    } catch { setError('Something went wrong. Please try again.') }
+    } catch (err: unknown) { setError(normalizeApiError(err).message) }
     finally { setPending(false) }
   }
 
@@ -113,15 +122,41 @@ export default function BankInterestForm({ onSuccess, onBack, onCancel }: Invest
         <label htmlFor="bi-period-start" className="text-sm font-ui text-text-body block mb-1">Statement period start</label>
         <input id="bi-period-start" type="date"
           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono"
-          {...register('statement_period_start', { required: 'Statement period start is required.' })} />
+          {...register('statement_period_start', {
+            required: 'Statement period start is required.',
+            validate: {
+              validDate: (v) => {
+                const validation = validateDate(v, financialYear ?? null)
+                return validation.error === undefined ? true : validation.error
+              },
+            },
+          })} />
         {errors.statement_period_start && <p role="alert" className="text-sm font-ui text-risk-high mt-1">{errors.statement_period_start.message}</p>}
+        {!errors.statement_period_start && statementPeriodStartWarning && (
+          <p className="text-sm font-ui text-review mt-1">⚠ {statementPeriodStartWarning}</p>
+        )}
       </div>
       <div>
         <label htmlFor="bi-period-end" className="text-sm font-ui text-text-body block mb-1">Statement period end</label>
         <input id="bi-period-end" type="date"
           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono"
-          {...register('statement_period_end', { required: 'Statement period end is required.' })} />
+          {...register('statement_period_end', {
+            required: 'Statement period end is required.',
+            validate: {
+              validDate: (v) => {
+                const validation = validateDate(v, financialYear ?? null)
+                return validation.error === undefined ? true : validation.error
+              },
+              periodOrder: (v) => {
+                if (!statementPeriodStart || !v) return true
+                return v >= statementPeriodStart ? true : 'Statement period end must be on or after statement period start.'
+              },
+            },
+          })} />
         {errors.statement_period_end && <p role="alert" className="text-sm font-ui text-risk-high mt-1">{errors.statement_period_end.message}</p>}
+        {!errors.statement_period_end && statementPeriodEndWarning && (
+          <p className="text-sm font-ui text-review mt-1">⚠ {statementPeriodEndWarning}</p>
+        )}
       </div>
       <div>
         <label htmlFor="bi-note" className="text-sm font-ui text-text-body block mb-1">Note (optional)</label>

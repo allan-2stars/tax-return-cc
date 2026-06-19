@@ -698,6 +698,49 @@ async def test_create_manual_event_rejects_overlong_description_or_note_and_does
 
 
 @pytest.mark.asyncio
+async def test_create_manual_event_rejects_unrealistic_year_and_does_not_persist(
+    db_session, workspace
+):
+    from app.engines.review import ReviewEngine
+
+    engine = ReviewEngine()
+    before_events = (await db_session.execute(select(TaxEvent))).scalars().all()
+    before_items = (await db_session.execute(select(ReviewItemModel))).scalars().all()
+
+    with patch.object(engine._readiness_engine, "recalculate") as mock_recalc:
+        mock_recalc.return_value = None
+        with pytest.raises(ValueError, match="1900"):
+            await engine.create_manual_event(
+                workspace_id=workspace.id,
+                financial_year="2024-25",
+                event_type="investment",
+                category="crypto_acquisition",
+                description="Crypto Buy: 1 BTC",
+                amount=100000.0,
+                date="0001-01-01",
+                frequency="one_off",
+                note=None,
+                periods=None,
+                metadata={
+                    "investment_sub_type": "crypto",
+                    "transaction_type": "buy",
+                    "exchange": "CoinSpot",
+                    "coin": "BTC",
+                    "amount_units": 1,
+                    "purchase_price": 100000.0,
+                    "transaction_fee": 0,
+                    "purchase_date": "0001-01-01",
+                },
+                db=db_session,
+            )
+
+    after_events = (await db_session.execute(select(TaxEvent))).scalars().all()
+    after_items = (await db_session.execute(select(ReviewItemModel))).scalars().all()
+    assert len(after_events) == len(before_events)
+    assert len(after_items) == len(before_items)
+
+
+@pytest.mark.asyncio
 async def test_create_manual_event_accepts_valid_donation_metadata(db_session, workspace):
     from app.engines.review import ReviewEngine
 
